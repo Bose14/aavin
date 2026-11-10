@@ -2,7 +2,7 @@ import type { User } from '@supabase/supabase-js';
 
 export interface UserProfile {
   id: string;
-  role: 'admin' | 'unit';
+  role: 'superadmin' | 'admin' | 'unit';
   zone_id: string;
   unit_id: string | null;
   full_name: string | null;

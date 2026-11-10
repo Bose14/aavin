@@ -4,9 +4,14 @@ import type { ReactNode } from 'react';
 
 interface NavItem { to: string; label: string; }
 
+const superAdminNav: NavItem[] = [
+  { to: '/superadmin', label: 'User Management' },
+];
+
 const adminNav: NavItem[] = [
   { to: '/admin', label: 'Dashboard' },
   { to: '/admin/units', label: 'Units' },
+  { to: '/admin/users', label: 'Users' },
   { to: '/admin/milk', label: 'Milk Records' },
   { to: '/admin/tanker', label: 'Tanker Records' },
 ];
@@ -21,12 +26,12 @@ const unitNav: NavItem[] = [
 export default function Layout({ children }: { children: ReactNode }) {
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
-  const nav = profile?.role === 'admin' ? adminNav : unitNav;
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login');
-  };
+  const nav = profile?.role === 'superadmin' ? superAdminNav
+    : profile?.role === 'admin' ? adminNav
+    : unitNav;
+
+  const handleSignOut = async () => { await signOut(); navigate('/login'); };
 
   return (
     <div className="layout">
@@ -40,7 +45,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <NavLink
               key={item.to}
               to={item.to}
-              end={item.to === '/admin' || item.to === '/unit'}
+              end={['/admin', '/unit', '/superadmin'].includes(item.to)}
               className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
             >
               {item.label}

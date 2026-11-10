@@ -124,3 +124,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 
 /* ── Loading ── */
 .loading, .loading-text { display: flex; align-items: center; justify-content: center; min-height: 200px; color: var(--text-muted); }
+
+/* ── Captcha ── */
+.captcha-wrap { display: flex; flex-direction: column; gap: 0.5rem; }
+.captcha-code { display: flex; align-items: center; gap: 0.75rem; background: #f8f7ff; border: 1.5px dashed #c7d2fe; border-radius: 10px; padding: 0.75rem 1rem; }
+.captcha-noise { display: flex; gap: 0.3rem; letter-spacing: 0.1em; flex: 1; justify-content: center; }
+.captcha-refresh { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--primary); padding: 0.2rem 0.4rem; border-radius: 6px; }
+.captcha-refresh:hover { background: var(--primary-light); }
+.input-error { border-color: var(--danger) !important; }
+
+/* ── Role badges extra ── */
+.role-badge.superadmin { background: #fce7f3; color: #9d174d; }
+
+/* ── Misc ── */
+.btn-link { background: none; border: none; color: var(--primary); font-size: 0.8rem; cursor: pointer; margin-left: 0.5rem; text-decoration: underline; padding: 0; }
+.form-group .hint { display: block; color: var(--text-muted); font-size: 0.78rem; margin-top: 0.2rem; }

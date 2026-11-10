@@ -3,7 +3,13 @@ import { useAuth } from '../context/AuthContext';
 
 interface Props {
   children: React.ReactNode;
-  role?: 'admin' | 'unit';
+  role?: 'superadmin' | 'admin' | 'unit';
+}
+
+function roleHome(role: string) {
+  if (role === 'superadmin') return '/superadmin';
+  if (role === 'admin') return '/admin';
+  return '/unit';
 }
 
 export default function ProtectedRoute({ children, role }: Props) {
@@ -11,13 +17,10 @@ export default function ProtectedRoute({ children, role }: Props) {
 
   if (loading) return <div className="loading">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
+  if (!profile) return <Navigate to="/login" replace />;
 
-  // If profile not set yet, redirect to complete registration
-  if (!profile) return <Navigate to="/register-profile" replace />;
-
-  // Role-based guard
   if (role && profile.role !== role) {
-    return <Navigate to={profile.role === 'admin' ? '/admin' : '/unit'} replace />;
+    return <Navigate to={roleHome(profile.role)} replace />;
   }
 
   return <>{children}</>;

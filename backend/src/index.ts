@@ -8,6 +8,7 @@ import milkRouter from './routes/milk';
 import tankerRouter from './routes/tanker';
 import analyticsRouter from './routes/analytics';
 import exportRouter from './routes/export';
+import usersRouter from './routes/users';
 
 dotenv.config();
 
@@ -30,6 +31,7 @@ app.use('/milk', milkRouter);
 app.use('/tanker', tankerRouter);
 app.use('/analytics', analyticsRouter);
 app.use('/export', exportRouter);
+app.use('/users', usersRouter);
 
 app.listen(PORT, () => {
   console.log(`Aavin backend running on port ${PORT}`);

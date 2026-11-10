@@ -20,7 +20,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     .from('profiles')
     .select('id, role, zone_id, unit_id, full_name')
     .eq('id', user.id)
-    .single();
+    .maybeSingle();
 
   if (profileError || !profile) {
     res.status(403).json({ error: 'Profile not found — complete registration first' });
