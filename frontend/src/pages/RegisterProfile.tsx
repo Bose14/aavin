@@ -3,9 +3,8 @@ import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { useAuth } from '../context/AuthContext';
-import api from '../lib/api';
+import ZoneSelect from '../components/ZoneSelect';
 
-interface Zone { id: string; name: string; }
 interface Unit { id: string; name: string; unit_code: string; }
 
 export default function RegisterProfile() {
@@ -17,7 +16,6 @@ export default function RegisterProfile() {
   const [phone, setPhone] = useState('');
   const [zoneId, setZoneId] = useState('');
   const [unitId, setUnitId] = useState('');
-  const [zones, setZones] = useState<Zone[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,11 +24,6 @@ export default function RegisterProfile() {
   useEffect(() => {
     if (profile) navigate(profile.role === 'admin' ? '/admin' : '/unit');
   }, [profile, navigate]);
-
-  // Load zones on mount
-  useEffect(() => {
-    api.get('/zones').then(r => setZones(r.data)).catch(() => {});
-  }, []);
 
   // Load units when zone selected and role is unit
   useEffect(() => {
@@ -95,10 +88,7 @@ export default function RegisterProfile() {
           </div>
           <div className="form-group">
             <label>Zone</label>
-            <select value={zoneId} onChange={e => setZoneId(e.target.value)} required>
-              <option value="">Select zone…</option>
-              {zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
-            </select>
+            <ZoneSelect value={zoneId} onChange={e => setZoneId(e.target.value)} required />
           </div>
           {role === 'unit' && (
             <div className="form-group">

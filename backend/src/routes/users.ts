@@ -10,7 +10,7 @@ router.use(authMiddleware);
 router.get('/', requireRole('admin', 'superadmin'), async (req, res) => {
   let query = supabase
     .from('profiles')
-    .select('id, full_name, role, zone_id, unit_id, phone, created_at, units(name, unit_code)')
+    .select('id, full_name, role, zone_id, unit_id, phone, created_at, units(name, unit_code), zones(name)')
     .order('created_at', { ascending: false });
 
   if (req.profile.role === 'admin') {
@@ -104,7 +104,7 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
 
 // DELETE /users/:id — admin deletes unit user, superadmin deletes admin/unit
 router.delete('/:id', requireRole('admin', 'superadmin'), async (req, res) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   // Fetch the target profile
   const { data: target } = await supabase

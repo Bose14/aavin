@@ -68,7 +68,9 @@ export default function AdminDashboard() {
       <div className="page-header">
         <div>
           <h1>Admin Dashboard</h1>
-          <p className="page-subtitle">Zone overview — {profile?.full_name}</p>
+          <p className="page-subtitle">
+            {profile?.zones?.name ? `${profile.zones.name} Zone overview` : 'Zone overview'} — {profile?.full_name}
+          </p>
         </div>
         <div className="period-tabs">
           {PERIODS.map(per => (

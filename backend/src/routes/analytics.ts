@@ -150,7 +150,7 @@ router.get('/units', async (req, res) => {
 
   for (const row of (data ?? [])) {
     const uid = row.unit_id;
-    const u = row.units as { name: string; unit_code: string } | null;
+    const u = row.units as unknown as { name: string; unit_code: string } | null;
     if (!byUnit[uid]) byUnit[uid] = { unit_id: uid, name: u?.name ?? '', unit_code: u?.unit_code ?? '', quantity: 0, rejection: 0, fat_sum: 0, snf_sum: 0, cost: 0, count: 0 };
     byUnit[uid].quantity += Number(row.quantity_litres);
     byUnit[uid].rejection += Number(row.rejection_qty ?? 0);

@@ -1,12 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { FormEvent } from 'react';
 import api from '../../lib/api';
+import { createZone } from '../../lib/zones';
+import { useZones } from '../../hooks/useZones';
+import ZoneSelect from '../../components/ZoneSelect';
 
-interface Zone { id: string; name: string; }
-interface AdminUser { id: string; full_name: string; role: string; phone: string | null; created_at: string; }
+interface AdminUser {
+  id: string;
+  full_name: string | null;
+  role: string;
+  phone: string | null;
+  created_at: string;
+  zones: { name: string } | null;
+}
 
 export default function SuperAdminDashboard() {
-  const [zones, setZones] = useState<Zone[]>([]);
+  const { zones, loading: zonesLoading, error: zonesError, reload: reloadZones } = useZones();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [form, setForm] = useState({ email: '', password: '', full_name: '', phone: '', zone_id: '' });
   const [error, setError] = useState('');
@@ -14,14 +23,18 @@ export default function SuperAdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [filterZone, setFilterZone] = useState('');
 
-  const loadZones = () => api.get('/zones').then(r => setZones(r.data));
-  const loadUsers = () => {
-    const qs = filterZone ? `?zone_id=${filterZone}` : '';
-    api.get(`/users${qs}`).then(r => setUsers(r.data));
-  };
+  const [showAddZone, setShowAddZone] = useState(false);
+  const [newZoneName, setNewZoneName] = useState('');
+  const [zoneMsg, setZoneMsg] = useState('');
+  const [zoneErr, setZoneErr] = useState('');
+  const [addingZone, setAddingZone] = useState(false);
 
-  useEffect(() => { loadZones(); }, []);
-  useEffect(() => { loadUsers(); }, [filterZone]);
+  const loadUsers = useCallback(() => {
+    const qs = filterZone ? `?zone_id=${filterZone}` : '';
+    api.get<AdminUser[]>(`/users${qs}`).then(r => setUsers(r.data)).catch(() => {});
+  }, [filterZone]);
+
+  useEffect(() => { loadUsers(); }, [loadUsers]);
 
   const set = (f: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(prev => ({ ...prev, [f]: e.target.value }));
@@ -32,13 +45,33 @@ export default function SuperAdminDashboard() {
     setLoading(true);
     try {
       const res = await api.post('/users/create', { ...form, role: 'admin' });
-      setSuccess(`Admin "${res.data.full_name}" created for zone ${zones.find(z => z.id === form.zone_id)?.name}.`);
+      const zoneName = zones.find(z => z.id === form.zone_id)?.name ?? '';
+      setSuccess(`Admin "${res.data.full_name}" created${zoneName ? ` for zone ${zoneName}` : ''}.`);
       setForm({ email: '', password: '', full_name: '', phone: '', zone_id: '' });
       loadUsers();
     } catch (err: unknown) {
       setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed');
     }
     setLoading(false);
+  };
+
+  const handleAddZone = async (e: FormEvent) => {
+    e.preventDefault();
+    setZoneErr(''); setZoneMsg('');
+    const trimmed = newZoneName.trim();
+    if (!trimmed) return;
+    setAddingZone(true);
+    try {
+      const created = await createZone(trimmed);
+      await reloadZones();
+      setForm(prev => ({ ...prev, zone_id: created.id }));
+      setNewZoneName('');
+      setZoneMsg(`Zone "${created.name}" added.`);
+      setShowAddZone(false);
+    } catch (err: unknown) {
+      setZoneErr((err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to add zone');
+    }
+    setAddingZone(false);
   };
 
   const handleDelete = async (id: string, name: string) => {
@@ -63,7 +96,42 @@ export default function SuperAdminDashboard() {
           <h1>Super Admin</h1>
           <p className="page-subtitle">Manage zone admins across all zones</p>
         </div>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => { setShowAddZone(s => !s); setZoneErr(''); setZoneMsg(''); }}
+        >
+          {showAddZone ? 'Close Add Zone' : '+ Add Zone'}
+        </button>
       </div>
+
+      {showAddZone && (
+        <div className="card form-card">
+          <h2>Add New Zone</h2>
+          <form onSubmit={handleAddZone} className="entry-form">
+            <div className="form-row" style={{ alignItems: 'end' }}>
+              <div className="form-group">
+                <label>Zone Name</label>
+                <input
+                  type="text"
+                  value={newZoneName}
+                  onChange={e => setNewZoneName(e.target.value)}
+                  placeholder="e.g. Namakkal"
+                  required
+                />
+              </div>
+              <div>
+                <button type="submit" disabled={addingZone} className="btn-primary" style={{ width: 'auto' }}>
+                  {addingZone ? 'Adding…' : 'Save Zone'}
+                </button>
+              </div>
+            </div>
+            {zoneErr && <p className="auth-error">{zoneErr}</p>}
+          </form>
+        </div>
+      )}
+
+      {zoneMsg && <p className="auth-success" style={{ marginBottom: '1rem' }}>{zoneMsg}</p>}
 
       <div className="card form-card">
         <h2>Create New Admin</h2>
@@ -85,10 +153,15 @@ export default function SuperAdminDashboard() {
             </div>
             <div className="form-group">
               <label>Zone</label>
-              <select value={form.zone_id} onChange={set('zone_id')} required>
-                <option value="">Select zone…</option>
-                {zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
-              </select>
+              <ZoneSelect
+                value={form.zone_id}
+                onChange={set('zone_id')}
+                zones={zones}
+                loading={zonesLoading}
+                error={zonesError}
+                onRetry={reloadZones}
+                required
+              />
             </div>
           </div>
           <div className="form-group">
@@ -112,18 +185,25 @@ export default function SuperAdminDashboard() {
       <div className="card table-card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem 1.5rem 0.75rem' }}>
           <h2 style={{ margin: 0 }}>All Admins & Unit Users</h2>
-          <select value={filterZone} onChange={e => setFilterZone(e.target.value)} style={{ padding: '0.4rem 0.6rem', borderRadius: 8, border: '1.5px solid #e5e7eb', fontSize: '0.875rem' }}>
-            <option value="">All Zones</option>
-            {zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
-          </select>
+          <ZoneSelect
+            value={filterZone}
+            onChange={e => setFilterZone(e.target.value)}
+            zones={zones}
+            loading={zonesLoading}
+            error={zonesError}
+            onRetry={reloadZones}
+            placeholder="All Zones"
+            style={{ padding: '0.4rem 0.6rem', borderRadius: 8, border: '1.5px solid #e5e7eb', fontSize: '0.875rem' }}
+          />
         </div>
         <table className="data-table">
-          <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Created</th><th>Action</th></tr></thead>
+          <thead><tr><th>Name</th><th>Role</th><th>Zone</th><th>Phone</th><th>Created</th><th>Action</th></tr></thead>
           <tbody>
             {users.map(u => (
               <tr key={u.id}>
                 <td>{u.full_name ?? '—'}</td>
                 <td><span className={`role-badge ${u.role}`}>{u.role}</span></td>
+                <td>{u.zones?.name ?? '—'}</td>
                 <td>{u.phone ?? '—'}</td>
                 <td>{new Date(u.created_at).toLocaleDateString('en-IN')}</td>
                 <td>
@@ -133,7 +213,7 @@ export default function SuperAdminDashboard() {
                 </td>
               </tr>
             ))}
-            {users.length === 0 && <tr><td colSpan={5} className="empty">No users found</td></tr>}
+            {users.length === 0 && <tr><td colSpan={6} className="empty">No users found</td></tr>}
           </tbody>
         </table>
       </div>
