@@ -1,10 +1,19 @@
 import { Router } from 'express';
-import { supabase } from '../supabase';
+import type { Response } from 'express';
+import { supabase, formatAdminAuthError, serviceKeyIssue, buildServiceKeyError } from '../supabase';
 import { authMiddleware } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
 
 const router = Router();
 router.use(authMiddleware);
+
+function respondAdminAuthError(res: Response, action: string, err: { message: string; code?: string }) {
+  const formatted = formatAdminAuthError(err);
+  if (formatted.status >= 500) {
+    console.error(`[users/${action}] Admin auth error:`, err.code ?? '', err.message);
+  }
+  res.status(formatted.status).json({ error: formatted.error });
+}
 
 // GET /users — list users in the caller's zone
 router.get('/', requireRole('admin', 'superadmin'), async (req, res) => {
@@ -76,7 +85,7 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
   });
 
   if (authError) {
-    res.status(400).json({ error: authError.message });
+    respondAdminAuthError(res, 'create', authError);
     return;
   }
 
@@ -113,7 +122,14 @@ router.delete('/:id', requireRole('admin', 'superadmin'), async (req, res) => {
     .eq('id', id)
     .single();
 
-  if (!target) { res.status(404).json({ error: 'User not found' }); return; }
+  if (!target) {
+    if (serviceKeyIssue) {
+      res.status(500).json({ error: buildServiceKeyError() });
+      return;
+    }
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
 
   if (target.role === 'superadmin') {
     res.status(403).json({ error: 'Cannot delete a superadmin' });
@@ -127,7 +143,11 @@ router.delete('/:id', requireRole('admin', 'superadmin'), async (req, res) => {
     }
   }
 
-  await supabase.auth.admin.deleteUser(id);
+  const { error: deleteError } = await supabase.auth.admin.deleteUser(id);
+  if (deleteError) {
+    respondAdminAuthError(res, 'delete', deleteError);
+    return;
+  }
   res.status(204).send();
 });
 
