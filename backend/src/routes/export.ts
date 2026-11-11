@@ -29,7 +29,7 @@ router.get('/milk', async (req, res) => {
   if (error) { res.status(500).json({ error: error.message }); return; }
 
   const rows = (data ?? []).map(r => {
-    const u = r.units as { name: string; unit_code: string } | null;
+    const u = r.units as unknown as { name: string; unit_code: string } | null;
     const qty = Number(r.quantity_litres);
     const rej = Number(r.rejection_qty ?? 0);
     const net = qty - rej;
@@ -87,7 +87,7 @@ router.get('/tanker', async (req, res) => {
   if (error) { res.status(500).json({ error: error.message }); return; }
 
   const rows = (data ?? []).map(r => {
-    const u = r.units as { name: string; unit_code: string } | null;
+    const u = r.units as unknown as { name: string; unit_code: string } | null;
     return {
       Date: r.date,
       Unit: u?.name ?? '',

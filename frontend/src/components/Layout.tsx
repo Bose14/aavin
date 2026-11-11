@@ -56,6 +56,9 @@ export default function Layout({ children }: { children: ReactNode }) {
           <div className="user-pill">
             <span className="user-name">{profile?.full_name ?? 'User'}</span>
             <span className={`role-badge ${profile?.role}`}>{profile?.role}</span>
+            {profile?.zones?.name && (
+              <span className="user-zone">{profile.zones.name} Zone</span>
+            )}
           </div>
           <button onClick={handleSignOut} className="btn-signout">Sign out</button>
         </div>

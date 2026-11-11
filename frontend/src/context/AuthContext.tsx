@@ -6,9 +6,10 @@ import { supabase } from '../supabase';
 export interface UserProfile {
   id: string;
   role: 'superadmin' | 'admin' | 'unit';
-  zone_id: string;
+  zone_id: string | null;
   unit_id: string | null;
   full_name: string | null;
+  zones?: { name: string } | null;
 }
 
 interface AuthContextType {
@@ -31,10 +32,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase
       .from('profiles')
-      .select('id, role, zone_id, unit_id, full_name')
+      .select('id, role, zone_id, unit_id, full_name, zones(name)')
       .eq('id', userId)
       .single();
-    setProfile(data ?? null);
+    if (!data) {
+      setProfile(null);
+      return;
+    }
+    const rawZones = (data as unknown as { zones?: { name: string } | { name: string }[] | null }).zones;
+    const zones = Array.isArray(rawZones) ? (rawZones[0] ?? null) : (rawZones ?? null);
+    setProfile({
+      id: data.id,
+      role: data.role as UserProfile['role'],
+      zone_id: data.zone_id,
+      unit_id: data.unit_id,
+      full_name: data.full_name,
+      zones,
+    });
   };
 
   const refreshProfile = async () => {
