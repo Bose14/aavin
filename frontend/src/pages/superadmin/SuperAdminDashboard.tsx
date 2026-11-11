@@ -17,6 +17,7 @@ interface AdminUser {
 export default function SuperAdminDashboard() {
   const { zones, loading: zonesLoading, error: zonesError, reload: reloadZones } = useZones();
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [usersError, setUsersError] = useState('');
   const [form, setForm] = useState({ email: '', password: '', full_name: '', phone: '', zone_id: '' });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -31,7 +32,14 @@ export default function SuperAdminDashboard() {
 
   const loadUsers = useCallback(() => {
     const qs = filterZone ? `?zone_id=${filterZone}` : '';
-    api.get<AdminUser[]>(`/users${qs}`).then(r => setUsers(r.data)).catch(() => {});
+    api.get<AdminUser[]>(`/users${qs}`)
+      .then(r => {
+        setUsers(r.data);
+        setUsersError('');
+      })
+      .catch((err: unknown) => {
+        setUsersError((err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to load users');
+      });
   }, [filterZone]);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
@@ -196,6 +204,7 @@ export default function SuperAdminDashboard() {
             style={{ padding: '0.4rem 0.6rem', borderRadius: 8, border: '1.5px solid #e5e7eb', fontSize: '0.875rem' }}
           />
         </div>
+        {usersError && <p className="auth-error" style={{ padding: '0 1.5rem 0.75rem' }}>{usersError}</p>}
         <table className="data-table">
           <thead><tr><th>Name</th><th>Role</th><th>Zone</th><th>Phone</th><th>Created</th><th>Action</th></tr></thead>
           <tbody>
