@@ -32,17 +32,36 @@ async function loadProfile(userId: string, token: string) {
   return result;
 }
 
+async function verifyUserToken(token: string) {
+  let result = await supabase.auth.getUser(token);
+
+  const isTransient = (err: { status?: number } | null) =>
+    err != null && (err.status === 0 || (err.status !== undefined && err.status >= 500));
+
+  // Retry once on transient network/5xx errors from Supabase Auth
+  if (isTransient(result.error)) {
+    result = await supabase.auth.getUser(token);
+  }
+
+  return { result, transientFailure: isTransient(result.error) };
+}
+
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!token) {
     res.status(401).json({ error: 'Missing authorization header' });
     return;
   }
 
-  const token = authHeader.slice(7);
-
-  const { data: { user }, error } = await supabase.auth.getUser(token);
+  const { result: { data: { user }, error }, transientFailure } = await verifyUserToken(token);
+  if (transientFailure) {
+    console.error('[authMiddleware] Auth verification unavailable:', error?.status, error?.message);
+    res.status(503).json({ error: 'Authentication service temporarily unavailable — please try again' });
+    return;
+  }
   if (error || !user) {
+    console.warn('[authMiddleware] Token rejected:', error?.status ?? 'no_status', error?.code ?? '', error?.message ?? 'no_user');
     res.status(401).json({ error: 'Invalid or expired token' });
     return;
   }
