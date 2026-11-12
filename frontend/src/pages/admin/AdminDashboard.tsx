@@ -294,9 +294,9 @@ export default function AdminDashboard() {
           </div>
 
           {period === 'custom' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+            <div className="custom-range-bar">
               <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-              <span>to</span>
+              <span className="custom-range-sep">to</span>
               <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
               <button
                 type="button"
