@@ -19,19 +19,33 @@ router.get('/', async (req, res) => {
 
 // POST /units — admin creates a unit
 router.post('/', requireRole('admin'), async (req, res) => {
-  const { name, location, unit_code } = req.body as {
-    name: string; location?: string; unit_code: string;
-  };
-  if (!name || !unit_code) {
+  if (!req.profile.zone_id) {
+    res.status(403).json({ error: 'Admin account is not assigned to a zone' });
+    return;
+  }
+
+  const rawBody = req.body as { name?: string; location?: string; unit_code?: string };
+  const name = typeof rawBody.name === 'string' ? rawBody.name.trim() : '';
+  const unitCode = typeof rawBody.unit_code === 'string' ? rawBody.unit_code.trim() : '';
+  const location = typeof rawBody.location === 'string' && rawBody.location.trim() ? rawBody.location.trim() : null;
+
+  if (!name || !unitCode) {
     res.status(400).json({ error: 'name and unit_code required' });
     return;
   }
   const { data, error } = await supabase
     .from('units')
-    .insert({ name, location, unit_code, zone_id: req.profile.zone_id })
+    .insert({ name, location, unit_code: unitCode, zone_id: req.profile.zone_id })
     .select()
     .single();
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  if (error) {
+    if (error.code === '23505') {
+      res.status(409).json({ error: `Unit code "${unitCode}" already exists` });
+    } else {
+      res.status(500).json({ error: error.message });
+    }
+    return;
+  }
   res.status(201).json(data);
 });
 

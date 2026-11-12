@@ -30,11 +30,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('id, role, zone_id, unit_id, full_name, zones(name)')
       .eq('id', userId)
       .single();
+    if (error) {
+      if (error.code === 'PGRST116') setProfile(null);
+      return;
+    }
     if (!data) {
       setProfile(null);
       return;
@@ -56,12 +60,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) await fetchProfile(session.user.id);
+    const initSession = async () => {
+      const { data: { session: cachedSession } } = await supabase.auth.getSession();
+      let activeSession = cachedSession;
+
+      // Refresh expired initial sessions immediately rather than loading stale JWTs from storage
+      if (activeSession?.expires_at && activeSession.expires_at * 1000 <= Date.now()) {
+        const { data, error } = await supabase.auth.refreshSession();
+        if (error || !data.session) {
+          await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+          activeSession = null;
+        } else {
+          activeSession = data.session;
+        }
+      }
+
+      setSession(activeSession);
+      setUser(activeSession?.user ?? null);
+      if (activeSession?.user) await fetchProfile(activeSession.user.id);
       setLoading(false);
-    });
+    };
+
+    initSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event: unknown, session: Session | null) => {
       setSession(session);

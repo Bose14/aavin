@@ -1,18 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { FormEvent } from 'react';
-import api from '../../lib/api';
+import api, { getApiErrorMessage } from '../../lib/api';
 
 interface Unit { id: string; name: string; location: string; unit_code: string; is_active: boolean; }
 
 export default function AdminUnits() {
   const [units, setUnits] = useState<Unit[]>([]);
+  const [loadError, setLoadError] = useState('');
   const [form, setForm] = useState({ name: '', location: '', unit_code: '' });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const load = () => api.get('/units').then(r => setUnits(r.data));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => {
+    api.get('/units')
+      .then(r => {
+        setUnits(r.data);
+        setLoadError('');
+      })
+      .catch((err: unknown) => setLoadError(getApiErrorMessage(err, 'Failed to load units')));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const set = (f: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(prev => ({ ...prev, [f]: e.target.value }));
@@ -22,19 +31,28 @@ export default function AdminUnits() {
     setError(''); setSuccess('');
     setLoading(true);
     try {
-      await api.post('/units', form);
-      setSuccess(`Unit "${form.name}" created.`);
+      const res = await api.post('/units', {
+        name: form.name.trim(),
+        unit_code: form.unit_code.trim(),
+        location: form.location.trim(),
+      });
+      setSuccess(`Unit "${res.data.name}" created.`);
       setForm({ name: '', location: '', unit_code: '' });
       load();
     } catch (err: unknown) {
-      setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed');
+      setError(getApiErrorMessage(err, 'Failed to create unit'));
     }
     setLoading(false);
   };
 
   const toggleActive = async (u: Unit) => {
-    await api.patch(`/units/${u.id}`, { is_active: !u.is_active });
-    load();
+    setLoadError('');
+    try {
+      await api.patch(`/units/${u.id}`, { is_active: !u.is_active });
+      load();
+    } catch (err: unknown) {
+      setLoadError(getApiErrorMessage(err, 'Failed to update unit'));
+    }
   };
 
   return (
@@ -66,6 +84,7 @@ export default function AdminUnits() {
 
       <div className="card table-card">
         <h2>All Units in Your Zone</h2>
+        {loadError && <p className="auth-error" style={{ padding: '0 1.5rem 0.75rem' }}>{loadError}</p>}
         <table className="data-table">
           <thead><tr><th>Name</th><th>Code</th><th>Location</th><th>Status</th><th>Action</th></tr></thead>
           <tbody>
