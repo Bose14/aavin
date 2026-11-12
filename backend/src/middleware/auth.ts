@@ -80,6 +80,25 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     return;
   }
 
+  // Block deactivated user accounts (stored in auth metadata and/or profiles table)
+  if (user.user_metadata?.is_active === false || (profile as { is_active?: boolean }).is_active === false) {
+    res.status(403).json({ error: 'Your account has been deactivated. Contact your zone administrator.' });
+    return;
+  }
+
+  // Block unit users belonging to a deactivated unit
+  if (profile.role === 'unit' && profile.unit_id) {
+    const { data: unitRow } = await supabase
+      .from('units')
+      .select('is_active')
+      .eq('id', profile.unit_id)
+      .maybeSingle();
+    if (unitRow && unitRow.is_active === false) {
+      res.status(403).json({ error: 'Your unit is currently deactivated. Contact your zone administrator.' });
+      return;
+    }
+  }
+
   req.user = user;
   req.profile = profile;
   next();

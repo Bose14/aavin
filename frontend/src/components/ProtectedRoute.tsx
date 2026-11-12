@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 interface Props {
   children: React.ReactNode;
   role?: 'superadmin' | 'admin' | 'unit';
+  allowPasswordChange?: boolean;
 }
 
 function roleHome(role: string) {
@@ -12,12 +13,16 @@ function roleHome(role: string) {
   return '/unit';
 }
 
-export default function ProtectedRoute({ children, role }: Props) {
+export default function ProtectedRoute({ children, role, allowPasswordChange = false }: Props) {
   const { user, profile, loading } = useAuth();
 
   if (loading) return <div className="loading">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (!profile) return <Navigate to="/login" replace />;
+
+  if (profile.must_change_password && !allowPasswordChange) {
+    return <Navigate to="/change-password" replace />;
+  }
 
   if (role && profile.role !== role) {
     return <Navigate to={roleHome(profile.role)} replace />;
