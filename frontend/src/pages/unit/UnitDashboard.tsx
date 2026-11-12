@@ -157,9 +157,9 @@ export default function UnitDashboard() {
           </div>
 
           {period === 'custom' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+            <div className="custom-range-bar">
               <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-              <span>to</span>
+              <span className="custom-range-sep">to</span>
               <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
               <button
                 type="button"
@@ -180,28 +180,29 @@ export default function UnitDashboard() {
           <span className="today-strip-title">
             {t('todayStatus')} ({formatDateDDMMYYYY(summary.today_status.date)})
           </span>
-          <span className="today-strip-item">
-            {t('amEntry')}:
-            <StatusBadge tone={summary.today_status.am_done ? 'green' : 'amber'}>
-              {summary.today_status.am_done ? t('done') : t('pending')}
-            </StatusBadge>
-          </span>
-          <span className="today-strip-item">
-            {t('pmEntry')}:
-            <StatusBadge tone={summary.today_status.pm_done ? 'green' : 'amber'}>
-              {summary.today_status.pm_done ? t('done') : t('pending')}
-            </StatusBadge>
-          </span>
-          <span className="today-strip-item">
-            {t('tankerDispatched')}:
-            <StatusBadge tone={summary.today_status.tanker_dispatched ? 'green' : 'grey'}>
-              {summary.today_status.tanker_dispatched ? t('yes') : t('no')}
-            </StatusBadge>
-          </span>
+          <div className="today-strip-items">
+            <span className="today-strip-item">
+              <span>{t('amEntry')}:</span>
+              <StatusBadge tone={summary.today_status.am_done ? 'green' : 'amber'}>
+                {summary.today_status.am_done ? t('done') : t('pending')}
+              </StatusBadge>
+            </span>
+            <span className="today-strip-item">
+              <span>{t('pmEntry')}:</span>
+              <StatusBadge tone={summary.today_status.pm_done ? 'green' : 'amber'}>
+                {summary.today_status.pm_done ? t('done') : t('pending')}
+              </StatusBadge>
+            </span>
+            <span className="today-strip-item">
+              <span>{t('tankerDispatched')}:</span>
+              <StatusBadge tone={summary.today_status.tanker_dispatched ? 'green' : 'grey'}>
+                {summary.today_status.tanker_dispatched ? t('yes') : t('no')}
+              </StatusBadge>
+            </span>
+          </div>
           <button
             type="button"
-            className="btn-secondary btn-sm"
-            style={{ marginLeft: 'auto' }}
+            className="btn-secondary btn-sm today-strip-cta"
             onClick={() => navigate('/unit/milk-entry')}
           >
             + {t('navMilkEntry')}
