@@ -9,6 +9,7 @@ import tankerRouter from './routes/tanker';
 import analyticsRouter from './routes/analytics';
 import exportRouter from './routes/export';
 import usersRouter from './routes/users';
+import settingsRouter from './routes/settings';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -34,10 +35,11 @@ app.use(cors({
     }
     callback(new Error(`Origin ${origin} not allowed by CORS`));
   },
-  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Disposition'],
 }));
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 
 app.get('/health', (_req, res) => { res.json({ status: 'ok' }); });
 
@@ -49,6 +51,7 @@ app.use('/tanker', tankerRouter);
 app.use('/analytics', analyticsRouter);
 app.use('/export', exportRouter);
 app.use('/users', usersRouter);
+app.use('/settings', settingsRouter);
 
 app.listen(PORT, () => {
   console.log(`Aavin backend running on port ${PORT}`);

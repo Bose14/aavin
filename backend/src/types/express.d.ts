@@ -6,6 +6,8 @@ export interface UserProfile {
   zone_id: string;
   unit_id: string | null;
   full_name: string | null;
+  sub_role?: string | null;
+  is_active?: boolean | null;
 }
 
 declare global {
