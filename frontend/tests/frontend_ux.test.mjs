@@ -295,3 +295,27 @@ test('UI primitives & DataTable render empty state CTA, sticky table & totals ro
   assert.ok(superAdminHtml.includes('Create New Zone Admin'));
   assert.ok(superAdminHtml.includes('desktop-table-wrap'));
 });
+
+test('Admin and Unit UI components render without SSR errors and expose responsive buttons', () => {
+  const { LanguageProvider } = loadTsModule('context/LanguageContext.tsx');
+  const { ConfirmDialog } = loadTsModule('components/UiPrimitives.tsx');
+
+  const confirmHtml = renderToStaticMarkup(
+    React.createElement(
+      LanguageProvider,
+      null,
+      React.createElement(ConfirmDialog, {
+        open: true,
+        title: 'Deactivate Rasipuram?',
+        message: 'Deactivate Rasipuram? Its 2 users will not be able to log in.',
+        confirmLabel: 'Deactivate Unit',
+        danger: true,
+        onConfirm: () => {},
+        onCancel: () => {},
+      })
+    )
+  );
+  assert.ok(confirmHtml.includes('modal-actions'));
+  assert.ok(confirmHtml.includes('Deactivate Unit'));
+  assert.ok(confirmHtml.includes('btn-danger'));
+});
