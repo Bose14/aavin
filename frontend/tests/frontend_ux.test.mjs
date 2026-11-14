@@ -42,6 +42,22 @@ function createTsLoader() {
     if (absPath.endsWith(`${path.sep}lib${path.sep}api.ts`)) {
       return { default: mockApi, __esModule: true };
     }
+    if (absPath.endsWith(`${path.sep}supabase.ts`)) {
+      const mockChain = () => ({
+        select: () => mockChain(),
+        order: () => Promise.resolve({ data: [], error: null }),
+        eq: () => mockChain(),
+        maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        single: () => Promise.resolve({ data: null, error: null }),
+      });
+      return {
+        supabase: {
+          from: () => mockChain(),
+          auth: { getUser: () => Promise.resolve({ data: { user: null }, error: null }) },
+        },
+        __esModule: true,
+      };
+    }
 
     const source = fs.readFileSync(absPath, 'utf8').replaceAll('import.meta.env', '({})');
     const transpiled = ts.transpileModule(source, {
@@ -157,7 +173,7 @@ test('UI primitives & DataTable render empty state CTA, sticky table & totals ro
   const { StatCard } = loadTsModule('components/StatCard.tsx');
   const { ConfirmDialog, InfoTooltip, StatusBadge } = loadTsModule('components/UiPrimitives.tsx');
   const { DataTable } = loadTsModule('components/DataTable.tsx');
-  const { DailyProfitLossChart } = loadTsModule('components/ProfitLossChart.tsx');
+  const { DailyProfitLossChart, UnitProfitLossChart, computeCleanCurrencyTicks } = loadTsModule('components/ProfitLossChart.tsx');
   const { MilkCollectionTrendChart, QualityTrendChart } = loadTsModule('components/CollectionCharts.tsx');
 
   const cardHtml = renderToStaticMarkup(
@@ -252,4 +268,30 @@ test('UI primitives & DataTable render empty state CTA, sticky table & totals ro
   );
   assert.ok(qualChartHtml.includes('4.50%'));
   assert.ok(qualChartHtml.includes('8.40%'));
+
+  // Test UnitProfitLossChart with negative profit (handles negative losses without axis tick repetition)
+  const ticksResult = computeCleanCurrencyTicks([-1385]);
+  assert.ok(ticksResult.domain[0] <= -1385, 'Domain min must encompass negative loss');
+  assert.ok(ticksResult.domain[1] >= 0, 'Domain max must encompass zero');
+  assert.ok(ticksResult.ticks.includes(0), 'Ticks must include 0 reference point');
+  assert.ok(ticksResult.ticks.length >= 3, 'Must have at least 3 distinct ticks');
+  const uniqueTicks = new Set(ticksResult.ticks);
+  assert.equal(uniqueTicks.size, ticksResult.ticks.length, 'Ticks must be strictly unique');
+
+  const unitChartHtml = renderToStaticMarkup(
+    React.createElement(UnitProfitLossChart, {
+      data: [{ unit_id: 'u1', name: 'Rasipuram', unit_code: 'RNK-001', revenue: 13026, cost: 14411, profit: -1385 }],
+      sellingRate: 52,
+    }),
+  );
+  assert.ok(unitChartHtml.includes('Unit-wise Net Profit / Loss'));
+  assert.ok(unitChartHtml.includes('Zone Revenue'));
+  assert.ok(unitChartHtml.includes('Zone Cost'));
+
+  // Test SuperAdminDashboard SSR with responsive DataTable
+  const SuperAdminDashboard = loadTsModule('pages/superadmin/SuperAdminDashboard.tsx').default;
+  const superAdminHtml = renderToStaticMarkup(React.createElement(SuperAdminDashboard));
+  assert.ok(superAdminHtml.includes('Super Admin'));
+  assert.ok(superAdminHtml.includes('Create New Zone Admin'));
+  assert.ok(superAdminHtml.includes('desktop-table-wrap'));
 });

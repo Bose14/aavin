@@ -15,23 +15,32 @@ function getTodayIso(): string {
 
 // GET /units — list units in requester's zone with users_count, last_record_date, and submitted_today
 router.get('/', async (req, res) => {
-  const zoneId = req.profile.zone_id;
+  const queryZoneId = req.query.zone_id as string | undefined;
+  const zoneId = (req.profile.role === 'superadmin' && queryZoneId) ? queryZoneId : req.profile.zone_id;
+
+  let unitsQuery = supabase
+    .from('units')
+    .select('id, name, location, unit_code, is_active, created_at, zone_id, zones(name)')
+    .order('name');
+  let profilesQuery = supabase
+    .from('profiles')
+    .select('unit_id')
+    .eq('role', 'unit');
+  let entriesQuery = supabase
+    .from('milk_entries')
+    .select('unit_id, date')
+    .order('date', { ascending: false });
+
+  if (zoneId) {
+    unitsQuery = unitsQuery.eq('zone_id', zoneId);
+    profilesQuery = profilesQuery.eq('zone_id', zoneId);
+    entriesQuery = entriesQuery.eq('zone_id', zoneId);
+  }
+
   const [unitsRes, profilesRes, entriesRes] = await Promise.all([
-    supabase
-      .from('units')
-      .select('id, name, location, unit_code, is_active, created_at')
-      .eq('zone_id', zoneId)
-      .order('name'),
-    supabase
-      .from('profiles')
-      .select('unit_id')
-      .eq('zone_id', zoneId)
-      .eq('role', 'unit'),
-    supabase
-      .from('milk_entries')
-      .select('unit_id, date')
-      .eq('zone_id', zoneId)
-      .order('date', { ascending: false }),
+    unitsQuery,
+    profilesQuery,
+    entriesQuery,
   ]);
 
   if (unitsRes.error) { res.status(500).json({ error: unitsRes.error.message }); return; }
