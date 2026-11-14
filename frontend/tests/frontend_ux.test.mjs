@@ -157,7 +157,7 @@ test('UI primitives & DataTable render empty state CTA, sticky table & totals ro
   const { StatCard } = loadTsModule('components/StatCard.tsx');
   const { ConfirmDialog, InfoTooltip, StatusBadge } = loadTsModule('components/UiPrimitives.tsx');
   const { DataTable } = loadTsModule('components/DataTable.tsx');
-  const { DailyProfitLossChart } = loadTsModule('components/ProfitLossChart.tsx');
+  const { DailyProfitLossChart, UnitProfitLossChart, computeCleanCurrencyTicks } = loadTsModule('components/ProfitLossChart.tsx');
   const { MilkCollectionTrendChart, QualityTrendChart } = loadTsModule('components/CollectionCharts.tsx');
 
   const cardHtml = renderToStaticMarkup(
@@ -252,4 +252,23 @@ test('UI primitives & DataTable render empty state CTA, sticky table & totals ro
   );
   assert.ok(qualChartHtml.includes('4.50%'));
   assert.ok(qualChartHtml.includes('8.40%'));
+
+  // Test UnitProfitLossChart with negative profit (handles negative losses without axis tick repetition)
+  const ticksResult = computeCleanCurrencyTicks([-1385]);
+  assert.ok(ticksResult.domain[0] <= -1385, 'Domain min must encompass negative loss');
+  assert.ok(ticksResult.domain[1] >= 0, 'Domain max must encompass zero');
+  assert.ok(ticksResult.ticks.includes(0), 'Ticks must include 0 reference point');
+  assert.ok(ticksResult.ticks.length >= 3, 'Must have at least 3 distinct ticks');
+  const uniqueTicks = new Set(ticksResult.ticks);
+  assert.equal(uniqueTicks.size, ticksResult.ticks.length, 'Ticks must be strictly unique');
+
+  const unitChartHtml = renderToStaticMarkup(
+    React.createElement(UnitProfitLossChart, {
+      data: [{ unit_id: 'u1', name: 'Rasipuram', unit_code: 'RNK-001', revenue: 13026, cost: 14411, profit: -1385 }],
+      sellingRate: 52,
+    }),
+  );
+  assert.ok(unitChartHtml.includes('Unit-wise Net Profit / Loss'));
+  assert.ok(unitChartHtml.includes('Zone Revenue'));
+  assert.ok(unitChartHtml.includes('Zone Cost'));
 });

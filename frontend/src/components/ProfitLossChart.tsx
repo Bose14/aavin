@@ -74,7 +74,7 @@ function ProfitBarShape({
 }
 
 /** Generate clean ₹0 / ₹2k / ₹4k axis domain + nice steps so labels are always easy to scan. */
-function computeCleanCurrencyTicks(values: number[]): { domain: [number, number]; ticks: number[] } {
+export function computeCleanCurrencyTicks(values: number[]): { domain: [number, number]; ticks: number[] } {
   const rawMin = Math.min(0, ...values);
   const rawMax = Math.max(0, ...values);
   const span = Math.max(2000, rawMax - rawMin);
@@ -337,6 +337,7 @@ export function UnitProfitLossChart({
   const totalCost = data.reduce((s, d) => s + d.cost, 0);
   const totalProfit = totalRevenue - totalCost;
   const chartHeight = Math.max(240, data.length * 52);
+  const { domain, ticks } = computeCleanCurrencyTicks(data.map(d => d.profit));
 
   return (
     <ChartCardShell
@@ -363,7 +364,8 @@ export function UnitProfitLossChart({
           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_COLORS.grid} />
           <XAxis
             type="number"
-            domain={[0, 'auto']}
+            domain={domain}
+            ticks={ticks}
             tickFormatter={formatCompactINR}
             axisLine={false}
             tickLine={false}
