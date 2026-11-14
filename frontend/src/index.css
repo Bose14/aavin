@@ -114,7 +114,11 @@ input[type="checkbox"], input[type="radio"] {
 .chart-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
 .chart-line-sample { display: inline-block; width: 14px; border-top: 2px dashed; flex-shrink: 0; }
 .chart-empty { display: flex; align-items: center; justify-content: center; min-height: 180px; color: var(--text-muted); font-size: 0.875rem; background: var(--bg); border-radius: 8px; }
-.chart-tooltip { background: rgba(255, 255, 255, 0.98); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 0.9rem; box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12); min-width: 210px; }
+.recharts-responsive-container { touch-action: pan-y; }
+.recharts-wrapper { touch-action: pan-y; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+.recharts-wrapper svg { touch-action: pan-y; }
+.chart-tooltip { background: rgba(255, 255, 255, 0.98); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 0.9rem; box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12); min-width: 210px; pointer-events: none !important; }
+.recharts-tooltip-wrapper { pointer-events: none !important; }
 .chart-tooltip-header { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.5rem; }
 .chart-tooltip-title { font-size: 0.85rem; font-weight: 700; color: var(--text); }
 .chart-tooltip-sub { font-size: 0.75rem; color: var(--text-muted); }
@@ -463,4 +467,14 @@ input[type="checkbox"], input[type="radio"] {
   .valuation-item { padding: 0.55rem 0.65rem; }
   .valuation-value { font-size: 0.95rem; }
   .mobile-record-grid { gap: 0.45rem 0.6rem; }
+  .chart-tooltip { min-width: 155px; max-width: 215px; padding: 0.45rem 0.65rem; font-size: 0.76rem; border-radius: 8px; box-shadow: 0 4px 14px rgba(15, 23, 42, 0.16); }
+  .chart-tooltip-header { margin-bottom: 0.35rem; gap: 0.4rem; }
+  .chart-tooltip-title { font-size: 0.78rem; }
+  .chart-tooltip-sub { font-size: 0.7rem; }
+  .chart-tooltip-row { font-size: 0.74rem; padding: 0.1rem 0; gap: 0.5rem; }
+  .chart-tooltip-divider { margin: 0.3rem 0; }
+  .chart-tooltip-note { font-size: 0.7rem; padding: 0.2rem 0.35rem; }
+  .chart-kpi-strip { gap: 0.4rem 0.8rem; font-size: 0.76rem; padding: 0.45rem 0.65rem; }
+  .chart-legend { gap: 0.4rem 0.75rem; }
+  .chart-legend-item { font-size: 0.74rem; }
 }

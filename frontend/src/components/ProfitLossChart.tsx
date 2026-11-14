@@ -3,6 +3,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Rectangle,
   ReferenceLine,
   ResponsiveContainer,
@@ -13,7 +14,7 @@ import {
 import type { BarShapeProps } from 'recharts';
 import { DEFAULT_SELLING_RATE, formatCompactINR, formatDateDDMMYYYY, formatINR, formatShortDate } from '../lib/format';
 import { CHART_COLORS } from '../lib/chartTheme';
-import { ChartCardShell, TooltipRow } from './ChartPrimitives';
+import { ChartCardShell, TooltipRow, useChartSlotSelection } from './ChartPrimitives';
 
 export interface DailyProfitDatum {
   date: string;
@@ -219,6 +220,20 @@ export function DailyProfitLossChart({
     d.no_entry ? { ...d, profit: null as unknown as number, revenue: null as unknown as number, cost: null as unknown as number } : d
   ));
 
+  const {
+    selectedKey: selectedDate,
+    clearSelection,
+    containerProps,
+  } = useChartSlotSelection({
+    data: chartData,
+    getKey: d => d.date,
+    layout: 'horizontal',
+    marginLeft: 56, // left: 4 + YAxis width: 52
+    marginRight: 12,
+    marginTop: 10,
+    marginBottom: 24,
+  });
+
   const scaleValues = view === 'net'
     ? activeRows.map(d => d.profit)
     : activeRows.flatMap(d => [d.revenue, d.cost]);
@@ -259,6 +274,7 @@ export function DailyProfitLossChart({
       emptyMessage="No financial entries recorded for this period."
       emptyActionLabel={emptyActionLabel}
       onEmptyAction={onEmptyAction}
+      onDismiss={clearSelection}
       summaryStrip={
         activeRows.length > 0 ? (
           <div className="chart-kpi-strip">
@@ -282,43 +298,100 @@ export function DailyProfitLossChart({
             ]
       }
     >
-      <ResponsiveContainer width="100%" height={280}>
-        <BarChart data={chartData} margin={{ top: 10, right: 12, left: 4, bottom: 4 }} barGap={6}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_COLORS.grid} />
-          <XAxis
-            dataKey="date"
-            tickFormatter={formatShortDate}
-            axisLine={false}
-            tickLine={false}
-            tick={{ fontSize: 12, fill: CHART_COLORS.axis }}
-            dy={6}
-          />
-          <YAxis
-            domain={domain}
-            ticks={ticks}
-            tickFormatter={formatCompactINR}
-            axisLine={false}
-            tickLine={false}
-            tick={{ fontSize: 12, fill: CHART_COLORS.axis }}
-            width={62}
-          />
-          <ReferenceLine y={0} stroke={CHART_COLORS.zeroLine} strokeWidth={1.5} />
-          <Tooltip content={<DailyTooltip />} cursor={{ fill: CHART_COLORS.cursor }} />
-          {view === 'net' ? (
-            <Bar
-              dataKey="profit"
-              name="Net Profit / Loss"
-              maxBarSize={36}
-              shape={(props: BarShapeProps) => <ProfitBarShape {...props} orientation="vertical" />}
+      <div {...containerProps}>
+        <ResponsiveContainer width="100%" height={280}>
+          <BarChart
+            data={chartData}
+            margin={{ top: 10, right: 12, left: 4, bottom: 4 }}
+            barGap={6}
+          >
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_COLORS.grid} />
+            <XAxis
+              dataKey="date"
+              tickFormatter={formatShortDate}
+              axisLine={false}
+              tickLine={false}
+              tick={(props: any) => {
+                const { x = 0, y = 0, payload } = props;
+                const val = payload?.value ?? '';
+                const isSelected = selectedDate === val;
+                return (
+                  <g transform={`translate(${x},${y})`}>
+                    <text
+                      x={0}
+                      y={0}
+                      dy={8}
+                      textAnchor="middle"
+                      fill={isSelected ? '#4f46e5' : CHART_COLORS.axis}
+                      fontWeight={isSelected ? 700 : 500}
+                      fontSize={isSelected ? 13 : 11}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      {formatShortDate(val)}
+                    </text>
+                  </g>
+                );
+              }}
+              dy={6}
             />
-          ) : (
-            <>
-              <Bar dataKey="revenue" name="Revenue" fill={CHART_COLORS.primary} radius={[6, 6, 0, 0]} maxBarSize={26} />
-              <Bar dataKey="cost" name="Procurement Cost" fill={CHART_COLORS.amber} radius={[6, 6, 0, 0]} maxBarSize={26} />
-            </>
-          )}
-        </BarChart>
-      </ResponsiveContainer>
+            <YAxis
+              domain={domain}
+              ticks={ticks}
+              tickFormatter={formatCompactINR}
+              axisLine={false}
+              tickLine={false}
+              tick={{ fontSize: 12, fill: CHART_COLORS.axis }}
+              width={52}
+            />
+            <ReferenceLine y={0} stroke={CHART_COLORS.zeroLine} strokeWidth={1.5} />
+            <Tooltip
+              content={<DailyTooltip />}
+              cursor={{ fill: CHART_COLORS.cursor }}
+              isAnimationActive={false}
+              wrapperStyle={{ pointerEvents: 'none' }}
+            />
+            {view === 'net' ? (
+              <Bar
+                dataKey="profit"
+                name="Net Profit / Loss"
+                maxBarSize={36}
+                shape={(props: BarShapeProps) => <ProfitBarShape {...props} orientation="vertical" />}
+              >
+                {chartData.map(entry => (
+                  <Cell
+                    key={entry.date}
+                    opacity={selectedDate ? (selectedDate === entry.date ? 1 : 0.28) : 1}
+                    cursor="pointer"
+                  />
+                ))}
+              </Bar>
+            ) : (
+              <>
+                <Bar dataKey="revenue" name="Revenue" fill={CHART_COLORS.primary} radius={[6, 6, 0, 0]} maxBarSize={26}>
+                  {chartData.map(entry => (
+                    <Cell
+                      key={entry.date}
+                      fill={CHART_COLORS.primary}
+                      opacity={selectedDate ? (selectedDate === entry.date ? 1 : 0.28) : 1}
+                      cursor="pointer"
+                    />
+                  ))}
+                </Bar>
+                <Bar dataKey="cost" name="Procurement Cost" fill={CHART_COLORS.amber} radius={[6, 6, 0, 0]} maxBarSize={26}>
+                  {chartData.map(entry => (
+                    <Cell
+                      key={entry.date}
+                      fill={CHART_COLORS.amber}
+                      opacity={selectedDate ? (selectedDate === entry.date ? 1 : 0.28) : 1}
+                      cursor="pointer"
+                    />
+                  ))}
+                </Bar>
+              </>
+            )}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </ChartCardShell>
   );
 }
@@ -339,6 +412,20 @@ export function UnitProfitLossChart({
   const chartHeight = Math.max(240, data.length * 52);
   const { domain, ticks } = computeCleanCurrencyTicks(data.map(d => d.profit));
 
+  const {
+    selectedKey: selectedUnitId,
+    clearSelection,
+    containerProps,
+  } = useChartSlotSelection({
+    data,
+    getKey: d => d.unit_id,
+    layout: 'vertical',
+    marginLeft: 94, // left: 4 + YAxis width: 90
+    marginRight: 16,
+    marginTop: 8,
+    marginBottom: 24,
+  });
+
   return (
     <ChartCardShell
       title={title}
@@ -346,6 +433,7 @@ export function UnitProfitLossChart({
       badge={data.length > 0 ? <PeriodSummaryBadge profit={totalProfit} /> : undefined}
       isEmpty={data.length === 0}
       emptyMessage="No unit financial records for this period."
+      onDismiss={clearSelection}
       summaryStrip={
         data.length > 0 ? (
           <div className="chart-kpi-strip">
@@ -359,36 +447,55 @@ export function UnitProfitLossChart({
         { color: CHART_COLORS.loss, label: 'Net Loss (₹)' },
       ]}
     >
-      <ResponsiveContainer width="100%" height={chartHeight}>
-        <BarChart data={data} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_COLORS.grid} />
-          <XAxis
-            type="number"
-            domain={domain}
-            ticks={ticks}
-            tickFormatter={formatCompactINR}
-            axisLine={false}
-            tickLine={false}
-            tick={{ fontSize: 12, fill: CHART_COLORS.axis }}
-          />
-          <YAxis
-            dataKey="name"
-            type="category"
-            axisLine={false}
-            tickLine={false}
-            tick={{ fontSize: 12, fill: CHART_COLORS.slate }}
-            width={120}
-          />
-          <ReferenceLine x={0} stroke={CHART_COLORS.zeroLine} strokeWidth={1.5} />
-          <Tooltip content={<UnitTooltip />} cursor={{ fill: CHART_COLORS.cursor }} />
-          <Bar
-            dataKey="profit"
-            name="Profit / Loss"
-            maxBarSize={24}
-            shape={(props: BarShapeProps) => <ProfitBarShape {...props} orientation="horizontal" />}
-          />
-        </BarChart>
-      </ResponsiveContainer>
+      <div {...containerProps}>
+        <ResponsiveContainer width="100%" height={chartHeight}>
+          <BarChart
+            data={data}
+            layout="vertical"
+            margin={{ top: 8, right: 16, left: 4, bottom: 4 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_COLORS.grid} />
+            <XAxis
+              type="number"
+              domain={domain}
+              ticks={ticks}
+              tickFormatter={formatCompactINR}
+              axisLine={false}
+              tickLine={false}
+              tick={{ fontSize: 12, fill: CHART_COLORS.axis }}
+            />
+            <YAxis
+              dataKey="name"
+              type="category"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fontSize: 12, fill: CHART_COLORS.slate }}
+              width={90}
+            />
+            <ReferenceLine x={0} stroke={CHART_COLORS.zeroLine} strokeWidth={1.5} />
+            <Tooltip
+              content={<UnitTooltip />}
+              cursor={{ fill: CHART_COLORS.cursor }}
+              isAnimationActive={false}
+              wrapperStyle={{ pointerEvents: 'none' }}
+            />
+            <Bar
+              dataKey="profit"
+              name="Profit / Loss"
+              maxBarSize={24}
+              shape={(props: BarShapeProps) => <ProfitBarShape {...props} orientation="horizontal" />}
+            >
+              {data.map(entry => (
+                <Cell
+                  key={entry.unit_id}
+                  opacity={selectedUnitId ? (selectedUnitId === entry.unit_id ? 1 : 0.28) : 1}
+                  cursor="pointer"
+                />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </ChartCardShell>
   );
 }
