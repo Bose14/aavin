@@ -105,9 +105,21 @@ export default function Layout({ children }: { children: ReactNode }) {
           <span className="brand-logo">🥛</span>
           <span className="brand-name">{t('appName')}</span>
         </div>
-        <div className="lang-toggle" role="group" aria-label="Language">
-          <button type="button" className={`lang-btn ${lang === 'en' ? 'active' : ''}`} onClick={() => setLang('en')}>EN</button>
-          <button type="button" className={`lang-btn ${lang === 'ta' ? 'active' : ''}`} onClick={() => setLang('ta')}>தமிழ்</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+          {(!online || pendingCount > 0 || syncMsg) && (
+            <span
+              className={`status-pill ${!online || pendingCount > 0 ? 'amber' : 'green'}`}
+              style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', cursor: online && pendingCount > 0 ? 'pointer' : 'default' }}
+              onClick={online && pendingCount > 0 ? () => void handleManualSync() : undefined}
+              title={online && pendingCount > 0 ? 'Click to sync queued offline entries' : !online ? 'Device is offline' : syncMsg}
+            >
+              {!online ? '⚡ Offline' : pendingCount > 0 ? `${pendingCount} queued` : '✓ Synced'}
+            </span>
+          )}
+          <div className="lang-toggle" role="group" aria-label="Language">
+            <button type="button" className={`lang-btn ${lang === 'en' ? 'active' : ''}`} onClick={() => setLang('en')}>EN</button>
+            <button type="button" className={`lang-btn ${lang === 'ta' ? 'active' : ''}`} onClick={() => setLang('ta')}>தமிழ்</button>
+          </div>
         </div>
       </header>
 

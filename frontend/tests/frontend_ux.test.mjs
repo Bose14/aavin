@@ -42,6 +42,22 @@ function createTsLoader() {
     if (absPath.endsWith(`${path.sep}lib${path.sep}api.ts`)) {
       return { default: mockApi, __esModule: true };
     }
+    if (absPath.endsWith(`${path.sep}supabase.ts`)) {
+      const mockChain = () => ({
+        select: () => mockChain(),
+        order: () => Promise.resolve({ data: [], error: null }),
+        eq: () => mockChain(),
+        maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        single: () => Promise.resolve({ data: null, error: null }),
+      });
+      return {
+        supabase: {
+          from: () => mockChain(),
+          auth: { getUser: () => Promise.resolve({ data: { user: null }, error: null }) },
+        },
+        __esModule: true,
+      };
+    }
 
     const source = fs.readFileSync(absPath, 'utf8').replaceAll('import.meta.env', '({})');
     const transpiled = ts.transpileModule(source, {
@@ -271,4 +287,11 @@ test('UI primitives & DataTable render empty state CTA, sticky table & totals ro
   assert.ok(unitChartHtml.includes('Unit-wise Net Profit / Loss'));
   assert.ok(unitChartHtml.includes('Zone Revenue'));
   assert.ok(unitChartHtml.includes('Zone Cost'));
+
+  // Test SuperAdminDashboard SSR with responsive DataTable
+  const SuperAdminDashboard = loadTsModule('pages/superadmin/SuperAdminDashboard.tsx').default;
+  const superAdminHtml = renderToStaticMarkup(React.createElement(SuperAdminDashboard));
+  assert.ok(superAdminHtml.includes('Super Admin'));
+  assert.ok(superAdminHtml.includes('Create New Zone Admin'));
+  assert.ok(superAdminHtml.includes('desktop-table-wrap'));
 });
