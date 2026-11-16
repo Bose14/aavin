@@ -177,7 +177,8 @@ test('Frontend Stage Pipeline: renders connected stepper with all 8 stages, chec
     }),
   );
 
-  assert.ok(html.includes('Tanker Journey Pipeline'));
+  assert.ok(html.includes('Stage Pipeline Overview'));
+  assert.ok(!html.includes('TANKER-LIVE'));
   assert.ok(html.includes('In Plant :'));
   assert.ok(html.includes('5 tankers'));
   assert.ok(html.includes('Vehicle Entered'));

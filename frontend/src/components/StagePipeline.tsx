@@ -136,21 +136,7 @@ export function StagePipeline({
       role="region"
       aria-label="Tanker Journey Stage Pipeline"
     >
-      {/* 1. Header with GeeksforGeeks tracking-order banner style */}
-      <div style={{ textAlign: 'center', marginBottom: '8px' }}>
-        <span
-          style={{
-            fontSize: '15px',
-            fontWeight: 800,
-            color: '#16a34a',
-            letterSpacing: '0.6px',
-            fontFamily: 'system-ui, -apple-system, sans-serif',
-          }}
-        >
-          Aavin Dairy Plant · Tanker Journey Pipeline
-        </span>
-      </div>
-
+      {/* Header with Stage Pipeline title and status pills */}
       <div
         style={{
           display: 'flex',
@@ -158,41 +144,22 @@ export function StagePipeline({
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: '12px',
-          paddingBottom: '16px',
+          paddingBottom: '14px',
           borderBottom: '1px solid #f1f5f9',
           marginBottom: '20px',
         }}
       >
-        {/* Left: Order / Pipeline Tracking ID */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div
-            style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '8px',
-              backgroundColor: '#eff6ff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="9" cy="21" r="1" />
-              <circle cx="20" cy="21" r="1" />
-              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-            </svg>
-          </div>
-          <div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: '#1e293b' }}>
-              Tracking ID : <span style={{ color: '#16a34a', fontWeight: 800 }}># TANKER-LIVE</span>
-            </div>
-            <div style={{ fontSize: '11px', color: '#64748b' }}>
-              {totalTankersCount} total tankers registered · Click stage node to filter
-            </div>
-          </div>
+        {/* Left: Clean title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '13px', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Stage Pipeline Overview
+          </span>
+          <span style={{ fontSize: '11px', color: '#64748b' }}>
+            ({totalTankersCount > 0 ? `${totalTankersCount} tankers · ` : ''}Click stage node to filter)
+          </span>
         </div>
 
-        {/* Right: GeeksforGeeks styled Pills (Expected Arrival / Tracking ID style) */}
+        {/* Right: Status Pills */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           {/* Blue Pill: In Plant Now */}
           <div
