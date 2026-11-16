@@ -201,7 +201,7 @@ export default function AdminTankerRecords() {
         if (toDate) params.to = toDate;
         if (searchQuery.trim()) params.search = searchQuery.trim();
 
-        const [tRes, sRes, uRes] = await Promise.all([
+        const [tResSettled, sResSettled, uResSettled] = await Promise.allSettled([
           api.get<any[]>('/tanker', { params }),
           api.get<StatsResponse>('/tanker/stats', {
             params: {
@@ -213,18 +213,68 @@ export default function AdminTankerRecords() {
           api.get<Unit[]>('/units'),
         ]);
 
-        setRecords(tRes.data);
-        setStats(sRes.data);
-        setUnits(uRes.data);
-        setLastUpdated(new Date());
-
-        // Keep open drawer in sync with updated trip data
-        if (selectedTrip) {
-          const fresh = tRes.data.find((r: any) => r.id === selectedTrip.id);
-          if (fresh) setSelectedTrip(fresh);
+        if (tResSettled.status === 'fulfilled') {
+          const data = tResSettled.value.data || [];
+          setRecords(data);
+          if (selectedTrip) {
+            const fresh = data.find((r: any) => r.id === selectedTrip.id);
+            if (fresh) setSelectedTrip(fresh);
+          }
+        } else {
+          const reason =
+            (tResSettled.reason as any)?.response?.data?.error ||
+            (tResSettled.reason as any)?.message ||
+            'Failed to fetch tanker records';
+          setError(reason);
         }
-      } catch (err: unknown) {
-        setError((err as Error)?.message || 'Failed to fetch tanker data');
+
+        if (uResSettled.status === 'fulfilled') {
+          setUnits(uResSettled.value.data || []);
+        }
+
+        if (sResSettled.status === 'fulfilled') {
+          setStats(sResSettled.value.data);
+        } else if (tResSettled.status === 'fulfilled') {
+          // Derive fallback stats locally from records if stats endpoint fails
+          const list = tResSettled.value.data || [];
+          const waitingCount = list.filter(
+            (r: any) => r.journey?.tripStatus !== 'exited' && r.journey?.tripStatus !== 'qc_rejected',
+          ).length;
+          const processedCount = list.filter((r: any) => r.journey?.tripStatus === 'exited').length;
+          const rejectedCount = list.filter((r: any) => r.journey?.tripStatus === 'qc_rejected').length;
+          setStats({
+            chips: {},
+            tabs: { waiting: waitingCount, processed: processedCount, rejected: rejectedCount, all: list.length },
+            kpis: {
+              total_dispatched_count: list.length,
+              total_dispatched_litres: list.reduce(
+                (sum: number, r: any) => sum + (Number(r.quantity_dispatched) || 0),
+                0,
+              ),
+              received_at_dairy_count: processedCount,
+              received_at_dairy_label: `${processedCount} of ${list.length} tankers`,
+              in_plant_count: list.filter(
+                (r: any) =>
+                  r.journey?.tripStatus !== 'on_the_way' &&
+                  r.journey?.tripStatus !== 'exited' &&
+                  r.journey?.tripStatus !== 'qc_rejected',
+              ).length,
+              waiting_too_long_count: list.filter((r: any) => r.journey?.isOverLimit).length,
+              qc_rejected_count: rejectedCount,
+              qc_rejected_litres: list
+                .filter((r: any) => r.journey?.tripStatus === 'qc_rejected')
+                .reduce((sum: number, r: any) => sum + (Number(r.quantity_dispatched) || 0), 0),
+              transit_loss_litres: 0,
+              transit_loss_pct: 0,
+              transit_loss_tone: 'green',
+              avg_turnaround_min: null,
+            },
+          });
+        }
+
+        setLastUpdated(new Date());
+      } catch (err: any) {
+        setError(err.response?.data?.error || err.message || 'Failed to fetch tanker data');
       } finally {
         if (!silent) setLoading(false);
       }

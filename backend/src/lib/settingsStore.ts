@@ -54,11 +54,16 @@ export function isMissingSchemaError(err: { code?: string; message?: string } | 
   return (
     code === '42P01' ||
     code === '42703' ||
+    code === 'PGRST100' ||
+    code === 'PGRST200' ||
     code === 'PGRST204' ||
     code === 'PGRST205' ||
     msg.includes('does not exist') ||
-    msg.includes('could not find the table') ||
-    msg.includes('schema cache')
+    msg.includes('could not find') ||
+    msg.includes('schema cache') ||
+    msg.includes('column') ||
+    msg.includes('relation') ||
+    msg.includes('table')
   );
 }
 
@@ -87,53 +92,55 @@ function writeFallback(data: FallbackStoreData): void {
 
 export async function getZoneSettings(zoneId: string): Promise<ZoneSettings> {
   const defaults = buildDefaultZoneSettings(zoneId);
-  const { data, error } = await supabase
-    .from('zone_settings')
-    .select('*')
-    .eq('zone_id', zoneId)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('zone_settings')
+      .select('*')
+      .eq('zone_id', zoneId)
+      .maybeSingle();
 
-  if (error) {
-    if (isMissingSchemaError(error)) {
+    if (error) {
       const store = readFallback();
       return { ...defaults, ...(store.zoneSettings[zoneId] ?? {}) };
     }
-    throw new Error(error.message);
-  }
 
-  if (!data) {
+    if (!data) {
+      const store = readFallback();
+      return { ...defaults, ...(store.zoneSettings[zoneId] ?? {}) };
+    }
+
+    return {
+      zone_id: zoneId,
+      fat_min: Number(data.fat_min ?? defaults.fat_min),
+      fat_max: Number(data.fat_max ?? defaults.fat_max),
+      fat_benchmark: Number(data.fat_benchmark ?? defaults.fat_benchmark),
+      snf_min: Number(data.snf_min ?? defaults.snf_min),
+      snf_max: Number(data.snf_max ?? defaults.snf_max),
+      snf_benchmark: Number(data.snf_benchmark ?? defaults.snf_benchmark),
+      rejection_warn_pct: Number(data.rejection_warn_pct ?? defaults.rejection_warn_pct),
+      rejection_danger_pct: Number(data.rejection_danger_pct ?? defaults.rejection_danger_pct),
+      rate_base: Number(data.rate_base ?? defaults.rate_base),
+      rate_fat_coeff: Number(data.rate_fat_coeff ?? defaults.rate_fat_coeff),
+      rate_snf_coeff: Number(data.rate_snf_coeff ?? defaults.rate_snf_coeff),
+      rejection_payment_rule: (data.rejection_payment_rule === 'gross' ? 'gross' : 'net'),
+      edit_lock_hours: Number(data.edit_lock_hours ?? defaults.edit_lock_hours),
+      show_unit_profit: Boolean(data.show_unit_profit),
+      destinations: Array.isArray(data.destinations) ? data.destinations : defaults.destinations,
+      locations: Array.isArray(data.locations) ? data.locations : defaults.locations,
+      stage_time_limits_min: data.stage_time_limits_min ?? defaults.stage_time_limits_min,
+      transit_loss_warn_pct: Number(data.transit_loss_warn_pct ?? defaults.transit_loss_warn_pct),
+      transit_loss_danger_pct: Number(data.transit_loss_danger_pct ?? defaults.transit_loss_danger_pct),
+      net_weight_diff_threshold_kg: Number(data.net_weight_diff_threshold_kg ?? defaults.net_weight_diff_threshold_kg),
+      quality_drop_threshold_fat: Number(data.quality_drop_threshold_fat ?? defaults.quality_drop_threshold_fat),
+      quality_drop_threshold_snf: Number(data.quality_drop_threshold_snf ?? defaults.quality_drop_threshold_snf),
+      milk_density_kg_per_litre: Number(data.milk_density_kg_per_litre ?? defaults.milk_density_kg_per_litre),
+      auto_refresh_interval_sec: Number(data.auto_refresh_interval_sec ?? defaults.auto_refresh_interval_sec),
+      updated_at: data.updated_at,
+    };
+  } catch {
     const store = readFallback();
     return { ...defaults, ...(store.zoneSettings[zoneId] ?? {}) };
   }
-
-  return {
-    zone_id: zoneId,
-    fat_min: Number(data.fat_min ?? defaults.fat_min),
-    fat_max: Number(data.fat_max ?? defaults.fat_max),
-    fat_benchmark: Number(data.fat_benchmark ?? defaults.fat_benchmark),
-    snf_min: Number(data.snf_min ?? defaults.snf_min),
-    snf_max: Number(data.snf_max ?? defaults.snf_max),
-    snf_benchmark: Number(data.snf_benchmark ?? defaults.snf_benchmark),
-    rejection_warn_pct: Number(data.rejection_warn_pct ?? defaults.rejection_warn_pct),
-    rejection_danger_pct: Number(data.rejection_danger_pct ?? defaults.rejection_danger_pct),
-    rate_base: Number(data.rate_base ?? defaults.rate_base),
-    rate_fat_coeff: Number(data.rate_fat_coeff ?? defaults.rate_fat_coeff),
-    rate_snf_coeff: Number(data.rate_snf_coeff ?? defaults.rate_snf_coeff),
-    rejection_payment_rule: (data.rejection_payment_rule === 'gross' ? 'gross' : 'net'),
-    edit_lock_hours: Number(data.edit_lock_hours ?? defaults.edit_lock_hours),
-    show_unit_profit: Boolean(data.show_unit_profit),
-    destinations: Array.isArray(data.destinations) ? data.destinations : defaults.destinations,
-    locations: Array.isArray(data.locations) ? data.locations : defaults.locations,
-    stage_time_limits_min: data.stage_time_limits_min ?? defaults.stage_time_limits_min,
-    transit_loss_warn_pct: Number(data.transit_loss_warn_pct ?? defaults.transit_loss_warn_pct),
-    transit_loss_danger_pct: Number(data.transit_loss_danger_pct ?? defaults.transit_loss_danger_pct),
-    net_weight_diff_threshold_kg: Number(data.net_weight_diff_threshold_kg ?? defaults.net_weight_diff_threshold_kg),
-    quality_drop_threshold_fat: Number(data.quality_drop_threshold_fat ?? defaults.quality_drop_threshold_fat),
-    quality_drop_threshold_snf: Number(data.quality_drop_threshold_snf ?? defaults.quality_drop_threshold_snf),
-    milk_density_kg_per_litre: Number(data.milk_density_kg_per_litre ?? defaults.milk_density_kg_per_litre),
-    auto_refresh_interval_sec: Number(data.auto_refresh_interval_sec ?? defaults.auto_refresh_interval_sec),
-    updated_at: data.updated_at,
-  };
 }
 
 export async function saveZoneSettings(zoneId: string, patch: Partial<ZoneSettings>): Promise<ZoneSettings> {
@@ -145,18 +152,22 @@ export async function saveZoneSettings(zoneId: string, patch: Partial<ZoneSettin
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase
-    .from('zone_settings')
-    .upsert(next, { onConflict: 'zone_id' });
+  try {
+    const { error } = await supabase
+      .from('zone_settings')
+      .upsert(next, { onConflict: 'zone_id' });
 
-  if (error) {
-    if (isMissingSchemaError(error)) {
+    if (error) {
       const store = readFallback();
       store.zoneSettings[zoneId] = next;
       writeFallback(store);
       return next;
     }
-    throw new Error(error.message);
+  } catch {
+    const store = readFallback();
+    store.zoneSettings[zoneId] = next;
+    writeFallback(store);
+    return next;
   }
   return next;
 }
@@ -405,20 +416,40 @@ export async function recordTankerStageInDb(stage: TankerStageRecordRow): Promis
     done_at: stage.done_at || new Date().toISOString(),
   };
 
-  const { data, error } = await supabase
-    .from('tanker_stages')
-    .upsert(insertPayload, { onConflict: 'trip_id,stage_name' })
-    .select()
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('tanker_stages')
+      .upsert(insertPayload, { onConflict: 'trip_id,stage_name' })
+      .select()
+      .single();
 
-  if (error && isMissingSchemaError(error)) {
+    if (error) {
+      const store = readFallback();
+      if (!store.tankerStages[stage.trip_id]) {
+        store.tankerStages[stage.trip_id] = [];
+      }
+      const list = store.tankerStages[stage.trip_id];
+      const existingIdx = list.findIndex((s) => s.stage_name === stage.stage_name);
+      const row: TankerStageRecordRow = {
+        id: existingIdx >= 0 ? list[existingIdx].id : crypto.randomUUID(),
+        ...insertPayload,
+        created_at: new Date().toISOString(),
+      };
+      if (existingIdx >= 0) list[existingIdx] = row;
+      else list.push(row);
+      writeFallback(store);
+      return row;
+    }
+
+    return data as TankerStageRecordRow;
+  } catch {
     const store = readFallback();
     if (!store.tankerStages[stage.trip_id]) {
       store.tankerStages[stage.trip_id] = [];
     }
     const list = store.tankerStages[stage.trip_id];
     const existingIdx = list.findIndex((s) => s.stage_name === stage.stage_name);
-    const row = {
+    const row: TankerStageRecordRow = {
       id: existingIdx >= 0 ? list[existingIdx].id : crypto.randomUUID(),
       ...insertPayload,
       created_at: new Date().toISOString(),
@@ -428,38 +459,63 @@ export async function recordTankerStageInDb(stage: TankerStageRecordRow): Promis
     writeFallback(store);
     return row;
   }
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return data as TankerStageRecordRow;
 }
 
 export async function getTankerStagesForTrip(tripId: string): Promise<TankerStageRecordRow[]> {
-  const { data, error } = await supabase
-    .from('tanker_stages')
-    .select('*')
-    .eq('trip_id', tripId)
-    .order('done_at', { ascending: true });
+  try {
+    const { data, error } = await supabase
+      .from('tanker_stages')
+      .select('*')
+      .eq('trip_id', tripId)
+      .order('done_at', { ascending: true });
 
-  if (error && isMissingSchemaError(error)) {
+    if (error) {
+      const store = readFallback();
+      return store.tankerStages[tripId] ?? [];
+    }
+    const dbStages = (data ?? []) as TankerStageRecordRow[];
+    const store = readFallback();
+    const fbStages = store.tankerStages[tripId] ?? [];
+    if (dbStages.length === 0 && fbStages.length > 0) return fbStages;
+    return dbStages;
+  } catch {
     const store = readFallback();
     return store.tankerStages[tripId] ?? [];
   }
-  if (error) throw new Error(error.message);
-  return (data ?? []) as TankerStageRecordRow[];
 }
 
 export async function getTankerStagesForTrips(tripIds: string[]): Promise<Record<string, TankerStageRecordRow[]>> {
   if (tripIds.length === 0) return {};
-  const { data, error } = await supabase
-    .from('tanker_stages')
-    .select('*')
-    .in('trip_id', tripIds)
-    .order('done_at', { ascending: true });
+  try {
+    const { data, error } = await supabase
+      .from('tanker_stages')
+      .select('*')
+      .in('trip_id', tripIds)
+      .order('done_at', { ascending: true });
 
-  if (error && isMissingSchemaError(error)) {
+    const store = readFallback();
+    if (error) {
+      const result: Record<string, TankerStageRecordRow[]> = {};
+      for (const id of tripIds) {
+        if (store.tankerStages[id]) {
+          result[id] = store.tankerStages[id];
+        }
+      }
+      return result;
+    }
+
+    const result: Record<string, TankerStageRecordRow[]> = {};
+    for (const row of (data ?? []) as TankerStageRecordRow[]) {
+      if (!result[row.trip_id]) result[row.trip_id] = [];
+      result[row.trip_id].push(row);
+    }
+    for (const id of tripIds) {
+      if (!result[id] && store.tankerStages[id]) {
+        result[id] = store.tankerStages[id];
+      }
+    }
+    return result;
+  } catch {
     const store = readFallback();
     const result: Record<string, TankerStageRecordRow[]> = {};
     for (const id of tripIds) {
@@ -469,14 +525,6 @@ export async function getTankerStagesForTrips(tripIds: string[]): Promise<Record
     }
     return result;
   }
-  if (error) throw new Error(error.message);
-
-  const result: Record<string, TankerStageRecordRow[]> = {};
-  for (const row of (data ?? []) as TankerStageRecordRow[]) {
-    if (!result[row.trip_id]) result[row.trip_id] = [];
-    result[row.trip_id].push(row);
-  }
-  return result;
 }
 
 

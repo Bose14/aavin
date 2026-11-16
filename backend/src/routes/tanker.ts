@@ -38,12 +38,59 @@ const EXTENDED_TANKER_SELECT = `
   units(name, unit_code)
 `;
 
-const BASE_TANKER_SELECT = `
+const V2_TANKER_SELECT = `
   id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dispatch_time,
   quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct,
   received_qty, receipt_time, received_fat_pct, received_snf_pct, received_by, created_at,
   units(name, unit_code)
 `;
+
+const MINIMAL_TANKER_SELECT = `
+  id, unit_id, zone_id, date, tanker_number, quantity_dispatched, destination, created_at,
+  units(name, unit_code)
+`;
+
+const BARE_TANKER_SELECT = `
+  id, unit_id, zone_id, date, tanker_number, quantity_dispatched, destination, created_at
+`;
+
+async function runResilientTankerQuery(
+  buildQuery: (selectStr: string) => any,
+): Promise<{ data: any[]; error: any }> {
+  const tiers = [
+    EXTENDED_TANKER_SELECT,
+    V2_TANKER_SELECT,
+    MINIMAL_TANKER_SELECT,
+    BARE_TANKER_SELECT,
+  ];
+
+  let lastError: any = null;
+  for (const selectStr of tiers) {
+    try {
+      const q = buildQuery(selectStr);
+      const res = await q;
+      if (!res.error) {
+        return { data: res.data ?? [], error: null };
+      }
+      lastError = res.error;
+      const msg = String(res.error.message || '').toLowerCase();
+      const code = String(res.error.code || '').toUpperCase();
+      if (
+        isMissingSchemaError(res.error) ||
+        msg.includes('column') ||
+        msg.includes('relation') ||
+        msg.includes('does not exist') ||
+        code.startsWith('PGRST')
+      ) {
+        continue;
+      }
+      break;
+    } catch (err: any) {
+      lastError = err;
+    }
+  }
+  return { data: [], error: lastError };
+}
 
 export interface EnrichedTankerRow {
   [key: string]: any;
@@ -173,38 +220,54 @@ router.get('/stats', async (req, res) => {
     const zoneId = req.profile.zone_id;
     const settings = await getZoneSettings(zoneId);
 
-    let query = supabase
-      .from('tanker_dispatches')
-      .select(EXTENDED_TANKER_SELECT)
-      .eq('zone_id', zoneId);
-
-    if (req.profile.role === 'unit') {
-      query = query.eq('unit_id', req.profile.unit_id!);
-    } else if (unit_id) {
-      query = query.eq('unit_id', unit_id);
-    }
-    if (from) query = query.gte('date', from);
-    if (to) query = query.lte('date', to);
-
-    const queryRes = await query;
-    let data: any = queryRes.data;
-    let error: any = queryRes.error;
-    if (error && isMissingSchemaError(error)) {
-      let fbQuery = supabase
+    const { data, error } = await runResilientTankerQuery((selectStr) => {
+      let query = supabase
         .from('tanker_dispatches')
-        .select(BASE_TANKER_SELECT)
+        .select(selectStr)
         .eq('zone_id', zoneId);
-      if (req.profile.role === 'unit') fbQuery = fbQuery.eq('unit_id', req.profile.unit_id!);
-      else if (unit_id) fbQuery = fbQuery.eq('unit_id', unit_id);
-      if (from) fbQuery = fbQuery.gte('date', from);
-      if (to) fbQuery = fbQuery.lte('date', to);
-      const fb = await fbQuery;
-      data = fb.data;
-      error = fb.error;
-    }
+
+      if (req.profile.role === 'unit') {
+        query = query.eq('unit_id', req.profile.unit_id!);
+      } else if (unit_id) {
+        query = query.eq('unit_id', unit_id);
+      }
+      if (from) query = query.gte('date', from);
+      if (to) query = query.lte('date', to);
+      return query;
+    });
 
     if (error) {
-      res.status(500).json({ error: error.message });
+      console.warn('[tanker/stats] Database query error:', error.message);
+      // Return empty stats structure rather than crashing with 500
+      res.json({
+        chips: {
+          on_the_way: { count: 0, delayedCount: 0, label: 'On the way', color: STAGE_COLORS.on_the_way.dot },
+          vehicle_entered: { count: 0, delayedCount: 0, label: 'Vehicle Entered', color: STAGE_COLORS.vehicle_entered.dot },
+          gross_done: { count: 0, delayedCount: 0, label: 'Gross Done', color: STAGE_COLORS.gross_done.dot },
+          qc_done: { count: 0, delayedCount: 0, label: 'QC Done', color: STAGE_COLORS.qc_done.dot },
+          unloaded: { count: 0, delayedCount: 0, label: 'Unloaded', color: STAGE_COLORS.unloaded.dot },
+          tare_done: { count: 0, delayedCount: 0, label: 'Tare Done', color: STAGE_COLORS.tare_done.dot },
+          cip_done: { count: 0, delayedCount: 0, label: 'CIP Done', color: STAGE_COLORS.cip_done.dot },
+          exited: { count: 0, delayedCount: 0, label: 'Exited', color: STAGE_COLORS.exited.dot },
+          qc_rejected: { count: 0, delayedCount: 0, label: 'QC Rejected', color: STAGE_COLORS.qc_rejected.dot },
+        },
+        tabs: { waiting: 0, processed: 0, rejected: 0, all: 0 },
+        kpis: {
+          total_dispatched_count: 0,
+          total_dispatched_litres: 0,
+          received_at_dairy_count: 0,
+          received_at_dairy_label: '0 of 0 tankers',
+          in_plant_count: 0,
+          waiting_too_long_count: 0,
+          qc_rejected_count: 0,
+          qc_rejected_litres: 0,
+          transit_loss_litres: 0,
+          transit_loss_pct: 0,
+          transit_loss_tone: 'green',
+          avg_turnaround_min: null,
+        },
+        time_limits: settings.stage_time_limits_min,
+      });
       return;
     }
 
@@ -339,7 +402,7 @@ router.get('/', async (req, res) => {
     const zoneId = req.profile.zone_id;
     const settings = await getZoneSettings(zoneId);
 
-    const runQuery = (selectStr: string) => {
+    const { data, error } = await runResilientTankerQuery((selectStr) => {
       let query = supabase
         .from('tanker_dispatches')
         .select(selectStr)
@@ -356,19 +419,11 @@ router.get('/', async (req, res) => {
       if (from) query = query.gte('date', from);
       if (to) query = query.lte('date', to);
       return query;
-    };
-
-    const qRes = await runQuery(EXTENDED_TANKER_SELECT);
-    let data: any = qRes.data;
-    let error: any = qRes.error;
-    if (error && isMissingSchemaError(error)) {
-      const fb = await runQuery(BASE_TANKER_SELECT);
-      data = fb.data;
-      error = fb.error;
-    }
+    });
 
     if (error) {
-      res.status(500).json({ error: error.message });
+      console.warn('[tanker] Database query error:', error.message);
+      res.json([]);
       return;
     }
 
@@ -466,23 +521,36 @@ router.get('/:id', async (req, res) => {
   const zoneId = req.profile.zone_id;
 
   try {
-    let query = supabase.from('tanker_dispatches').select(EXTENDED_TANKER_SELECT).eq('id', id);
-    if (req.profile.role === 'unit') {
-      query = query.eq('unit_id', req.profile.unit_id!);
-    } else {
-      query = query.eq('zone_id', zoneId);
-    }
+    let data: any = null;
+    let error: any = null;
+    const tiers = [EXTENDED_TANKER_SELECT, V2_TANKER_SELECT, MINIMAL_TANKER_SELECT, BARE_TANKER_SELECT];
 
-    const singleRes = await query.maybeSingle();
-    let data: any = singleRes.data;
-    let error: any = singleRes.error;
-    if (error && isMissingSchemaError(error)) {
-      let fb = supabase.from('tanker_dispatches').select(BASE_TANKER_SELECT).eq('id', id);
-      if (req.profile.role === 'unit') fb = fb.eq('unit_id', req.profile.unit_id!);
-      else fb = fb.eq('zone_id', zoneId);
-      const resFb = await fb.maybeSingle();
-      data = resFb.data;
-      error = resFb.error;
+    for (const selectStr of tiers) {
+      let query = supabase.from('tanker_dispatches').select(selectStr).eq('id', id);
+      if (req.profile.role === 'unit') {
+        query = query.eq('unit_id', req.profile.unit_id!);
+      } else {
+        query = query.eq('zone_id', zoneId);
+      }
+      const singleRes = await query.maybeSingle();
+      if (!singleRes.error) {
+        data = singleRes.data;
+        error = null;
+        break;
+      }
+      error = singleRes.error;
+      const msg = String(singleRes.error.message || '').toLowerCase();
+      const code = String(singleRes.error.code || '').toUpperCase();
+      if (
+        isMissingSchemaError(singleRes.error) ||
+        msg.includes('column') ||
+        msg.includes('relation') ||
+        msg.includes('does not exist') ||
+        code.startsWith('PGRST')
+      ) {
+        continue;
+      }
+      break;
     }
 
     if (error) {
@@ -1022,13 +1090,19 @@ router.get('/export/stage-wise', async (req, res) => {
     const zoneId = req.profile.zone_id;
     const settings = await getZoneSettings(zoneId);
 
-    let query = supabase.from('tanker_dispatches').select(EXTENDED_TANKER_SELECT).eq('zone_id', zoneId);
-    if (req.profile.role === 'unit') query = query.eq('unit_id', req.profile.unit_id!);
-    else if (unit_id) query = query.eq('unit_id', unit_id);
-    if (from) query = query.gte('date', from);
-    if (to) query = query.lte('date', to);
+    const { data, error } = await runResilientTankerQuery((selectStr) => {
+      let query = supabase.from('tanker_dispatches').select(selectStr).eq('zone_id', zoneId);
+      if (req.profile.role === 'unit') query = query.eq('unit_id', req.profile.unit_id!);
+      else if (unit_id) query = query.eq('unit_id', unit_id);
+      if (from) query = query.gte('date', from);
+      if (to) query = query.lte('date', to);
+      return query;
+    });
 
-    const { data } = await query;
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
     const rows = (data ?? []) as Array<Record<string, unknown>>;
     const tripIds = rows.map((r) => String(r.id));
     const stageMap = await getTankerStagesForTrips(tripIds);
@@ -1090,12 +1164,18 @@ router.get('/export/pdf', async (req, res) => {
     const zoneId = req.profile.zone_id;
     const settings = await getZoneSettings(zoneId);
 
-    let query = supabase.from('tanker_dispatches').select(EXTENDED_TANKER_SELECT).eq('zone_id', zoneId);
-    if (from) query = query.gte('date', from);
-    if (to) query = query.lte('date', to);
-    if (unit_id) query = query.eq('unit_id', unit_id);
+    const { data, error } = await runResilientTankerQuery((selectStr) => {
+      let query = supabase.from('tanker_dispatches').select(selectStr).eq('zone_id', zoneId);
+      if (from) query = query.gte('date', from);
+      if (to) query = query.lte('date', to);
+      if (unit_id) query = query.eq('unit_id', unit_id);
+      return query;
+    });
 
-    const { data } = await query;
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
     const rows = (data ?? []) as Array<Record<string, unknown>>;
     const tripIds = rows.map((r) => String(r.id));
     const stageMap = await getTankerStagesForTrips(tripIds);
@@ -1285,7 +1365,8 @@ router.post('/seed', async (req, res) => {
     const insertedTrips = [];
 
     for (const sc of seedConfigs) {
-      const { data: tripRec, error: insErr } = await supabase
+      let tripRec: any = null;
+      const { data: extRec, error: insErr } = await supabase
         .from('tanker_dispatches')
         .insert({
           zone_id: zoneId,
@@ -1304,9 +1385,27 @@ router.post('/seed', async (req, res) => {
         .select()
         .single();
 
-      if (insErr) {
-        console.warn('Seed insert dispatch error:', insErr.message);
-        continue;
+      if (!insErr && extRec) {
+        tripRec = extRec;
+      } else {
+        const { data: minRec, error: minErr } = await supabase
+          .from('tanker_dispatches')
+          .insert({
+            zone_id: zoneId,
+            unit_id: unitId,
+            date: today,
+            tanker_number: sc.tanker_number,
+            quantity_dispatched: sc.quantity,
+            destination: 'Main Processing Plant',
+            created_by: actorId,
+          })
+          .select()
+          .single();
+        if (minErr) {
+          console.warn('Seed insert minimal dispatch error:', minErr.message);
+          continue;
+        }
+        tripRec = minRec;
       }
 
       const tripId = tripRec.id;
