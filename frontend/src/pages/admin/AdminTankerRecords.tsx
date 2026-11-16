@@ -11,6 +11,7 @@ import type { DataColumn } from '../../components/DataTable';
 import { ConfirmDialog, ErrorBanner, TableSkeleton } from '../../components/UiPrimitives';
 import { TankerTimeline } from '../../components/TankerTimeline';
 import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
+import { StagePipeline } from '../../components/StagePipeline';
 import { STAGE_COLORS } from '../../lib/tankerJourney';
 
 interface Unit {
@@ -711,101 +712,16 @@ export default function AdminTankerRecords() {
 
       {error && <ErrorBanner message={error} onRetry={() => void fetchData()} />}
 
-      {/* 1. STAGE PIPELINE STRIP (top of page overview filter) */}
-      <div
-        className="stage-pipeline-strip card"
-        style={{
-          padding: '12px 16px',
-          marginBottom: '20px',
-          backgroundColor: '#ffffff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '8px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-          <span style={{ fontSize: '13px', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Stage Pipeline Overview (Click chip to filter table)
-          </span>
-          {selectedStageChip && (
-            <button
-              onClick={() => setSelectedStageChip('')}
-              style={{ border: 'none', background: 'none', color: '#2563eb', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}
-            >
-              ✕ Clear Stage Filter
-            </button>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
-          {stats?.chips &&
-            Object.entries(stats.chips).map(([key, chip]) => {
-              const isSelected = selectedStageChip === key;
-              let teamLabel = 'Gate';
-              if (key === 'qc_done' || key === 'cip_done' || key === 'qc_rejected') teamLabel = 'QC';
-              else if (key === 'unloaded') teamLabel = 'Unloading';
-              else if (key === 'on_the_way') teamLabel = 'Transit';
-
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => handleChipClick(key)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '8px 12px',
-                    borderRadius: '20px',
-                    border: isSelected ? `2px solid ${chip.color}` : '1px solid #e2e8f0',
-                    backgroundColor: isSelected ? '#f8fafc' : '#ffffff',
-                    boxShadow: isSelected ? '0 2px 4px rgba(0,0,0,0.08)' : 'none',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    position: 'relative',
-                    transition: 'all 0.15s ease',
-                  }}
-                  title={`Click to filter by ${chip.label}`}
-                >
-                  <span
-                    style={{
-                      width: '10px',
-                      height: '10px',
-                      borderRadius: '50%',
-                      backgroundColor: chip.color,
-                      display: 'inline-block',
-                    }}
-                  />
-                  <div style={{ textAlign: 'left' }}>
-                    <div style={{ fontSize: '12px', fontWeight: isSelected ? 700 : 600, color: '#1e293b' }}>
-                      {chip.label}
-                    </div>
-                    <div style={{ fontSize: '10px', color: '#64748b' }}>
-                      {teamLabel} · <strong>{chip.count}</strong>
-                    </div>
-                  </div>
-
-                  {/* Red badge if any trip in this stage exceeds configured limit */}
-                  {chip.delayedCount > 0 && (
-                    <span
-                      style={{
-                        padding: '1px 5px',
-                        borderRadius: '10px',
-                        backgroundColor: '#ef4444',
-                        color: '#ffffff',
-                        fontSize: '10px',
-                        fontWeight: 700,
-                      }}
-                      title={`${chip.delayedCount} tanker(s) waiting past time limit!`}
-                    >
-                      {chip.delayedCount} delayed
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-        </div>
-      </div>
+      {/* 1. STAGE PIPELINE STRIP (top of page overview filter - connected stepper design) */}
+      <StagePipeline
+        chips={stats?.chips || {}}
+        selectedStage={selectedStageChip}
+        onSelectStage={(key) => handleChipClick(key)}
+        inPlantCount={stats?.kpis?.in_plant_count ?? 0}
+        waitingTooLongCount={stats?.kpis?.waiting_too_long_count ?? 0}
+        qcRejectedCount={stats?.kpis?.qc_rejected_count ?? 0}
+        totalTankersCount={stats?.kpis?.total_dispatched_count ?? records.length}
+      />
 
       {/* 2. KPI CARDS */}
       <div

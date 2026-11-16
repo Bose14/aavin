@@ -133,3 +133,56 @@ test('Frontend Tanker Timeline: renders mini and compact variants without error'
   assert.ok(compactHtml.includes('tanker-timeline-compact'));
   assert.ok(compactHtml.includes('Tanker Journey Progress:'));
 });
+
+test('Frontend Stage Pipeline: renders connected stepper with all 8 stages, checkmarks & pills', () => {
+  const pipelinePath = path.resolve(__dirname, '../src/components/StagePipeline.tsx');
+  const content = fs.readFileSync(pipelinePath, 'utf8');
+  const compiled = ts.transpileModule(content, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      jsx: ts.JsxEmit.ReactJSX,
+    },
+  });
+  const m = { exports: {} };
+  const jsxRuntime = require('react/jsx-runtime');
+  const customRequire = (id) => {
+    if (id === 'react') return React;
+    if (id.includes('jsx-runtime')) return jsxRuntime;
+    return {};
+  };
+  const fn = new Function('require', 'module', 'exports', 'React', compiled.outputText);
+  fn(customRequire, m, m.exports, React);
+  const { StagePipeline } = m.exports;
+
+  const chips = {
+    on_the_way: { count: 2, delayedCount: 0, label: 'On the way' },
+    vehicle_entered: { count: 1, delayedCount: 1, label: 'Vehicle Entered' },
+    gross_done: { count: 3, delayedCount: 0, label: 'Gross Done' },
+    qc_done: { count: 1, delayedCount: 0, label: 'QC Done' },
+    unloaded: { count: 0, delayedCount: 0, label: 'Unloaded' },
+    tare_done: { count: 0, delayedCount: 0, label: 'Tare Done' },
+    cip_done: { count: 0, delayedCount: 0, label: 'CIP Done' },
+    exited: { count: 4, delayedCount: 0, label: 'Vehicle Exit' },
+  };
+
+  const html = renderToStaticMarkup(
+    React.createElement(StagePipeline, {
+      chips,
+      selectedStage: 'vehicle_entered',
+      onSelectStage: () => {},
+      inPlantCount: 5,
+      waitingTooLongCount: 1,
+      totalTankersCount: 11,
+    }),
+  );
+
+  assert.ok(html.includes('Tanker Journey Pipeline'));
+  assert.ok(html.includes('In Plant :'));
+  assert.ok(html.includes('5 tankers'));
+  assert.ok(html.includes('Vehicle Entered'));
+  assert.ok(html.includes('Gross Done'));
+  assert.ok(html.includes('Vehicle Exit'));
+  assert.ok(html.includes('! 1'));
+  assert.ok(html.includes('polyline points="20 6 9 17 4 12"'));
+});

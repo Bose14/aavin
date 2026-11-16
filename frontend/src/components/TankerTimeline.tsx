@@ -1,4 +1,3 @@
-import React from 'react';
 import type {
   DerivedTankerJourney,
   DerivedTimelineStep,
@@ -7,6 +6,9 @@ import { formatLitres } from '../lib/format';
 
 export interface TankerTimelineProps {
   journey: DerivedTankerJourney;
+  tankerNumber?: string;
+  sealNumber?: string;
+  dispatchTime?: string;
   variant?: 'full' | 'compact' | 'mini';
   className?: string;
   onStepClick?: (step: DerivedTimelineStep) => void;
@@ -15,11 +17,27 @@ export interface TankerTimelineProps {
 
 export function TankerTimeline({
   journey,
+  tankerNumber,
+  sealNumber,
+  dispatchTime,
   variant = 'full',
   className = '',
   onStepClick,
   showCalculatedBlock = true,
 }: TankerTimelineProps) {
+  const displayTanker =
+    tankerNumber ||
+    (journey as any).tanker_number ||
+    (journey as any).tankerNumber ||
+    (journey.timelineSteps[0]?.data?.tanker_number as string) ||
+    '';
+  const displaySeal =
+    sealNumber ||
+    (journey as any).seal_number ||
+    (journey as any).sealNumber ||
+    (journey.timelineSteps[0]?.data?.seal_number as string) ||
+    '';
+  const displayTime = dispatchTime || (journey as any).dispatch_time || (journey as any).dispatchTime || '';
   // Mini 7-dot stepper for table rows
   if (variant === 'mini') {
     return (
@@ -74,43 +92,104 @@ export function TankerTimeline({
     );
   }
 
-  // Compact collapsed version for plant team forms (GATE, QC, UNLOADING)
+  // Compact connected horizontal stepper version for plant team forms (GATE, QC, UNLOADING)
   if (variant === 'compact') {
     return (
       <div
         className={`tanker-timeline-compact card ${className}`}
         style={{
-          padding: '12px 16px',
-          marginBottom: '16px',
-          background: '#f8fafc',
+          padding: '16px 20px',
+          marginBottom: '20px',
+          background: '#ffffff',
           border: '1px solid #e2e8f0',
-          borderRadius: '8px',
+          borderRadius: '12px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
         }}
+        role="region"
+        aria-label="Tanker Journey Stepper"
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-          <div>
-            <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>Tanker Journey Progress: </span>
+        {/* Top Order-ID & Status Header (Exact reference image layout) */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px',
+            paddingBottom: '14px',
+            borderBottom: '1px solid #f1f5f9',
+            marginBottom: '16px',
+          }}
+        >
+          {/* Left: Order / Tanker ID with green highlight */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="9" cy="21" r="1" />
+              <circle cx="20" cy="21" r="1" />
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+            </svg>
+            <span style={{ fontSize: '14px', fontWeight: 700, color: '#1e293b' }}>
+              Tanker Journey Progress: <strong style={{ color: '#16a34a', fontWeight: 800 }}>#{displayTanker || 'TANKER'}</strong>
+            </span>
+          </div>
+
+          {/* Right: Colored Pills (Expected Arrival & Tracking ID style) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {displayTime && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#475569', fontWeight: 600 }}>
+                <span>Expected Arrival</span>
+                <span
+                  style={{
+                    backgroundColor: '#2563eb',
+                    color: '#ffffff',
+                    padding: '3px 10px',
+                    borderRadius: '14px',
+                    fontWeight: 700,
+                    fontSize: '11px',
+                  }}
+                >
+                  {displayTime}
+                </span>
+              </div>
+            )}
+
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#475569', fontWeight: 600 }}>
+              <span>Tracking ID</span>
+              <span
+                style={{
+                  backgroundColor: displaySeal ? '#dc2626' : '#64748b',
+                  color: '#ffffff',
+                  padding: '3px 10px',
+                  borderRadius: '14px',
+                  fontWeight: 700,
+                  fontSize: '11px',
+                }}
+              >
+                {displaySeal || displayTanker || 'LIVE'}
+              </span>
+            </div>
+
             <span
               style={{
                 display: 'inline-block',
-                padding: '2px 8px',
+                padding: '3px 9px',
                 borderRadius: '12px',
-                fontSize: '12px',
-                fontWeight: 600,
+                fontSize: '11px',
+                fontWeight: 700,
                 backgroundColor: journey.stageColor.badgeBg,
                 color: journey.stageColor.badgeText,
               }}
             >
               {journey.tripStatusLabel}
             </span>
+
             {journey.isOverLimit && (
               <span
                 style={{
-                  marginLeft: '8px',
-                  padding: '2px 6px',
-                  borderRadius: '10px',
+                  padding: '3px 8px',
+                  borderRadius: '12px',
                   fontSize: '11px',
-                  fontWeight: 700,
+                  fontWeight: 800,
                   backgroundColor: '#fee2e2',
                   color: '#991b1b',
                 }}
@@ -119,72 +198,148 @@ export function TankerTimeline({
               </span>
             )}
           </div>
-          <div style={{ fontSize: '12px', color: '#64748b' }}>
-            Waiting on: <strong style={{ textTransform: 'uppercase', color: '#1e293b' }}>{journey.waitingTeamLabel}</strong>
-          </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
-          {journey.timelineSteps.map((step, idx) => {
-            const isDone = step.status === 'done';
-            const isCurrent = step.status === 'current';
-            const isRejected = step.status === 'rejected';
-            const isSkipped = step.status === 'skipped';
+        {/* Horizontal Connected Stepper Line */}
+        <div style={{ overflowX: 'auto', paddingBottom: '6px', paddingTop: '4px' }}>
+          <div style={{ display: 'flex', minWidth: '700px', position: 'relative' }}>
+            {journey.timelineSteps.map((step, idx) => {
+              const isDone = step.status === 'done';
+              const isCurrent = step.status === 'current';
+              const isRejected = step.status === 'rejected';
+              const isSkipped = step.status === 'skipped';
+              const isPending = step.status === 'pending';
 
-            let dotColor = '#cbd5e1';
-            let textColor = '#64748b';
-            if (isDone) {
-              dotColor = '#22c55e';
-              textColor = '#166534';
-            } else if (isCurrent) {
-              dotColor = step.isOverLimit ? '#ef4444' : '#ea580c';
-              textColor = step.isOverLimit ? '#991b1b' : '#c2410c';
-            } else if (isRejected) {
-              dotColor = '#ef4444';
-              textColor = '#991b1b';
-            } else if (isSkipped) {
-              dotColor = '#94a3b8';
-              textColor = '#64748b';
-            }
+              let nodeBg = '#64748b';
+              if (isDone) nodeBg = '#16a34a'; // Solid green like reference image
+              else if (isCurrent) nodeBg = step.isOverLimit ? '#ef4444' : '#ea580c';
+              else if (isRejected) nodeBg = '#ef4444';
+              else if (isSkipped) nodeBg = '#94a3b8';
 
-            return (
-              <React.Fragment key={step.key}>
+              const isLeftLineGreen = idx > 0 && journey.timelineSteps[idx - 1].status === 'done';
+              const isRightLineGreen = isDone;
+
+              return (
                 <div
+                  key={step.key}
                   style={{
+                    flex: 1,
                     display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
-                    gap: '6px',
-                    whiteSpace: 'nowrap',
-                    opacity: step.status === 'pending' ? 0.6 : 1,
+                    cursor: onStepClick ? 'pointer' : 'default',
+                    userSelect: 'none',
+                    padding: '2px 4px',
                   }}
+                  onClick={() => onStepClick?.(step)}
                   title={step.keyDataSummary}
                 >
-                  <span
+                  {/* Stepper Node & Connector Line */}
+                  <div
                     style={{
-                      width: '18px',
-                      height: '18px',
-                      borderRadius: '50%',
-                      backgroundColor: dotColor,
-                      color: '#ffffff',
+                      width: '100%',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '10px',
-                      fontWeight: 700,
+                      position: 'relative',
+                      height: '38px',
                     }}
                   >
-                    {isDone ? '✓' : isRejected ? '✕' : isSkipped ? '–' : step.stepNumber}
-                  </span>
-                  <span style={{ fontSize: '12px', fontWeight: isCurrent ? 700 : 500, color: textColor }}>
-                    {step.title}
-                  </span>
+                    {/* Left Line */}
+                    <div
+                      style={{
+                        flex: 1,
+                        height: '5px',
+                        backgroundColor: idx === 0 ? 'transparent' : isLeftLineGreen ? '#16a34a' : '#64748b',
+                        borderRadius: idx === 0 ? '0' : '3px 0 0 3px',
+                      }}
+                    />
+
+                    {/* Circular Node */}
+                    <div
+                      style={{
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: '50%',
+                        backgroundColor: nodeBg,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#ffffff',
+                        boxShadow: isCurrent ? '0 0 0 4px rgba(234, 88, 12, 0.3)' : '0 2px 4px rgba(0,0,0,0.12)',
+                        position: 'relative',
+                        zIndex: 2,
+                        transform: isCurrent ? 'scale(1.1)' : 'scale(1)',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {isDone ? (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : isRejected ? (
+                        <span style={{ fontSize: '14px', fontWeight: 800 }}>✕</span>
+                      ) : isSkipped ? (
+                        <span style={{ fontSize: '14px', fontWeight: 800 }}>–</span>
+                      ) : isCurrent ? (
+                        <span style={{ fontSize: '11px', fontWeight: 800 }}>●</span>
+                      ) : (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </div>
+
+                    {/* Right Line */}
+                    <div
+                      style={{
+                        flex: 1,
+                        height: '5px',
+                        backgroundColor: idx === journey.timelineSteps.length - 1 ? 'transparent' : isRightLineGreen ? '#16a34a' : '#64748b',
+                        borderRadius: idx === journey.timelineSteps.length - 1 ? '0' : '0 3px 3px 0',
+                      }}
+                    />
+                  </div>
+
+                  {/* Under Node: Title and detail */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      textAlign: 'center',
+                      marginTop: '8px',
+                      gap: '2px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        fontWeight: isCurrent ? 800 : 700,
+                        color: isCurrent ? '#ea580c' : isDone ? '#166534' : isPending ? '#64748b' : '#1e293b',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {step.title}
+                    </div>
+
+                    <div style={{ fontSize: '10.5px', color: '#64748b' }}>
+                      {isDone ? (
+                        <span style={{ color: '#16a34a', fontWeight: 600 }}>Done</span>
+                      ) : isCurrent ? (
+                        <span style={{ color: step.isOverLimit ? '#ef4444' : '#ea580c', fontWeight: 700 }}>
+                          Waiting ({step.waitingMinutes ?? 0}m)
+                        </span>
+                      ) : isSkipped ? (
+                        <span style={{ color: '#94a3b8' }}>Skipped</span>
+                      ) : (
+                        <span>{step.teamLabel}</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                {idx < journey.timelineSteps.length - 1 && (
-                  <span style={{ color: '#cbd5e1', fontSize: '12px' }}>→</span>
-                )}
-              </React.Fragment>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
     );
