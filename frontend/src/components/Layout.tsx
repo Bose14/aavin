@@ -32,6 +32,18 @@ const unitNav: NavItem[] = [
   { to: '/unit/records', labelKey: 'navMyRecords', fallbackLabel: 'My Records' },
 ];
 
+const gateNav: NavItem[] = [
+  { to: '/gate', labelKey: 'navGate', fallbackLabel: 'Gate Operations' },
+];
+
+const qcNav: NavItem[] = [
+  { to: '/qc', labelKey: 'navQC', fallbackLabel: 'QC Lab' },
+];
+
+const unloadingNav: NavItem[] = [
+  { to: '/unloading', labelKey: 'navUnloading', fallbackLabel: 'Unloading Bay' },
+];
+
 export default function Layout({ children }: { children: ReactNode }) {
   const { profile, signOut } = useAuth();
   const { lang, setLang, t } = useTranslation();
@@ -72,6 +84,9 @@ export default function Layout({ children }: { children: ReactNode }) {
 
   const nav = profile?.role === 'superadmin' ? superAdminNav
     : profile?.role === 'admin' ? adminNav
+    : profile?.role === 'gate' ? gateNav
+    : profile?.role === 'qc' ? qcNav
+    : profile?.role === 'unloading' ? unloadingNav
     : unitNav;
 
   const handleSignOut = async () => {

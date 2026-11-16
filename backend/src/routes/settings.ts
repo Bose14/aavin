@@ -53,6 +53,16 @@ router.put('/', requireRole('admin'), async (req, res) => {
       locations: Array.isArray(body.locations)
         ? body.locations.map((s) => String(s).trim()).filter(Boolean)
         : undefined,
+      stage_time_limits_min: typeof body.stage_time_limits_min === 'object' && body.stage_time_limits_min !== null
+        ? (body.stage_time_limits_min as any)
+        : undefined,
+      transit_loss_warn_pct: body.transit_loss_warn_pct != null ? Number(body.transit_loss_warn_pct) : undefined,
+      transit_loss_danger_pct: body.transit_loss_danger_pct != null ? Number(body.transit_loss_danger_pct) : undefined,
+      net_weight_diff_threshold_kg: body.net_weight_diff_threshold_kg != null ? Number(body.net_weight_diff_threshold_kg) : undefined,
+      quality_drop_threshold_fat: body.quality_drop_threshold_fat != null ? Number(body.quality_drop_threshold_fat) : undefined,
+      quality_drop_threshold_snf: body.quality_drop_threshold_snf != null ? Number(body.quality_drop_threshold_snf) : undefined,
+      milk_density_kg_per_litre: body.milk_density_kg_per_litre != null ? Number(body.milk_density_kg_per_litre) : undefined,
+      auto_refresh_interval_sec: body.auto_refresh_interval_sec != null ? Number(body.auto_refresh_interval_sec) : undefined,
     });
 
     await writeAuditLog({

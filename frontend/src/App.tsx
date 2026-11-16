@@ -21,6 +21,10 @@ import MilkEntry from './pages/unit/MilkEntry';
 import TankerDispatch from './pages/unit/TankerDispatch';
 import UnitRecords from './pages/unit/UnitRecords';
 
+import GateOperations from './pages/plant/GateOperations';
+import QCLab from './pages/plant/QCLab';
+import UnloadingBay from './pages/plant/UnloadingBay';
+
 export default function App() {
   return (
     <LanguageProvider>
@@ -54,6 +58,11 @@ export default function App() {
             <Route path="/unit/milk-entry" element={<ProtectedRoute role="unit"><Layout><MilkEntry /></Layout></ProtectedRoute>} />
             <Route path="/unit/tanker" element={<ProtectedRoute role="unit"><Layout><TankerDispatch /></Layout></ProtectedRoute>} />
             <Route path="/unit/records" element={<ProtectedRoute role="unit"><Layout><UnitRecords /></Layout></ProtectedRoute>} />
+
+            {/* Plant Team Portals */}
+            <Route path="/gate" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><GateOperations /></Layout></ProtectedRoute>} />
+            <Route path="/qc" element={<ProtectedRoute role={['qc', 'admin', 'superadmin']}><Layout><QCLab /></Layout></ProtectedRoute>} />
+            <Route path="/unloading" element={<ProtectedRoute role={['unloading', 'admin', 'superadmin']}><Layout><UnloadingBay /></Layout></ProtectedRoute>} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

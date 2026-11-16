@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
+import { roleHome } from '../components/ProtectedRoute';
 import Captcha from '../components/Captcha';
 
 export default function Login() {
@@ -22,7 +23,7 @@ export default function Login() {
         navigate('/change-password', { replace: true });
         return;
       }
-      navigate(profile.role === 'superadmin' ? '/superadmin' : profile.role === 'admin' ? '/admin' : '/unit', { replace: true });
+      navigate(roleHome(profile.role), { replace: true });
     }
   }, [profile, authLoading, navigate]);
 

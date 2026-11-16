@@ -31,6 +31,9 @@ export const TRANSLATIONS = {
     navMilkRecords: 'Milk Records',
     navTankerRecords: 'Tanker Records',
     navSettings: 'Settings',
+    navGate: 'Gate Operations',
+    navQC: 'QC Laboratory',
+    navUnloading: 'Unloading Bay',
 
     // Tooltips ("i")
     tipNetQuantity: 'Net accepted milk after deducting sour/rejected quantity (Gross Quantity − Rejection).',
@@ -159,6 +162,9 @@ export const TRANSLATIONS = {
     navMilkRecords: 'பால் பதிவுகள்',
     navTankerRecords: 'டேங்கர் பதிவுகள்',
     navSettings: 'அமைப்புகள்',
+    navGate: 'நுழைவாயில் செயல்பாடுகள்',
+    navQC: 'தரக்கட்டுப்பாட்டு ஆய்வகம்',
+    navUnloading: 'பால் இறக்கும் தளம்',
 
     // Tooltips
     tipNetQuantity: 'கெட்டுப்போன/நிராகரிக்கப்பட்ட பாலை கழித்த பிறகு ஏற்றுக்கொள்ளப்பட்ட நிகர பால் அளவு (மொத்த அளவு − நிராகரிப்பு).',

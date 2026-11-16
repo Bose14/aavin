@@ -5,7 +5,7 @@ import { supabase } from '../supabase';
 
 export interface UserProfile {
   id: string;
-  role: 'superadmin' | 'admin' | 'unit';
+  role: 'superadmin' | 'admin' | 'unit' | 'gate' | 'qc' | 'unloading';
   zone_id: string | null;
   unit_id: string | null;
   full_name: string | null;

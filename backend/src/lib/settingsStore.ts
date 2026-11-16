@@ -41,6 +41,7 @@ interface FallbackStoreData {
   sellingRates: Record<string, SellingRateRule[]>;
   auditLogs: AuditLogEntry[];
   correctionRequests: CorrectionRequest[];
+  tankerStages: Record<string, any[]>;
 }
 
 const FALLBACK_DIR = path.resolve(__dirname, '../../.data');
@@ -70,12 +71,13 @@ function readFallback(): FallbackStoreData {
         sellingRates: parsed.sellingRates ?? {},
         auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
         correctionRequests: Array.isArray(parsed.correctionRequests) ? parsed.correctionRequests : [],
+        tankerStages: parsed.tankerStages && typeof parsed.tankerStages === 'object' ? parsed.tankerStages : {},
       };
     }
   } catch {
     // Corrupted fallback ignored; return empty store
   }
-  return { zoneSettings: {}, sellingRates: {}, auditLogs: [], correctionRequests: [] };
+  return { zoneSettings: {}, sellingRates: {}, auditLogs: [], correctionRequests: [], tankerStages: {} };
 }
 
 function writeFallback(data: FallbackStoreData): void {
@@ -122,6 +124,14 @@ export async function getZoneSettings(zoneId: string): Promise<ZoneSettings> {
     show_unit_profit: Boolean(data.show_unit_profit),
     destinations: Array.isArray(data.destinations) ? data.destinations : defaults.destinations,
     locations: Array.isArray(data.locations) ? data.locations : defaults.locations,
+    stage_time_limits_min: data.stage_time_limits_min ?? defaults.stage_time_limits_min,
+    transit_loss_warn_pct: Number(data.transit_loss_warn_pct ?? defaults.transit_loss_warn_pct),
+    transit_loss_danger_pct: Number(data.transit_loss_danger_pct ?? defaults.transit_loss_danger_pct),
+    net_weight_diff_threshold_kg: Number(data.net_weight_diff_threshold_kg ?? defaults.net_weight_diff_threshold_kg),
+    quality_drop_threshold_fat: Number(data.quality_drop_threshold_fat ?? defaults.quality_drop_threshold_fat),
+    quality_drop_threshold_snf: Number(data.quality_drop_threshold_snf ?? defaults.quality_drop_threshold_snf),
+    milk_density_kg_per_litre: Number(data.milk_density_kg_per_litre ?? defaults.milk_density_kg_per_litre),
+    auto_refresh_interval_sec: Number(data.auto_refresh_interval_sec ?? defaults.auto_refresh_interval_sec),
     updated_at: data.updated_at,
   };
 }
@@ -369,4 +379,104 @@ export async function resolveCorrectionRequest(
     }
   }
 }
+
+export interface TankerStageRecordRow {
+  id?: string;
+  trip_id: string;
+  stage_name: string;
+  team: string;
+  status: 'done' | 'rejected' | 'skipped';
+  stage_data?: Record<string, unknown>;
+  done_by?: string | null;
+  done_by_name?: string | null;
+  done_at?: string;
+  created_at?: string;
+}
+
+export async function recordTankerStageInDb(stage: TankerStageRecordRow): Promise<TankerStageRecordRow> {
+  const insertPayload = {
+    trip_id: stage.trip_id,
+    stage_name: stage.stage_name,
+    team: stage.team,
+    status: stage.status || 'done',
+    stage_data: stage.stage_data || {},
+    done_by: stage.done_by || null,
+    done_by_name: stage.done_by_name || null,
+    done_at: stage.done_at || new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from('tanker_stages')
+    .upsert(insertPayload, { onConflict: 'trip_id,stage_name' })
+    .select()
+    .single();
+
+  if (error && isMissingSchemaError(error)) {
+    const store = readFallback();
+    if (!store.tankerStages[stage.trip_id]) {
+      store.tankerStages[stage.trip_id] = [];
+    }
+    const list = store.tankerStages[stage.trip_id];
+    const existingIdx = list.findIndex((s) => s.stage_name === stage.stage_name);
+    const row = {
+      id: existingIdx >= 0 ? list[existingIdx].id : crypto.randomUUID(),
+      ...insertPayload,
+      created_at: new Date().toISOString(),
+    };
+    if (existingIdx >= 0) list[existingIdx] = row;
+    else list.push(row);
+    writeFallback(store);
+    return row;
+  }
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data as TankerStageRecordRow;
+}
+
+export async function getTankerStagesForTrip(tripId: string): Promise<TankerStageRecordRow[]> {
+  const { data, error } = await supabase
+    .from('tanker_stages')
+    .select('*')
+    .eq('trip_id', tripId)
+    .order('done_at', { ascending: true });
+
+  if (error && isMissingSchemaError(error)) {
+    const store = readFallback();
+    return store.tankerStages[tripId] ?? [];
+  }
+  if (error) throw new Error(error.message);
+  return (data ?? []) as TankerStageRecordRow[];
+}
+
+export async function getTankerStagesForTrips(tripIds: string[]): Promise<Record<string, TankerStageRecordRow[]>> {
+  if (tripIds.length === 0) return {};
+  const { data, error } = await supabase
+    .from('tanker_stages')
+    .select('*')
+    .in('trip_id', tripIds)
+    .order('done_at', { ascending: true });
+
+  if (error && isMissingSchemaError(error)) {
+    const store = readFallback();
+    const result: Record<string, TankerStageRecordRow[]> = {};
+    for (const id of tripIds) {
+      if (store.tankerStages[id]) {
+        result[id] = store.tankerStages[id];
+      }
+    }
+    return result;
+  }
+  if (error) throw new Error(error.message);
+
+  const result: Record<string, TankerStageRecordRow[]> = {};
+  for (const row of (data ?? []) as TankerStageRecordRow[]) {
+    if (!result[row.trip_id]) result[row.trip_id] = [];
+    result[row.trip_id].push(row);
+  }
+  return result;
+}
+
 

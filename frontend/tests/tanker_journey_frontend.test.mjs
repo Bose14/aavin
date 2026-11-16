@@ -1,0 +1,135 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createRequire } from 'node:module';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const ts = require('../../backend/node_modules/typescript');
+
+function loadTsModule(filePath) {
+  const content = fs.readFileSync(filePath, 'utf8');
+  const compiled = ts.transpileModule(content, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      jsx: ts.JsxEmit.ReactJSX,
+    },
+  });
+  const m = { exports: {} };
+  const customRequire = (id) => {
+    if (id === './format' || id.endsWith('/format') || id.includes('format')) {
+      return {
+        DEFAULT_ASSUMPTIONS: {
+          milkDensityKgPerLitre: 1.030,
+          stageTimeLimitsMin: {
+            vehicle_entered: 15,
+            gross_weight: 15,
+            qc_completed: 30,
+            unloaded: 45,
+            tare_weight: 15,
+            cip_completed: 30,
+            vehicle_exit: 15,
+          },
+          transitLossWarnPct: 1.0,
+          transitLossDangerPct: 2.0,
+          netWeightDiffThresholdKg: 50,
+          qualityDropThresholdFat: 0.30,
+          qualityDropThresholdSnf: 0.20,
+        },
+        DEFAULT_STAGE_TIME_LIMITS: {
+          vehicle_entered: 15,
+          gross_weight: 15,
+          qc_completed: 30,
+          unloaded: 45,
+          tare_weight: 15,
+          cip_completed: 30,
+          vehicle_exit: 15,
+        },
+        formatDateDDMMYYYY: (d) => d,
+        formatLitres: (l) => `${l} L`,
+      };
+    }
+    return require(id);
+  };
+  const fn = new Function('require', 'module', 'exports', compiled.outputText);
+  fn(customRequire, m, m.exports);
+  return m.exports;
+}
+
+test('Frontend Tanker Journey: derives 7 stages, density metrics & timeline steps', () => {
+  const journeyModule = loadTsModule(path.resolve(__dirname, '../src/lib/tankerJourney.ts'));
+  const { deriveTankerJourneyState, calculateTankerMetrics } = journeyModule;
+
+  const trip = {
+    id: 'f-trip-1',
+    date: '2026-11-16',
+    tanker_number: 'TN-25-X-9988',
+    quantity_dispatched: 10000,
+    gross_weight_kg: 25300,
+    stages: [
+      { stage_name: 'vehicle_entered', team: 'gate', status: 'done' },
+      { stage_name: 'gross_weight', team: 'gate', status: 'done', stage_data: { gross_weight_kg: 25300 } },
+    ],
+  };
+
+  const state = deriveTankerJourneyState(trip, { milk_density_kg_per_litre: 1.030 });
+  assert.equal(state.tripStatus, 'gross_done');
+  assert.equal(state.currentStageKey, 'qc_completed');
+  assert.equal(state.waitingTeam, 'qc');
+});
+
+test('Frontend Tanker Timeline: renders mini and compact variants without error', () => {
+  const journeyModule = loadTsModule(path.resolve(__dirname, '../src/lib/tankerJourney.ts'));
+  const { deriveTankerJourneyState } = journeyModule;
+
+  const trip = {
+    id: 'f-trip-2',
+    date: '2026-11-16',
+    tanker_number: 'TN-25-Y-7766',
+    quantity_dispatched: 8000,
+    stages: [],
+  };
+  const journey = deriveTankerJourneyState(trip);
+
+  // Load TankerTimeline JSX
+  const timelineContent = fs.readFileSync(path.resolve(__dirname, '../src/components/TankerTimeline.tsx'), 'utf8');
+  const compiled = ts.transpileModule(timelineContent, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      jsx: ts.JsxEmit.React,
+    },
+  });
+
+  const m = { exports: {} };
+  const customRequire = (id) => {
+    if (id === 'react' || id.includes('react')) return { ...React, default: React };
+    if (id.includes('tankerJourney')) return journeyModule;
+    if (id.includes('format')) {
+      return {
+        formatDateDDMMYYYY: (d) => d,
+        formatLitres: (l) => `${l} L`,
+      };
+    }
+    return require(id);
+  };
+
+  const fn = new Function('require', 'module', 'exports', 'React', compiled.outputText);
+  fn(customRequire, m, m.exports, React);
+  const { TankerTimeline } = m.exports;
+
+  // Mini variant SSR
+  const miniHtml = renderToStaticMarkup(React.createElement(TankerTimeline, { journey, variant: 'mini' }));
+  assert.ok(miniHtml.includes('tanker-stepper-mini'));
+  assert.ok(miniHtml.includes('aria-label'));
+
+  // Compact variant SSR
+  const compactHtml = renderToStaticMarkup(React.createElement(TankerTimeline, { journey, variant: 'compact' }));
+  assert.ok(compactHtml.includes('tanker-timeline-compact'));
+  assert.ok(compactHtml.includes('Tanker Journey Progress:'));
+});
