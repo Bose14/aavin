@@ -65,6 +65,7 @@ export default function AdminTankerRecords() {
   const [records, setRecords] = useState<any[]>([]);
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [units, setUnits] = useState<Unit[]>([]);
+  const [teamUserCounts, setTeamUserCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
@@ -202,7 +203,7 @@ export default function AdminTankerRecords() {
         if (toDate) params.to = toDate;
         if (searchQuery.trim()) params.search = searchQuery.trim();
 
-        const [tResSettled, sResSettled, uResSettled] = await Promise.allSettled([
+        const [tResSettled, sResSettled, uResSettled, teamsResSettled] = await Promise.allSettled([
           api.get<any[]>('/tanker', { params }),
           api.get<StatsResponse>('/tanker/stats', {
             params: {
@@ -212,6 +213,7 @@ export default function AdminTankerRecords() {
             },
           }),
           api.get<Unit[]>('/units'),
+          api.get<any[]>('/teams'),
         ]);
 
         if (tResSettled.status === 'fulfilled') {
@@ -231,6 +233,15 @@ export default function AdminTankerRecords() {
 
         if (uResSettled.status === 'fulfilled') {
           setUnits(uResSettled.value.data || []);
+        }
+
+        if (teamsResSettled.status === 'fulfilled') {
+          const counts: Record<string, number> = {};
+          for (const tm of (teamsResSettled.value.data || [])) {
+            counts[tm.code.toUpperCase()] = tm.active_user_count || 0;
+            counts[tm.code.toLowerCase()] = tm.active_user_count || 0;
+          }
+          setTeamUserCounts(counts);
         }
 
         if (sResSettled.status === 'fulfilled') {
@@ -721,6 +732,7 @@ export default function AdminTankerRecords() {
         waitingTooLongCount={stats?.kpis?.waiting_too_long_count ?? 0}
         qcRejectedCount={stats?.kpis?.qc_rejected_count ?? 0}
         totalTankersCount={stats?.kpis?.total_dispatched_count ?? records.length}
+        teamUserCounts={teamUserCounts}
       />
 
       {/* 2. KPI CARDS */}

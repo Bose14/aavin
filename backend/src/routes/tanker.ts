@@ -444,7 +444,8 @@ router.get('/', async (req, res) => {
 
     // 2. Waiting team filter
     if (waiting_team) {
-      enriched = enriched.filter((r) => r.journey.waitingTeam === waiting_team);
+      const wt = waiting_team.toLowerCase();
+      enriched = enriched.filter((r) => (r.journey.waitingTeam || '').toLowerCase() === wt);
     }
 
     // 3. Tab Status filter: waiting (default), processed, rejected, all
@@ -693,7 +694,7 @@ router.post('/', async (req, res) => {
 router.post('/:id/stages/:stageKey', async (req, res) => {
   const id = String(req.params.id);
   const stageKey = req.params.stageKey as TankerStageKey;
-  const userRole = req.profile.role;
+  const userRole = (req.profile.role || '').toLowerCase();
   const zoneId = req.profile.zone_id;
 
   const stageDef = TANKER_STAGES.find((s) => s.key === stageKey);
@@ -709,7 +710,7 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
   // ADMIN and SUPERADMIN can do any stage
   const isAdmin = userRole === 'admin' || userRole === 'superadmin';
   if (!isAdmin) {
-    if (stageDef.team !== userRole) {
+    if (stageDef.team.toLowerCase() !== userRole) {
       res.status(403).json({
         error: `Only ${stageDef.teamLabel.toUpperCase()} team or ADMIN can record ${stageDef.title}`,
       });
@@ -738,6 +739,42 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
   const existingKeys = new Set(existingStages.map((s) => s.stage_name));
   const qcStage = existingStages.find((s) => s.stage_name === 'qc_completed');
   const isQcRejected = qcStage?.status === 'rejected';
+
+  // Check current status and prevent re-recording completed stages or acting out of turn
+  const settings = await getZoneSettings(zoneId);
+  const journey = deriveTankerJourneyState({
+    id,
+    date: String(trip.date),
+    tanker_number: String(trip.tanker_number ?? ''),
+    driver_name: (trip.driver_name as string) || null,
+    seal_number: (trip.seal_number as string) || null,
+    quantity_dispatched: Number(trip.quantity_dispatched || 0),
+    trip_status: trip.trip_status as any,
+    current_stage: trip.current_stage as any,
+    waiting_team: trip.waiting_team as any,
+    stage_data: (trip.stage_data as Record<string, unknown>) || {},
+    stages: existingStages,
+    created_at: (trip.created_at as string) || undefined,
+  }, settings);
+
+  if (journey.tripStatus === 'exited') {
+    res.status(400).json({ error: 'This tanker journey is already fully completed and exited' });
+    return;
+  }
+
+  if (existingKeys.has(stageKey)) {
+    res.status(400).json({ error: `Stage ${stageDef.title} has already been completed for this tanker` });
+    return;
+  }
+
+  if (!isAdmin && journey.currentStageKey !== stageKey) {
+    res.status(400).json({
+      error: `Cannot record ${stageDef.title}: Trip is currently waiting for stage "${journey.currentStageTitle}" (${journey.currentStageKey})`,
+      current_stage: journey.currentStageKey,
+      current_waiting_team: journey.waitingTeam,
+    });
+    return;
+  }
 
   // 3. Enforce strict sequencing
   switch (stageKey) {
@@ -947,14 +984,13 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
   });
 
   const allStages = await getTankerStagesForTrip(id);
-  const settings = await getZoneSettings(zoneId);
   const enriched = enrichTankerRow((updatedTrip || { ...trip, ...updateTripFields }) as Record<string, unknown>, allStages as StageRecordItem[], settings);
 
   res.json(enriched);
 });
 
 // POST /tanker/:id/correct — Admin corrects stage data with mandatory reason
-router.post('/:id/correct', requireRole('admin'), async (req, res) => {
+router.post('/:id/correct', requireRole('admin', 'superadmin'), async (req, res) => {
   const id = String(req.params.id);
   const zoneId = req.profile.zone_id;
   const { stage_name, changes, reason } = req.body as {
@@ -1041,7 +1077,7 @@ router.post('/:id/correct', requireRole('admin'), async (req, res) => {
 });
 
 // POST /tanker/:id/remark — Admin adds remark or flags exception
-router.post('/:id/remark', requireRole('admin'), async (req, res) => {
+router.post('/:id/remark', requireRole('admin', 'superadmin'), async (req, res) => {
   const id = String(req.params.id);
   const zoneId = req.profile.zone_id;
   const { remark, is_exception } = req.body as {
@@ -1198,7 +1234,7 @@ router.get('/export/pdf', async (req, res) => {
 });
 
 // POST /tanker/seed — Injects test data covering every stage, delayed, and QC rejected
-router.post('/seed', async (req, res) => {
+router.post('/seed', requireRole('admin', 'superadmin'), async (req, res) => {
   const zoneId = req.profile.zone_id;
   try {
     // 1. Get or create a default unit
@@ -1436,7 +1472,7 @@ router.post('/seed', async (req, res) => {
 });
 
 // PATCH /tanker/:id/receive — Admin legacy endpoint maintained for compatibility
-router.patch('/:id/receive', requireRole('admin'), async (req, res) => {
+router.patch('/:id/receive', requireRole('admin', 'superadmin'), async (req, res) => {
   const id = String(req.params.id);
   const { received_qty, receipt_time, received_fat_pct, received_snf_pct } = req.body as {
     received_qty?: number;
@@ -1504,7 +1540,7 @@ router.patch('/:id/receive', requireRole('admin'), async (req, res) => {
 });
 
 // DELETE /tanker/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('admin', 'superadmin', 'unit'), async (req, res) => {
   const id = String(req.params.id);
   let query = supabase.from('tanker_dispatches').delete().eq('id', id);
   if (req.profile.role === 'unit') query = query.eq('unit_id', req.profile.unit_id!);

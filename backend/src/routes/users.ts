@@ -5,7 +5,7 @@ import { supabase, formatAdminAuthError, serviceKeyIssue, buildServiceKeyError }
 import { authMiddleware } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
 import { normalizeIndianPhone } from '../lib/calculations';
-import { isMissingSchemaError, writeAuditLog } from '../lib/settingsStore';
+import { isMissingSchemaError, writeAuditLog, getTeamByCode, getTeamsFromDb } from '../lib/settingsStore';
 
 const router = Router();
 router.use(authMiddleware);
@@ -45,99 +45,231 @@ router.post('/complete-password-change', async (req, res) => {
   res.json({ ok: true });
 });
 
-// GET /users — list users in the caller's zone
+// GET /users — list users in the caller's zone (unit staff + plant team users)
 router.get('/', requireRole('admin', 'superadmin'), async (req, res) => {
-  let query = supabase
-    .from('profiles')
-    .select('id, full_name, role, zone_id, unit_id, phone, created_at, units(name, unit_code), zones(name)')
-    .order('created_at', { ascending: false });
+  const { team, unit_id, status, search, zone_id: queryZoneId } = req.query as {
+    team?: string;
+    unit_id?: string;
+    status?: string;
+    search?: string;
+    zone_id?: string;
+  };
 
-  if (req.profile.role === 'admin') {
-    query = query.eq('zone_id', req.profile.zone_id).eq('role', 'unit');
-  } else {
-    query = query.in('role', ['admin', 'unit']);
-    const { zone_id } = req.query as { zone_id?: string };
-    if (zone_id) query = query.eq('zone_id', zone_id);
+  const allowedRoles = ['unit', 'gate', 'qc', 'unloading', 'GATE', 'QC', 'UNLOADING'];
+  if (req.profile.role === 'superadmin') {
+    allowedRoles.push('admin');
   }
 
-  const { data: profiles, error } = await query;
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  const extendedSelect = 'id, full_name, role, zone_id, unit_id, team_id, shift, username, phone, created_at, units(name, unit_code), zones(name)';
+  const baseSelect = 'id, full_name, role, zone_id, unit_id, phone, created_at, units(name, unit_code), zones(name)';
 
-  // Enrich with extended metadata (email, sub_role, is_active, must_change_password) from Auth Admin API
-  const authById = new Map<string, { email?: string; sub_role?: string; is_active?: boolean; must_change_password?: boolean }>();
-  const { data: authUsersData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-  for (const au of (authUsersData?.users ?? [])) {
-    authById.set(au.id, {
-      email: au.email,
-      sub_role: typeof au.user_metadata?.sub_role === 'string' ? au.user_metadata.sub_role : 'operator',
-      is_active: au.user_metadata?.is_active !== false,
-      must_change_password: Boolean(au.user_metadata?.must_change_password),
+  let query = supabase.from('profiles').select(extendedSelect).order('created_at', { ascending: false });
+
+  if (req.profile.role === 'admin') {
+    query = query.eq('zone_id', req.profile.zone_id).in('role', allowedRoles);
+  } else {
+    query = query.in('role', allowedRoles);
+    if (queryZoneId) query = query.eq('zone_id', queryZoneId);
+  }
+
+  let profiles: any[] | null = null;
+  let error: any = null;
+  const initialRes = await query;
+  profiles = initialRes.data as any;
+  error = initialRes.error;
+
+  if (error && (error.message?.includes('column') || error.code === '42703')) {
+    let fallbackQuery = supabase.from('profiles').select(baseSelect).order('created_at', { ascending: false });
+    if (req.profile.role === 'admin') {
+      fallbackQuery = fallbackQuery.eq('zone_id', req.profile.zone_id).in('role', allowedRoles);
+    } else {
+      fallbackQuery = fallbackQuery.in('role', allowedRoles);
+      if (queryZoneId) fallbackQuery = fallbackQuery.eq('zone_id', queryZoneId);
+    }
+    const fbRes = await fallbackQuery;
+    profiles = fbRes.data as any;
+    error = fbRes.error;
+  }
+
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+
+  // Enrich with extended metadata (email, sub_role, is_active, must_change_password, team, shift, username) from Auth Admin API
+  const authById = new Map<string, {
+    email?: string;
+    sub_role?: string;
+    is_active?: boolean;
+    must_change_password?: boolean;
+    team?: string;
+    shift?: string;
+    username?: string;
+    last_sign_in_at?: string;
+  }>();
+
+  try {
+    const { data: authUsersData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+    for (const au of (authUsersData?.users ?? [])) {
+      authById.set(au.id, {
+        email: au.email,
+        sub_role: typeof au.user_metadata?.sub_role === 'string' ? au.user_metadata.sub_role : 'operator',
+        is_active: au.user_metadata?.is_active !== false,
+        must_change_password: Boolean(au.user_metadata?.must_change_password),
+        team: au.user_metadata?.team,
+        shift: au.user_metadata?.shift,
+        username: au.user_metadata?.username,
+        last_sign_in_at: au.last_sign_in_at,
+      });
+    }
+  } catch (err) {
+    console.warn('[users/list] Failed to fetch auth list:', err);
+  }
+
+  const allTeams = await getTeamsFromDb();
+  const teamByCode = new Map(allTeams.map((t) => [t.code.toUpperCase(), t]));
+  const teamById = new Map(allTeams.map((t) => [t.id, t]));
+
+  let enriched = (profiles ?? []).map((p: any) => {
+    const meta = authById.get(p.id);
+    const roleUpper = (p.role || '').toUpperCase();
+    let teamObj = p.team_id ? teamById.get(p.team_id) : undefined;
+    if (!teamObj && ['GATE', 'QC', 'UNLOADING'].includes(roleUpper)) {
+      teamObj = teamByCode.get(roleUpper);
+    }
+
+    return {
+      ...p,
+      email: meta?.email ?? p.email ?? null,
+      sub_role: meta?.sub_role ?? p.sub_role ?? 'operator',
+      is_active: meta?.is_active ?? p.is_active ?? true,
+      must_change_password: meta?.must_change_password ?? p.must_change_password ?? false,
+      shift: p.shift || meta?.shift || 'General',
+      username: p.username || meta?.username || null,
+      last_sign_in_at: meta?.last_sign_in_at || null,
+      team: teamObj ? { id: teamObj.id, code: teamObj.code, name: teamObj.name } : null,
+    };
+  });
+
+  // Filter in memory for optional parameters
+  if (team) {
+    const tUpper = team.trim().toUpperCase();
+    enriched = enriched.filter((u) => {
+      const uRole = (u.role || '').toUpperCase();
+      return uRole === tUpper || u.team?.code === tUpper;
     });
   }
 
-  const enriched = (profiles ?? []).map((p) => {
-    const meta = authById.get(p.id);
-    return {
-      ...p,
-      email: meta?.email ?? null,
-      sub_role: meta?.sub_role ?? 'operator',
-      is_active: meta?.is_active ?? true,
-      must_change_password: meta?.must_change_password ?? false,
-    };
-  });
+  if (unit_id) {
+    enriched = enriched.filter((u) => u.unit_id === unit_id);
+  }
+
+  if (status) {
+    const sLower = status.trim().toLowerCase();
+    if (sLower === 'active') {
+      enriched = enriched.filter((u) => u.is_active !== false);
+    } else if (sLower === 'inactive') {
+      enriched = enriched.filter((u) => u.is_active === false);
+    }
+  }
+
+  if (search) {
+    const q = search.trim().toLowerCase();
+    enriched = enriched.filter((u) => {
+      const matchName = (u.full_name || '').toLowerCase().includes(q);
+      const matchEmail = (u.email || '').toLowerCase().includes(q);
+      const matchPhone = (u.phone || '').toLowerCase().includes(q);
+      const matchUser = (u.username || '').toLowerCase().includes(q);
+      const matchUnit = (u.units?.name || '').toLowerCase().includes(q);
+      const matchTeam = (u.team?.name || '').toLowerCase().includes(q);
+      return matchName || matchEmail || matchPhone || matchUser || matchUnit || matchTeam;
+    });
+  }
 
   res.json(enriched);
 });
 
-// POST /users/create — superadmin creates admin, admin creates unit user
+// POST /users/create — admin creates unit user or plant team user
 router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
   const {
     email: rawEmail,
     password: rawPassword,
     full_name: rawName,
     phone: rawPhone,
-    role,
+    user_type, // 'unit' | 'plant'
+    team: rawTeam, // 'GATE' | 'QC' | 'UNLOADING'
+    shift: rawShift = 'General',
+    username: rawUsername,
+    role: rawRole,
     sub_role = 'operator',
-    zone_id,
+    zone_id: rawZoneId,
     unit_id,
     force_password_change = true,
   } = req.body as {
-    email?: string; password?: string; full_name?: string; phone?: string;
-    role: string; sub_role?: 'operator' | 'supervisor'; zone_id: string; unit_id?: string;
+    email?: string;
+    password?: string;
+    full_name?: string;
+    phone?: string;
+    user_type?: 'unit' | 'plant';
+    team?: string;
+    shift?: 'Morning' | 'Evening' | 'General';
+    username?: string;
+    role?: string;
+    sub_role?: 'operator' | 'supervisor';
+    zone_id?: string;
+    unit_id?: string;
     force_password_change?: boolean;
   };
 
   const email = (rawEmail ?? '').trim().toLowerCase();
   const full_name = (rawName ?? '').trim();
+  const username = rawUsername ? rawUsername.trim() : null;
+  const shift = ['Morning', 'Evening', 'General'].includes(rawShift) ? rawShift : 'General';
+  const zone_id = rawZoneId || req.profile.zone_id;
+
+  // Determine user role and team
+  const isPlant = user_type === 'plant' || Boolean(rawTeam) || ['gate', 'qc', 'unloading'].includes((rawRole || '').toLowerCase());
+  let targetRole = 'unit';
+  let targetTeamCode: string | null = null;
+  let targetTeamId: string | null = null;
+
+  if (isPlant) {
+    targetTeamCode = (rawTeam || rawRole || '').trim().toUpperCase();
+    if (!['GATE', 'QC', 'UNLOADING'].includes(targetTeamCode)) {
+      res.status(400).json({ error: 'Valid team (GATE, QC, or UNLOADING) is required for plant users' });
+      return;
+    }
+    targetRole = targetTeamCode.toLowerCase();
+    const teamObj = await getTeamByCode(targetTeamCode);
+    targetTeamId = teamObj?.id ?? null;
+  } else {
+    targetRole = (rawRole || 'unit').toLowerCase();
+  }
 
   if (req.profile.role === 'admin') {
-    if (role !== 'unit') {
-      res.status(403).json({ error: 'Admins can only create unit users' });
+    if (!['unit', 'gate', 'qc', 'unloading'].includes(targetRole)) {
+      res.status(403).json({ error: 'Admins can only create Unit staff or Plant team users (GATE, QC, UNLOADING)' });
       return;
     }
     if (zone_id !== req.profile.zone_id) {
       res.status(403).json({ error: 'Cannot create users in another zone' });
       return;
     }
-    if (!unit_id) {
+    if (targetRole === 'unit' && !unit_id) {
       res.status(400).json({ error: 'unit_id required for unit users' });
       return;
     }
   }
 
   if (req.profile.role === 'superadmin') {
-    if (role === 'superadmin') {
+    if (targetRole === 'superadmin') {
       res.status(403).json({ error: 'Cannot create another superadmin' });
-      return;
-    }
-    if (!['admin', 'unit'].includes(role)) {
-      res.status(400).json({ error: 'Invalid role' });
       return;
     }
   }
 
-  if (!email || !full_name || !zone_id || !role) {
-    res.status(400).json({ error: 'email, full_name, zone_id and role are required' });
+  if (!email || !full_name || !zone_id) {
+    res.status(400).json({ error: 'email, full_name, and zone_id are required' });
     return;
   }
   if (!isValidEmail(email)) {
@@ -145,6 +277,7 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
     return;
   }
 
+  // Validate phone: 10 digits Indian mobile (+91)
   let normalizedPhone: string | null = null;
   if (rawPhone && rawPhone.trim()) {
     normalizedPhone = normalizeIndianPhone(rawPhone);
@@ -164,6 +297,20 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
     }
   }
 
+  // Validate username uniqueness in zone if provided
+  if (username) {
+    const { data: dupUser } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .eq('zone_id', zone_id)
+      .eq('username', username)
+      .limit(1);
+    if (dupUser && dupUser.length > 0) {
+      res.status(409).json({ error: `Username "${username}" is already taken in this zone` });
+      return;
+    }
+  }
+
   const normalizedSubRole = sub_role === 'supervisor' ? 'supervisor' : 'operator';
   const tempPassword = rawPassword && rawPassword.trim().length >= 8
     ? rawPassword.trim()
@@ -178,6 +325,9 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
       sub_role: normalizedSubRole,
       is_active: true,
       must_change_password: force_password_change,
+      team: targetTeamCode,
+      shift,
+      username,
     },
   });
 
@@ -192,30 +342,37 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
 
   const userId = authData.user.id;
 
-  // Insert extended columns when available; fall back to core columns if patch_v2_ux.sql wasn't run yet
-  let { error: profileError } = await supabase.from('profiles').insert({
+  // Insert into profiles with resilient schema fallback
+  let profileError: any = null;
+  const extendedInsert = {
     id: userId,
-    role,
+    role: targetRole,
     zone_id,
-    unit_id: unit_id ?? null,
+    unit_id: targetRole === 'unit' ? unit_id : null,
     full_name,
     phone: normalizedPhone,
+    team_id: targetTeamId,
+    shift,
+    username,
     email,
     sub_role: normalizedSubRole,
     is_active: true,
     must_change_password: force_password_change,
-  });
+  };
+
+  const res1 = await supabase.from('profiles').insert(extendedInsert);
+  profileError = res1.error;
 
   if (profileError && isMissingSchemaError(profileError)) {
-    const fallbackRes = await supabase.from('profiles').insert({
+    const res2 = await supabase.from('profiles').insert({
       id: userId,
-      role,
+      role: targetRole,
       zone_id,
-      unit_id: unit_id ?? null,
+      unit_id: targetRole === 'unit' ? unit_id : null,
       full_name,
       phone: normalizedPhone,
     });
-    profileError = fallbackRes.error;
+    profileError = res2.error;
   }
 
   if (profileError) {
@@ -226,11 +383,20 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
 
   await writeAuditLog({
     zone_id,
-    unit_id: unit_id ?? null,
+    unit_id: targetRole === 'unit' ? unit_id : null,
     entity_type: 'user',
     entity_id: userId,
     action: 'create',
-    changes: { email, full_name, sub_role: normalizedSubRole, force_password_change },
+    changes: {
+      email,
+      full_name,
+      role: targetRole,
+      team: targetTeamCode,
+      shift,
+      username,
+      sub_role: normalizedSubRole,
+      force_password_change,
+    },
     actor_id: req.user.id,
     actor_name: req.profile.full_name ?? req.user.email ?? 'Admin',
   });
@@ -238,7 +404,10 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
   res.status(201).json({
     id: userId,
     email,
-    role,
+    role: targetRole,
+    team: targetTeamCode,
+    shift,
+    username,
     sub_role: normalizedSubRole,
     full_name,
     phone: normalizedPhone,
@@ -247,7 +416,101 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
   });
 });
 
-// PATCH /users/:id — edit user details, role (Operator/Supervisor), unit, or active status
+// POST /users/:id/move-team — move plant team user to another team (mandatory reason, audit-logged)
+router.post('/:id/move-team', requireRole('admin', 'superadmin'), async (req, res) => {
+  const id = String(req.params.id);
+  const { new_team, reason } = req.body as { new_team?: string; reason?: string };
+
+  const normNewTeam = (new_team || '').trim().toUpperCase();
+  if (!['GATE', 'QC', 'UNLOADING'].includes(normNewTeam)) {
+    res.status(400).json({ error: 'Valid new_team (GATE, QC, or UNLOADING) is required' });
+    return;
+  }
+
+  const cleanReason = (reason ?? '').trim();
+  if (!cleanReason) {
+    res.status(400).json({ error: 'Reason is required to move a user to another team' });
+    return;
+  }
+
+  const { data: target } = await supabase
+    .from('profiles')
+    .select('id, role, zone_id, full_name, team_id')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (!target) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+
+  if (req.profile.role === 'admin' && target.zone_id !== req.profile.zone_id) {
+    res.status(403).json({ error: 'Cannot move users in another zone' });
+    return;
+  }
+
+  const nextRole = normNewTeam.toLowerCase();
+  const teamObj = await getTeamByCode(normNewTeam);
+  const nextTeamId = teamObj?.id ?? null;
+  const oldTeam = (target.role ?? '').toUpperCase();
+
+  // Update profile
+  let { error: updateErr } = await supabase
+    .from('profiles')
+    .update({
+      role: nextRole,
+      team_id: nextTeamId,
+    })
+    .eq('id', id);
+
+  if (updateErr && isMissingSchemaError(updateErr)) {
+    const fb = await supabase.from('profiles').update({ role: nextRole }).eq('id', id);
+    updateErr = fb.error;
+  }
+
+  if (updateErr) {
+    res.status(500).json({ error: updateErr.message });
+    return;
+  }
+
+  // Update Auth user metadata
+  const { data: authUser } = await supabase.auth.admin.getUserById(id);
+  if (authUser?.user) {
+    await supabase.auth.admin.updateUserById(id, {
+      user_metadata: {
+        ...(authUser.user.user_metadata ?? {}),
+        team: normNewTeam,
+        role: nextRole,
+      },
+    });
+  }
+
+  await writeAuditLog({
+    zone_id: target.zone_id,
+    entity_type: 'user',
+    entity_id: id,
+    action: 'move_team',
+    changes: {
+      user_id: id,
+      user_name: target.full_name,
+      old_team: oldTeam,
+      new_team: normNewTeam,
+      reason: cleanReason,
+    },
+    actor_id: req.user.id,
+    actor_name: req.profile.full_name ?? req.user.email ?? 'Admin',
+  });
+
+  res.json({
+    id,
+    role: nextRole,
+    team_id: nextTeamId,
+    team: normNewTeam,
+    message: `User ${target.full_name ?? id} moved to ${normNewTeam} team successfully`,
+  });
+});
+
+// PATCH /users/:id — edit user details, shift, username, unit, or active status
 router.patch('/:id', requireRole('admin', 'superadmin'), async (req, res) => {
   const id = String(req.params.id);
   const { data: target } = await supabase
@@ -260,7 +523,9 @@ router.patch('/:id', requireRole('admin', 'superadmin'), async (req, res) => {
     res.status(404).json({ error: 'User not found' });
     return;
   }
-  if (req.profile.role === 'admin' && (target.zone_id !== req.profile.zone_id || target.role !== 'unit')) {
+
+  const allowedRoles = ['unit', 'gate', 'qc', 'unloading', 'GATE', 'QC', 'UNLOADING'];
+  if (req.profile.role === 'admin' && (target.zone_id !== req.profile.zone_id || !allowedRoles.includes(target.role))) {
     res.status(403).json({ error: 'Insufficient permissions' });
     return;
   }
@@ -269,6 +534,8 @@ router.patch('/:id', requireRole('admin', 'superadmin'), async (req, res) => {
     full_name?: string;
     phone?: string | null;
     unit_id?: string | null;
+    shift?: 'Morning' | 'Evening' | 'General';
+    username?: string | null;
     sub_role?: 'operator' | 'supervisor';
     is_active?: boolean;
   };
@@ -278,7 +545,6 @@ router.patch('/:id', requireRole('admin', 'superadmin'), async (req, res) => {
   const nextMeta = { ...currentMeta };
 
   const profilePatch: Record<string, unknown> = {};
-  const extendedPatch: Record<string, unknown> = {};
 
   if (body.full_name !== undefined) {
     const trimmed = body.full_name.trim();
@@ -286,6 +552,7 @@ router.patch('/:id', requireRole('admin', 'superadmin'), async (req, res) => {
     profilePatch.full_name = trimmed;
     nextMeta.full_name = trimmed;
   }
+
   if (body.phone !== undefined) {
     if (!body.phone || !body.phone.trim()) {
       profilePatch.phone = null;
@@ -309,18 +576,47 @@ router.patch('/:id', requireRole('admin', 'superadmin'), async (req, res) => {
       profilePatch.phone = normalized;
     }
   }
+
+  if (body.shift !== undefined) {
+    if (['Morning', 'Evening', 'General'].includes(body.shift)) {
+      profilePatch.shift = body.shift;
+      nextMeta.shift = body.shift;
+    }
+  }
+
+  if (body.username !== undefined) {
+    const uClean = body.username ? body.username.trim() : null;
+    if (uClean) {
+      const { data: dupUser } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('zone_id', target.zone_id)
+        .eq('username', uClean)
+        .neq('id', id)
+        .limit(1);
+      if (dupUser && dupUser.length > 0) {
+        res.status(409).json({ error: `Username "${uClean}" is already taken` });
+        return;
+      }
+    }
+    profilePatch.username = uClean;
+    nextMeta.username = uClean;
+  }
+
   if (body.unit_id !== undefined && target.role === 'unit') {
     if (!body.unit_id) { res.status(400).json({ error: 'Unit is required for unit users' }); return; }
     profilePatch.unit_id = body.unit_id;
   }
+
   if (body.sub_role !== undefined) {
     const normalizedSub = body.sub_role === 'supervisor' ? 'supervisor' : 'operator';
     nextMeta.sub_role = normalizedSub;
-    extendedPatch.sub_role = normalizedSub;
+    profilePatch.sub_role = normalizedSub;
   }
+
   if (typeof body.is_active === 'boolean') {
     nextMeta.is_active = body.is_active;
-    extendedPatch.is_active = body.is_active;
+    profilePatch.is_active = body.is_active;
   }
 
   const { error: authUpdateErr } = await supabase.auth.admin.updateUserById(id, {
@@ -331,16 +627,18 @@ router.patch('/:id', requireRole('admin', 'superadmin'), async (req, res) => {
     return;
   }
 
-  const mergedPatch = { ...profilePatch, ...extendedPatch };
-  if (Object.keys(mergedPatch).length > 0) {
-    let { error: profErr } = await supabase.from('profiles').update(mergedPatch).eq('id', id);
-    if (profErr && isMissingSchemaError(profErr) && Object.keys(profilePatch).length > 0) {
-      const fallback = await supabase.from('profiles').update(profilePatch).eq('id', id);
-      profErr = fallback.error;
-    }
-    if (profErr && !isMissingSchemaError(profErr)) {
-      res.status(500).json({ error: profErr.message });
-      return;
+  if (Object.keys(profilePatch).length > 0) {
+    let { error: profErr } = await supabase.from('profiles').update(profilePatch).eq('id', id);
+    if (profErr && isMissingSchemaError(profErr)) {
+      // Retry without extended columns
+      const safePatch = { ...profilePatch };
+      delete safePatch.shift;
+      delete safePatch.username;
+      delete safePatch.sub_role;
+      delete safePatch.is_active;
+      if (Object.keys(safePatch).length > 0) {
+        await supabase.from('profiles').update(safePatch).eq('id', id);
+      }
     }
   }
 
@@ -350,12 +648,12 @@ router.patch('/:id', requireRole('admin', 'superadmin'), async (req, res) => {
     entity_type: 'user',
     entity_id: id,
     action: typeof body.is_active === 'boolean' ? (body.is_active ? 'activate' : 'deactivate') : 'update',
-    changes: mergedPatch,
+    changes: profilePatch,
     actor_id: req.user.id,
     actor_name: req.profile.full_name ?? req.user.email ?? 'Admin',
   });
 
-  res.json({ id, ...mergedPatch });
+  res.json({ id, ...profilePatch });
 });
 
 // POST /users/:id/reset-password — set temporary password & force change on next login + optional recovery link
@@ -368,7 +666,8 @@ router.post('/:id/reset-password', requireRole('admin', 'superadmin'), async (re
     .maybeSingle();
 
   if (!target) { res.status(404).json({ error: 'User not found' }); return; }
-  if (req.profile.role === 'admin' && (target.zone_id !== req.profile.zone_id || target.role !== 'unit')) {
+  const allowedRoles = ['unit', 'gate', 'qc', 'unloading', 'GATE', 'QC', 'UNLOADING'];
+  if (req.profile.role === 'admin' && (target.zone_id !== req.profile.zone_id || !allowedRoles.includes(target.role))) {
     res.status(403).json({ error: 'Insufficient permissions' });
     return;
   }
@@ -420,7 +719,7 @@ router.post('/:id/reset-password', requireRole('admin', 'superadmin'), async (re
   });
 });
 
-// DELETE /users/:id — admin deletes unit user, superadmin deletes admin/unit
+// DELETE /users/:id — admin deletes unit or plant team user
 router.delete('/:id', requireRole('admin', 'superadmin'), async (req, res) => {
   const id = req.params.id as string;
 
@@ -444,8 +743,9 @@ router.delete('/:id', requireRole('admin', 'superadmin'), async (req, res) => {
     return;
   }
 
+  const allowedRoles = ['unit', 'gate', 'qc', 'unloading', 'GATE', 'QC', 'UNLOADING'];
   if (req.profile.role === 'admin') {
-    if (target.zone_id !== req.profile.zone_id || target.role !== 'unit') {
+    if (target.zone_id !== req.profile.zone_id || !allowedRoles.includes(target.role)) {
       res.status(403).json({ error: 'Insufficient permissions' });
       return;
     }

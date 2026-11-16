@@ -19,6 +19,7 @@ const superAdminNav: NavItem[] = [
 const adminNav: NavItem[] = [
   { to: '/admin', labelKey: 'navDashboard', fallbackLabel: 'Dashboard' },
   { to: '/admin/units', labelKey: 'navUnits', fallbackLabel: 'Units' },
+  { to: '/admin/teams', labelKey: 'navTeams', fallbackLabel: 'Teams' },
   { to: '/admin/users', labelKey: 'navUsers', fallbackLabel: 'Users' },
   { to: '/admin/milk', labelKey: 'navMilkRecords', fallbackLabel: 'Milk Records' },
   { to: '/admin/tanker', labelKey: 'navTankerRecords', fallbackLabel: 'Tanker Records' },
@@ -33,15 +34,18 @@ const unitNav: NavItem[] = [
 ];
 
 const gateNav: NavItem[] = [
-  { to: '/gate', labelKey: 'navGate', fallbackLabel: 'Gate Operations' },
+  { to: '/gate', labelKey: 'navGateQueue', fallbackLabel: 'Gate Queue' },
+  { to: '/gate/records', labelKey: 'navMyRecords', fallbackLabel: 'My Records' },
 ];
 
 const qcNav: NavItem[] = [
-  { to: '/qc', labelKey: 'navQC', fallbackLabel: 'QC Lab' },
+  { to: '/qc', labelKey: 'navQCQueue', fallbackLabel: 'QC Queue' },
+  { to: '/qc/records', labelKey: 'navMyRecords', fallbackLabel: 'My Records' },
 ];
 
 const unloadingNav: NavItem[] = [
-  { to: '/unloading', labelKey: 'navUnloading', fallbackLabel: 'Unloading Bay' },
+  { to: '/unloading', labelKey: 'navUnloadingQueue', fallbackLabel: 'Unloading Queue' },
+  { to: '/unloading/records', labelKey: 'navMyRecords', fallbackLabel: 'My Records' },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -82,11 +86,12 @@ export default function Layout({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const nav = profile?.role === 'superadmin' ? superAdminNav
-    : profile?.role === 'admin' ? adminNav
-    : profile?.role === 'gate' ? gateNav
-    : profile?.role === 'qc' ? qcNav
-    : profile?.role === 'unloading' ? unloadingNav
+  const userRole = (profile?.role || '').toLowerCase();
+  const nav = userRole === 'superadmin' ? superAdminNav
+    : userRole === 'admin' ? adminNav
+    : userRole === 'gate' ? gateNav
+    : userRole === 'qc' ? qcNav
+    : userRole === 'unloading' ? unloadingNav
     : unitNav;
 
   const handleSignOut = async () => {

@@ -8,11 +8,12 @@ interface Props {
 }
 
 export function roleHome(role: string) {
-  if (role === 'superadmin') return '/superadmin';
-  if (role === 'admin') return '/admin';
-  if (role === 'gate') return '/gate';
-  if (role === 'qc') return '/qc';
-  if (role === 'unloading') return '/unloading';
+  const r = (role || '').toLowerCase();
+  if (r === 'superadmin') return '/superadmin';
+  if (r === 'admin') return '/admin';
+  if (r === 'gate') return '/gate';
+  if (r === 'qc') return '/qc';
+  if (r === 'unloading') return '/unloading';
   return '/unit';
 }
 
@@ -28,8 +29,11 @@ export default function ProtectedRoute({ children, role, allowPasswordChange = f
   }
 
   if (role) {
-    const allowed = Array.isArray(role) ? role.includes(profile.role) : profile.role === role;
-    if (!allowed) {
+    const userRole = (profile.role || '').toLowerCase();
+    const allowedRoles = Array.isArray(role)
+      ? role.map((x) => x.toLowerCase())
+      : [role.toLowerCase()];
+    if (!allowedRoles.includes(userRole)) {
       return <Navigate to={roleHome(profile.role)} replace />;
     }
   }

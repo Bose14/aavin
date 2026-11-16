@@ -13,6 +13,7 @@ export interface StagePipelineProps {
   waitingTooLongCount?: number;
   qcRejectedCount?: number;
   totalTankersCount?: number;
+  teamUserCounts?: Record<string, number>;
   className?: string;
 }
 
@@ -117,6 +118,7 @@ export function StagePipeline({
   waitingTooLongCount = 0,
   qcRejectedCount = 0,
   totalTankersCount = 0,
+  teamUserCounts = {},
   className = '',
 }: StagePipelineProps) {
   const selectedStepDef = PIPELINE_STEPS.find((s) => s.key === selectedStage);
@@ -305,10 +307,17 @@ export function StagePipeline({
             const isLeftLineGreen = idx > 0;
             const isRightLineGreen = idx < PIPELINE_STEPS.length - 1;
 
+            const teamKeyUpper = step.team.toUpperCase();
+            const activeUserCount = teamUserCounts[teamKeyUpper] ?? teamUserCounts[step.team];
+            const tooltipTitle = activeUserCount !== undefined
+              ? `${step.title} · ${step.teamLabel} Team (${activeUserCount} active operator${activeUserCount === 1 ? '' : 's'}) · ${chip.count} tanker${chip.count === 1 ? '' : 's'}${chip.delayedCount > 0 ? ` · ${chip.delayedCount} delayed` : ''}`
+              : `${step.title} · ${step.teamLabel} Team · ${chip.count} tanker${chip.count === 1 ? '' : 's'}${chip.delayedCount > 0 ? ` · ${chip.delayedCount} delayed` : ''}`;
+
             return (
               <div
                 key={step.key}
                 onClick={() => onSelectStage(isSelected ? '' : step.key)}
+                title={tooltipTitle}
                 style={{
                   flex: 1,
                   display: 'flex',
@@ -325,7 +334,7 @@ export function StagePipeline({
                 role="button"
                 tabIndex={0}
                 aria-pressed={isSelected}
-                aria-label={`${step.title}, ${chip.count} tankers, ${chip.delayedCount} delayed. Click to filter.`}
+                aria-label={tooltipTitle}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();

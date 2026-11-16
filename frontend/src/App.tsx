@@ -11,6 +11,7 @@ import SuperAdminDashboard from './pages/superadmin/SuperAdminDashboard';
 
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminUnits from './pages/admin/AdminUnits';
+import AdminTeams from './pages/admin/AdminTeams';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminMilkRecords from './pages/admin/AdminMilkRecords';
 import AdminTankerRecords from './pages/admin/AdminTankerRecords';
@@ -24,6 +25,7 @@ import UnitRecords from './pages/unit/UnitRecords';
 import GateOperations from './pages/plant/GateOperations';
 import QCLab from './pages/plant/QCLab';
 import UnloadingBay from './pages/plant/UnloadingBay';
+import PlantRecords from './pages/plant/PlantRecords';
 
 export default function App() {
   return (
@@ -48,6 +50,7 @@ export default function App() {
             {/* Admin portal */}
             <Route path="/admin" element={<ProtectedRoute role="admin"><Layout><AdminDashboard /></Layout></ProtectedRoute>} />
             <Route path="/admin/units" element={<ProtectedRoute role="admin"><Layout><AdminUnits /></Layout></ProtectedRoute>} />
+            <Route path="/admin/teams" element={<ProtectedRoute role="admin"><Layout><AdminTeams /></Layout></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute role="admin"><Layout><AdminUsers /></Layout></ProtectedRoute>} />
             <Route path="/admin/milk" element={<ProtectedRoute role="admin"><Layout><AdminMilkRecords /></Layout></ProtectedRoute>} />
             <Route path="/admin/tanker" element={<ProtectedRoute role="admin"><Layout><AdminTankerRecords /></Layout></ProtectedRoute>} />
@@ -61,8 +64,11 @@ export default function App() {
 
             {/* Plant Team Portals */}
             <Route path="/gate" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><GateOperations /></Layout></ProtectedRoute>} />
+            <Route path="/gate/records" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />
             <Route path="/qc" element={<ProtectedRoute role={['qc', 'admin', 'superadmin']}><Layout><QCLab /></Layout></ProtectedRoute>} />
+            <Route path="/qc/records" element={<ProtectedRoute role={['qc', 'admin', 'superadmin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />
             <Route path="/unloading" element={<ProtectedRoute role={['unloading', 'admin', 'superadmin']}><Layout><UnloadingBay /></Layout></ProtectedRoute>} />
+            <Route path="/unloading/records" element={<ProtectedRoute role={['unloading', 'admin', 'superadmin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

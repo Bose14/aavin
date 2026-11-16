@@ -36,12 +36,27 @@ export interface CorrectionRequest {
   created_at: string;
 }
 
+export interface TeamRow {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+  created_at?: string;
+}
+
+export const DEFAULT_TEAMS: TeamRow[] = [
+  { id: '11111111-1111-4111-8111-111111111111', code: 'GATE', name: 'Gate Operations Team', active: true },
+  { id: '22222222-2222-4222-8222-222222222222', code: 'QC', name: 'Quality Control (QC) Team', active: true },
+  { id: '33333333-3333-4333-8333-333333333333', code: 'UNLOADING', name: 'Milk Unloading Team', active: true },
+];
+
 interface FallbackStoreData {
   zoneSettings: Record<string, ZoneSettings>;
   sellingRates: Record<string, SellingRateRule[]>;
   auditLogs: AuditLogEntry[];
   correctionRequests: CorrectionRequest[];
   tankerStages: Record<string, any[]>;
+  teams?: Record<string, TeamRow>;
 }
 
 const FALLBACK_DIR = path.resolve(__dirname, '../../.data');
@@ -71,18 +86,25 @@ function readFallback(): FallbackStoreData {
   try {
     if (fs.existsSync(FALLBACK_FILE)) {
       const parsed = JSON.parse(fs.readFileSync(FALLBACK_FILE, 'utf8')) as Partial<FallbackStoreData>;
+      const teams = parsed.teams ?? {};
+      for (const def of DEFAULT_TEAMS) {
+        if (!teams[def.code]) teams[def.code] = { ...def };
+      }
       return {
         zoneSettings: parsed.zoneSettings ?? {},
         sellingRates: parsed.sellingRates ?? {},
         auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
         correctionRequests: Array.isArray(parsed.correctionRequests) ? parsed.correctionRequests : [],
         tankerStages: parsed.tankerStages && typeof parsed.tankerStages === 'object' ? parsed.tankerStages : {},
+        teams,
       };
     }
   } catch {
     // Corrupted fallback ignored; return empty store
   }
-  return { zoneSettings: {}, sellingRates: {}, auditLogs: [], correctionRequests: [], tankerStages: {} };
+  const teams: Record<string, TeamRow> = {};
+  for (const def of DEFAULT_TEAMS) teams[def.code] = { ...def };
+  return { zoneSettings: {}, sellingRates: {}, auditLogs: [], correctionRequests: [], tankerStages: {}, teams };
 }
 
 function writeFallback(data: FallbackStoreData): void {
@@ -525,6 +547,77 @@ export async function getTankerStagesForTrips(tripIds: string[]): Promise<Record
     }
     return result;
   }
+}
+
+async function withTimeout<T>(thenable: any, ms = 800): Promise<T> {
+  let timeoutId: NodeJS.Timeout;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('DB timeout')), ms);
+  });
+  return Promise.race([Promise.resolve(thenable) as Promise<T>, timeoutPromise]).finally(() => clearTimeout(timeoutId));
+}
+
+export async function getTeamsFromDb(): Promise<TeamRow[]> {
+  try {
+    const res: any = await withTimeout(supabase.from('teams').select('*').order('code'));
+    if (!res?.error && res?.data && res.data.length > 0) {
+      return res.data as TeamRow[];
+    }
+  } catch {
+    // fallback
+  }
+
+  const store = readFallback();
+  return Object.values(store.teams || {});
+}
+
+export async function getTeamByCode(code: string): Promise<TeamRow | null> {
+  const norm = code.trim().toUpperCase();
+  try {
+    const res: any = await withTimeout(supabase.from('teams').select('*').eq('code', norm).maybeSingle());
+    if (!res?.error && res?.data) {
+      return res.data as TeamRow;
+    }
+  } catch {
+    // fallback
+  }
+
+  const store = readFallback();
+  return store.teams?.[norm] || DEFAULT_TEAMS.find((t) => t.code === norm) || null;
+}
+
+export async function updateTeamStatusInDb(code: string, active: boolean): Promise<TeamRow> {
+  const norm = code.trim().toUpperCase();
+  let updatedRow: TeamRow | null = null;
+  try {
+    const res: any = await withTimeout(
+      supabase
+        .from('teams')
+        .update({ active })
+        .eq('code', norm)
+        .select()
+        .maybeSingle()
+    );
+    if (!res?.error && res?.data) {
+      updatedRow = res.data as TeamRow;
+    }
+  } catch {
+    // fallback
+  }
+
+  const store = readFallback();
+  if (!store.teams) store.teams = {};
+  const current = store.teams[norm] || DEFAULT_TEAMS.find((t) => t.code === norm) || {
+    id: norm === 'GATE' ? '11111111-1111-4111-8111-111111111111' : norm === 'QC' ? '22222222-2222-4222-8222-222222222222' : '33333333-3333-4333-8333-333333333333',
+    code: norm,
+    name: norm === 'GATE' ? 'Gate Operations Team' : norm === 'QC' ? 'Quality Control (QC) Team' : 'Milk Unloading Team',
+    active: true,
+  };
+  current.active = active;
+  store.teams[norm] = current;
+  writeFallback(store);
+
+  return updatedRow || current;
 }
 
 
