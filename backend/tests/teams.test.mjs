@@ -224,7 +224,7 @@ test('8. Role-based redirect routing for all roles', () => {
   function roleHome(role) {
     const r = (role || '').toLowerCase();
     if (r === 'superadmin') return '/superadmin';
-    if (r === 'admin') return '/admin';
+    if (r === 'admin') return '/admin/tanker';
     if (r === 'gate') return '/gate';
     if (r === 'qc') return '/qc';
     if (r === 'unloading') return '/unloading';
@@ -232,7 +232,7 @@ test('8. Role-based redirect routing for all roles', () => {
   }
 
   assert.equal(roleHome('superadmin'), '/superadmin');
-  assert.equal(roleHome('admin'), '/admin');
+  assert.equal(roleHome('admin'), '/admin/tanker');
   assert.equal(roleHome('gate'), '/gate');
   assert.equal(roleHome('GATE'), '/gate');
   assert.equal(roleHome('qc'), '/qc');

@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { useAuth } from '../context/AuthContext';
+import { roleHome } from '../components/ProtectedRoute';
 import ZoneSelect from '../components/ZoneSelect';
 
 interface Unit { id: string; name: string; unit_code: string; }
@@ -22,7 +23,7 @@ export default function RegisterProfile() {
 
   // Already has profile → redirect
   useEffect(() => {
-    if (profile) navigate(profile.role === 'admin' ? '/admin' : '/unit');
+    if (profile) navigate(roleHome(profile.role));
   }, [profile, navigate]);
 
   // Load units when zone selected and role is unit
@@ -61,7 +62,7 @@ export default function RegisterProfile() {
     }
 
     await refreshProfile();
-    navigate(role === 'admin' ? '/admin' : '/unit');
+    navigate(roleHome(role));
   };
 
   return (

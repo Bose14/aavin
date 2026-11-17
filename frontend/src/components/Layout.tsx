@@ -17,12 +17,12 @@ const superAdminNav: NavItem[] = [
 ];
 
 const adminNav: NavItem[] = [
+  { to: '/admin/tanker', labelKey: 'navTankerRecords', fallbackLabel: 'Tanker Records' },
   { to: '/admin', labelKey: 'navDashboard', fallbackLabel: 'Dashboard' },
   { to: '/admin/units', labelKey: 'navUnits', fallbackLabel: 'BMCs' },
   { to: '/admin/teams', labelKey: 'navTeams', fallbackLabel: 'Teams' },
   { to: '/admin/users', labelKey: 'navUsers', fallbackLabel: 'Users' },
   { to: '/admin/milk', labelKey: 'navMilkRecords', fallbackLabel: 'Milk Records' },
-  { to: '/admin/tanker', labelKey: 'navTankerRecords', fallbackLabel: 'Tanker Records' },
   { to: '/admin/settings', labelKey: 'navSettings', fallbackLabel: 'Settings' },
 ];
 
@@ -162,7 +162,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <NavLink
               key={item.to}
               to={item.to}
-              end={['/admin', '/unit', '/superadmin'].includes(item.to)}
+              end={['/admin', '/unit', '/superadmin', '/admin/tanker'].includes(item.to)}
               onClick={() => setDrawerOpen(false)}
               className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
             >

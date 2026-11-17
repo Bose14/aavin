@@ -61,7 +61,7 @@ test('1. Role-based redirect routing in frontend ProtectedRoute', () => {
   const { roleHome } = loadTsModule(protectedRoutePath);
 
   assert.equal(roleHome('superadmin'), '/superadmin');
-  assert.equal(roleHome('admin'), '/admin');
+  assert.equal(roleHome('admin'), '/admin/tanker');
   assert.equal(roleHome('gate'), '/gate');
   assert.equal(roleHome('GATE'), '/gate');
   assert.equal(roleHome('qc'), '/qc');
