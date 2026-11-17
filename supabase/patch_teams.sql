@@ -41,6 +41,7 @@ alter table profiles add constraint profiles_shift_check
 create index if not exists idx_profiles_team_id on profiles(team_id);
 create index if not exists idx_profiles_role on profiles(role);
 create index if not exists idx_teams_code on teams(code);
+create unique index if not exists idx_profiles_zone_username on profiles(zone_id, lower(username)) where username is not null;
 
 -- 3. Enable RLS and setup policies for teams
 alter table teams enable row level security;

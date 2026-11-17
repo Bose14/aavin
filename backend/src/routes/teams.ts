@@ -168,6 +168,287 @@ router.get('/', async (req, res) => {
   }
 });
 
+export function getTeamPrefix(teamCode?: string): string {
+  const code = (teamCode || '').toUpperCase();
+  if (code === 'GATE') return 'GT';
+  if (code === 'QC') return 'QC';
+  if (code === 'UNLOADING') return 'UL';
+  return 'IT';
+}
+
+export async function generateNextTeamUserId(zoneId: string, teamCode?: string): Promise<string> {
+  const prefix = getTeamPrefix(teamCode);
+
+  try {
+    const { data } = await supabase
+      .from('profiles')
+      .select('username')
+      .eq('zone_id', zoneId);
+
+    let maxNum = 0;
+    for (const row of data ?? []) {
+      const u = String(row.username || '').toUpperCase();
+      const match = u.match(new RegExp(`^AV_${prefix}_(\\d+)$`)) || u.match(/^AV_[A-Z0-9]+_(\\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+
+    const nextNum = maxNum + 1;
+    const padded = String(nextNum).padStart(3, '0');
+    return `AV_${prefix}_${padded}`;
+  } catch (err) {
+    console.warn('[generateNextTeamUserId] Error:', err);
+    return `AV_${prefix}_001`;
+  }
+}
+
+// GET /teams/next-user-id?team=GATE — get next available unique operator ID (e.g. AV_IT_001)
+router.get('/next-user-id', async (req, res) => {
+  const zoneId = req.profile.zone_id;
+  const teamCode = String(req.query.team || '').trim().toUpperCase();
+  const nextId = await generateNextTeamUserId(zoneId, teamCode || undefined);
+  res.json({
+    next_user_id: nextId,
+    prefix: getTeamPrefix(teamCode),
+    example: 'AV_IT_001',
+  });
+});
+
+// GET /teams/users — list all plant team users for this zone
+router.get('/users', async (req, res) => {
+  const zoneId = req.profile.zone_id;
+  const { team, status, search } = req.query as Record<string, string>;
+
+  try {
+    const { data: profiles, error } = await supabase
+      .from('profiles')
+      .select('id, full_name, role, zone_id, team_id, shift, username, phone, created_at')
+      .eq('zone_id', zoneId)
+      .in('role', ['gate', 'qc', 'unloading', 'GATE', 'QC', 'UNLOADING'])
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    const allTeams = await getTeamsFromDb();
+    const teamByCode = new Map(allTeams.map((t) => [t.code.toUpperCase(), t]));
+    const teamById = new Map(allTeams.map((t) => [t.id, t]));
+
+    // Fetch auth metadata
+    const authById = new Map<string, { email?: string; is_active?: boolean; last_sign_in_at?: string }>();
+    try {
+      const { data: authUsersData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+      for (const au of authUsersData?.users ?? []) {
+        authById.set(au.id, {
+          email: au.email,
+          is_active: au.user_metadata?.is_active !== false,
+          last_sign_in_at: au.last_sign_in_at,
+        });
+      }
+    } catch (e) {
+      console.warn('[teams/users] listUsers fallback:', e);
+    }
+
+    let list = (profiles ?? []).map((p: any) => {
+      const roleUpper = (p.role || '').toUpperCase();
+      let teamObj = p.team_id ? teamById.get(p.team_id) : undefined;
+      if (!teamObj && ['GATE', 'QC', 'UNLOADING'].includes(roleUpper)) {
+        teamObj = teamByCode.get(roleUpper);
+      }
+      const meta = authById.get(p.id);
+
+      return {
+        id: p.id,
+        full_name: p.full_name || '',
+        username: p.username || null,
+        email: meta?.email || null,
+        phone: p.phone || null,
+        role: roleUpper.toLowerCase(),
+        team_id: teamObj?.id || p.team_id || null,
+        team: teamObj ? { id: teamObj.id, code: teamObj.code, name: teamObj.name } : null,
+        shift: p.shift || 'General',
+        is_active: meta?.is_active ?? p.is_active ?? true,
+        created_at: p.created_at,
+        last_sign_in_at: meta?.last_sign_in_at || null,
+      };
+    });
+
+    if (team) {
+      const tUpper = team.trim().toUpperCase();
+      list = list.filter((u) => u.team?.code === tUpper || u.role.toUpperCase() === tUpper);
+    }
+
+    if (status) {
+      const sLower = status.trim().toLowerCase();
+      if (sLower === 'active') list = list.filter((u) => u.is_active);
+      else if (sLower === 'inactive') list = list.filter((u) => !u.is_active);
+    }
+
+    if (search) {
+      const q = search.trim().toLowerCase();
+      list = list.filter(
+        (u) =>
+          u.full_name.toLowerCase().includes(q) ||
+          (u.username || '').toLowerCase().includes(q) ||
+          (u.email || '').toLowerCase().includes(q) ||
+          (u.phone || '').toLowerCase().includes(q)
+      );
+    }
+
+    res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /teams/users — create a plant team user directly with structured User ID
+router.post('/users', requireRole('admin', 'superadmin'), async (req, res) => {
+  const zoneId = req.profile.zone_id;
+  const {
+    full_name: rawName,
+    email: rawEmail,
+    phone: rawPhone,
+    team: rawTeam,
+    shift: rawShift = 'General',
+    username: rawUsername,
+    password: rawPassword,
+    force_password_change = true,
+  } = req.body as {
+    full_name?: string;
+    email?: string;
+    phone?: string;
+    team?: string;
+    shift?: 'Morning' | 'Evening' | 'General';
+    username?: string;
+    password?: string;
+    force_password_change?: boolean;
+  };
+
+  const email = (rawEmail ?? '').trim().toLowerCase();
+  const full_name = (rawName ?? '').trim();
+  const teamCode = (rawTeam || '').trim().toUpperCase();
+
+  if (!['GATE', 'QC', 'UNLOADING'].includes(teamCode)) {
+    res.status(400).json({ error: 'Valid team (GATE, QC, or UNLOADING) is required' });
+    return;
+  }
+
+  if (!email || !full_name) {
+    res.status(400).json({ error: 'Full name and email are required' });
+    return;
+  }
+
+  // Auto-generate or format Unique User ID (e.g. AV_IT_001, AV_GT_001)
+  let username = rawUsername ? rawUsername.trim().toUpperCase() : null;
+  if (!username) {
+    username = await generateNextTeamUserId(zoneId, teamCode);
+  }
+
+  // Validate username uniqueness
+  const { data: dupUser } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('zone_id', zoneId)
+    .ilike('username', username)
+    .limit(1);
+  if (dupUser && dupUser.length > 0) {
+    res.status(409).json({ error: `Unique User ID "${username}" is already taken in this zone` });
+    return;
+  }
+
+  // Validate phone if provided
+  let normalizedPhone: string | null = null;
+  if (rawPhone && rawPhone.trim()) {
+    const { normalizeIndianPhone } = await import('../lib/calculations');
+    normalizedPhone = normalizeIndianPhone(rawPhone);
+    if (!normalizedPhone) {
+      res.status(400).json({ error: 'Phone must be a valid 10-digit Indian mobile number (+91)' });
+      return;
+    }
+  }
+
+  const shift = ['Morning', 'Evening', 'General'].includes(rawShift) ? rawShift : 'General';
+  const role = teamCode.toLowerCase();
+  const teamObj = await getTeamByCode(teamCode);
+  const tempPassword = rawPassword && rawPassword.trim().length >= 8
+    ? rawPassword.trim()
+    : 'PlantUser@' + Math.floor(1000 + Math.random() * 9000);
+
+  const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    email,
+    password: tempPassword,
+    email_confirm: true,
+    user_metadata: {
+      full_name,
+      sub_role: 'operator',
+      is_active: true,
+      must_change_password: force_password_change,
+      team: teamCode,
+      shift,
+      username,
+    },
+  });
+
+  if (authError) {
+    res.status(400).json({ error: authError.message });
+    return;
+  }
+
+  const userId = authData.user.id;
+  const { error: pErr } = await supabase.from('profiles').insert({
+    id: userId,
+    role,
+    zone_id: zoneId,
+    full_name,
+    phone: normalizedPhone,
+    team_id: teamObj?.id || null,
+    shift,
+    username,
+  });
+
+  if (pErr) {
+    await supabase.auth.admin.deleteUser(userId);
+    res.status(500).json({ error: pErr.message });
+    return;
+  }
+
+  await writeAuditLog({
+    zone_id: zoneId,
+    entity_type: 'user',
+    entity_id: userId,
+    action: 'create',
+    changes: {
+      full_name,
+      email,
+      role,
+      team: teamCode,
+      shift,
+      username,
+    },
+    actor_id: req.user.id,
+    actor_name: req.profile.full_name ?? req.user.email ?? 'Admin',
+  });
+
+  res.status(201).json({
+    id: userId,
+    full_name,
+    username,
+    email,
+    phone: normalizedPhone,
+    team: teamObj ? { id: teamObj.id, code: teamObj.code, name: teamObj.name } : null,
+    shift,
+    role,
+    temp_password: tempPassword,
+    message: `Team operator ${full_name} (${username}) created successfully`,
+  });
+});
+
 // PATCH /teams/:code/status — activate or deactivate team
 router.patch('/:code/status', requireRole('admin', 'superadmin'), async (req, res) => {
   const code = String(req.params.code || '').trim().toUpperCase();

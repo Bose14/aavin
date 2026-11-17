@@ -6,6 +6,7 @@ import { authMiddleware } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
 import { normalizeIndianPhone } from '../lib/calculations';
 import { isMissingSchemaError, writeAuditLog, getTeamByCode, getTeamsFromDb } from '../lib/settingsStore';
+import { generateNextTeamUserId } from './teams';
 
 const router = Router();
 router.use(authMiddleware);
@@ -223,7 +224,7 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
 
   const email = (rawEmail ?? '').trim().toLowerCase();
   const full_name = (rawName ?? '').trim();
-  const username = rawUsername ? rawUsername.trim() : null;
+  let username = rawUsername ? rawUsername.trim().toUpperCase() : null;
   const shift = ['Morning', 'Evening', 'General'].includes(rawShift) ? rawShift : 'General';
   const zone_id = rawZoneId || req.profile.zone_id;
 
@@ -242,6 +243,9 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
     targetRole = targetTeamCode.toLowerCase();
     const teamObj = await getTeamByCode(targetTeamCode);
     targetTeamId = teamObj?.id ?? null;
+    if (!username) {
+      username = await generateNextTeamUserId(zone_id, targetTeamCode);
+    }
   } else {
     targetRole = (rawRole || 'unit').toLowerCase();
   }
@@ -303,10 +307,10 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
       .from('profiles')
       .select('id, full_name')
       .eq('zone_id', zone_id)
-      .eq('username', username)
+      .ilike('username', username)
       .limit(1);
     if (dupUser && dupUser.length > 0) {
-      res.status(409).json({ error: `Username "${username}" is already taken in this zone` });
+      res.status(409).json({ error: `Unique User ID "${username}" is already taken in this zone` });
       return;
     }
   }
@@ -585,17 +589,17 @@ router.patch('/:id', requireRole('admin', 'superadmin'), async (req, res) => {
   }
 
   if (body.username !== undefined) {
-    const uClean = body.username ? body.username.trim() : null;
+    const uClean = body.username ? body.username.trim().toUpperCase() : null;
     if (uClean) {
       const { data: dupUser } = await supabase
         .from('profiles')
         .select('id, full_name')
         .eq('zone_id', target.zone_id)
-        .eq('username', uClean)
+        .ilike('username', uClean)
         .neq('id', id)
         .limit(1);
       if (dupUser && dupUser.length > 0) {
-        res.status(409).json({ error: `Username "${uClean}" is already taken` });
+        res.status(409).json({ error: `Unique User ID "${uClean}" is already taken` });
         return;
       }
     }

@@ -241,3 +241,22 @@ test('8. Role-based redirect routing for all roles', () => {
   assert.equal(roleHome('UNLOADING'), '/unloading');
   assert.equal(roleHome('unit'), '/unit');
 });
+
+test('9. Unique User ID generation and prefix mapping for plant team operators (AV_IT_001 format)', async () => {
+  const { getTeamPrefix, generateNextTeamUserId } = await import('../dist/routes/teams.js');
+
+  assert.equal(getTeamPrefix('GATE'), 'GT');
+  assert.equal(getTeamPrefix('QC'), 'QC');
+  assert.equal(getTeamPrefix('UNLOADING'), 'UL');
+  assert.equal(getTeamPrefix('IT'), 'IT');
+  assert.equal(getTeamPrefix(''), 'IT');
+
+  const idGate = await generateNextTeamUserId('00000000-0000-0000-0000-000000000001', 'GATE');
+  assert.match(idGate, /^AV_GT_\d{3}$/);
+
+  const idQC = await generateNextTeamUserId('00000000-0000-0000-0000-000000000001', 'QC');
+  assert.match(idQC, /^AV_QC_\d{3}$/);
+
+  const idIT = await generateNextTeamUserId('00000000-0000-0000-0000-000000000001', 'IT');
+  assert.match(idIT, /^AV_IT_\d{3}$/);
+});
