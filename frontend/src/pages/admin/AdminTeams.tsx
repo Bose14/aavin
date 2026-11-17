@@ -4,6 +4,7 @@ import { useTranslation } from '../../context/LanguageContext';
 import { ErrorBanner, StatusBadge, ConfirmDialog, TableSkeleton } from '../../components/UiPrimitives';
 import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
+import { normalizeIndianPhone } from '../../lib/format';
 
 interface TeamItem {
   id: string;
@@ -16,19 +17,28 @@ interface TeamItem {
   waiting_tankers_count: number;
 }
 
-interface TeamUserRecord {
+interface Unit {
+  id: string;
+  name: string;
+  unit_code: string;
+}
+
+interface MergedUserRecord {
   id: string;
   full_name: string;
   username: string | null;
   email: string | null;
   phone: string | null;
-  role: 'gate' | 'qc' | 'unloading' | string;
+  role: string;
+  unit_id: string | null;
   team_id: string | null;
   team: { id: string; code: 'GATE' | 'QC' | 'UNLOADING'; name: string } | null;
-  shift: 'Morning' | 'Evening' | 'General';
+  units: { name: string; unit_code: string } | null;
+  shift: 'Morning' | 'Evening' | 'General' | null;
   is_active: boolean;
   created_at: string;
   last_sign_in_at: string | null;
+  user_type?: 'plant' | 'unit' | 'admin';
 }
 
 const STAGE_LABELS_EN: Record<string, string> = {
@@ -77,16 +87,19 @@ function generateRandomPassword() {
 export default function AdminTeams() {
   const { lang } = useTranslation();
 
-  // Teams & User list state
+  // State: Teams, Users, BMC Units
   const [teams, setTeams] = useState<TeamItem[]>([]);
-  const [teamUsers, setTeamUsers] = useState<TeamUserRecord[]>([]);
+  const [teamUsers, setTeamUsers] = useState<MergedUserRecord[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
   const [loadingTeams, setLoadingTeams] = useState(true);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Team List Filters
+  // Scope & Filters
+  const [userScope, setUserScope] = useState<'all' | 'plant' | 'unit' | 'admin'>('all');
   const [filterTeam, setFilterTeam] = useState<string>('');
+  const [filterUnit, setFilterUnit] = useState<string>('');
   const [filterShift, setFilterShift] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -101,7 +114,10 @@ export default function AdminTeams() {
 
   // Add User Modal State
   const [showAddModal, setShowAddModal] = useState(false);
+  const [addUserType, setAddUserType] = useState<'plant' | 'unit'>('plant');
   const [addTeam, setAddTeam] = useState<'GATE' | 'QC' | 'UNLOADING'>('GATE');
+  const [addUnitId, setAddUnitId] = useState('');
+  const [addSubRole, setAddSubRole] = useState<'operator' | 'supervisor'>('operator');
   const [addUserId, setAddUserId] = useState('AV_GT_001');
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
@@ -116,26 +132,46 @@ export default function AdminTeams() {
     name: string;
     username: string;
     email: string;
-    team: string;
+    teamOrUnit: string;
     password?: string;
   } | null>(null);
 
   // Edit User Modal State
-  const [editTarget, setEditTarget] = useState<TeamUserRecord | null>(null);
+  const [editTarget, setEditTarget] = useState<MergedUserRecord | null>(null);
   const [editName, setEditName] = useState('');
   const [editUserId, setEditUserId] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editUnitId, setEditUnitId] = useState('');
   const [editShift, setEditShift] = useState<'Morning' | 'Evening' | 'General'>('General');
   const [editActive, setEditActive] = useState(true);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState('');
 
   // Move Team Modal State
-  const [moveTarget, setMoveTarget] = useState<TeamUserRecord | null>(null);
+  const [moveTarget, setMoveTarget] = useState<MergedUserRecord | null>(null);
   const [newTeam, setNewTeam] = useState<'GATE' | 'QC' | 'UNLOADING'>('GATE');
   const [moveReason, setMoveReason] = useState('');
   const [movingTeam, setMovingTeam] = useState(false);
   const [moveError, setMoveError] = useState('');
+
+  // Reset Password Modal State
+  const [resetTarget, setResetTarget] = useState<MergedUserRecord | null>(null);
+  const [resetTempPwd, setResetTempPwd] = useState('');
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState('');
+
+  // Toggle User Active Status State
+  const [toggleUserTarget, setToggleUserTarget] = useState<MergedUserRecord | null>(null);
+  const [togglingUser, setTogglingUser] = useState(false);
+
+  // Copy helper
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copyToClipboard = (text: string, key = 'default') => {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2500);
+    });
+  };
 
   const fetchTeams = async () => {
     setLoadingTeams(true);
@@ -150,13 +186,52 @@ export default function AdminTeams() {
     }
   };
 
-  const fetchTeamUsers = async () => {
+  const fetchUnits = async () => {
+    try {
+      const res = await api.get<Unit[]>('/units');
+      setUnits(res.data || []);
+      if (res.data && res.data.length > 0 && !addUnitId) {
+        setAddUnitId(res.data[0].id);
+      }
+    } catch (err) {
+      console.warn('Failed to load BMC units:', err);
+    }
+  };
+
+  const fetchAllUsers = async () => {
     setLoadingUsers(true);
     try {
-      const res = await api.get<TeamUserRecord[]>('/teams/users');
-      setTeamUsers(res.data);
+      // Fetch users from /users (which contains both unit staff and plant team operators)
+      const res = await api.get<{ users: MergedUserRecord[] } | MergedUserRecord[]>('/users');
+      const rawList = Array.isArray(res.data) ? res.data : (res.data as any)?.users || [];
+
+      // If /users returned empty, fallback to /teams/users
+      let list = rawList;
+      if (list.length === 0) {
+        const teamsUsersRes = await api.get<MergedUserRecord[]>('/teams/users');
+        list = teamsUsersRes.data || [];
+      }
+
+      // Enrich user type
+      const enriched: MergedUserRecord[] = list.map((u: any) => {
+        const roleLower = (u.role || '').toLowerCase();
+        let uType: 'plant' | 'unit' | 'admin' = 'unit';
+        if (['gate', 'qc', 'unloading'].includes(roleLower) || u.team_id || u.team) {
+          uType = 'plant';
+        } else if (['admin', 'superadmin'].includes(roleLower)) {
+          uType = 'admin';
+        }
+        return {
+          ...u,
+          user_type: uType,
+          full_name: u.full_name || 'Staff User',
+          is_active: u.is_active !== false,
+        };
+      });
+
+      setTeamUsers(enriched);
     } catch (err: any) {
-      console.warn('Failed to load team users:', err);
+      console.warn('Failed to load users:', err);
     } finally {
       setLoadingUsers(false);
     }
@@ -176,11 +251,13 @@ export default function AdminTeams() {
 
   useEffect(() => {
     void fetchTeams();
-    void fetchTeamUsers();
+    void fetchUnits();
+    void fetchAllUsers();
   }, []);
 
   const openAddUserModal = (preselectedTeam?: 'GATE' | 'QC' | 'UNLOADING') => {
     const target = preselectedTeam || 'GATE';
+    setAddUserType('plant');
     setAddTeam(target);
     setAddName('');
     setAddEmail('');
@@ -203,59 +280,87 @@ export default function AdminTeams() {
     e.preventDefault();
     setAddUserError('');
     if (!addName.trim()) {
-      setAddUserError('Operator full name is required');
+      setAddUserError('Full name is required');
       return;
     }
-    if (!addEmail.trim()) {
-      setAddUserError('Email address is required');
+    if (!addEmail.trim() && addUserType === 'unit') {
+      setAddUserError('Email address is required for BMC staff');
       return;
     }
 
     setSavingUser(true);
     try {
-      const payload = {
-        full_name: addName.trim(),
-        username: addUserId.trim().toUpperCase() || undefined,
-        email: addEmail.trim().toLowerCase(),
-        phone: addPhone.trim() || undefined,
-        team: addTeam,
-        user_type: 'plant',
-        shift: addShift,
-        password: addPassword.trim(),
-        force_password_change: addForceChange,
-      };
+      if (addUserType === 'plant') {
+        const payload = {
+          full_name: addName.trim(),
+          username: addUserId.trim().toUpperCase() || undefined,
+          email: addEmail.trim().toLowerCase() || `${addUserId.trim().toLowerCase()}@aavin.internal`,
+          phone: addPhone.trim() || undefined,
+          team: addTeam,
+          user_type: 'plant',
+          shift: addShift,
+          password: addPassword.trim(),
+          force_password_change: addForceChange,
+        };
 
-      const res = await api.post('/teams/users', payload);
-      const created = res.data;
+        const res = await api.post('/teams/users', payload);
+        const created = res.data;
 
-      setUserCreatedAlert({
-        name: created.full_name || addName,
-        username: created.username || addUserId,
-        email: created.email || addEmail,
-        team: addTeam,
-        password: created.temp_password || addPassword,
-      });
+        setUserCreatedAlert({
+          name: created.full_name || addName,
+          username: created.username || addUserId,
+          email: created.email || payload.email,
+          teamOrUnit: `Team ${addTeam}`,
+          password: created.temp_password || addPassword,
+        });
+      } else {
+        // BMC Unit User
+        const payload = {
+          full_name: addName.trim(),
+          email: addEmail.trim().toLowerCase(),
+          phone: addPhone.trim() || undefined,
+          role: 'unit',
+          unit_id: addUnitId || (units[0]?.id ?? undefined),
+          sub_role: addSubRole,
+          username: addUserId.trim() || undefined,
+          password: addPassword.trim(),
+          force_password_change: addForceChange,
+        };
+
+        const res = await api.post('/users/create', payload);
+        const created = res.data;
+        const assignedUnit = units.find((u) => u.id === addUnitId);
+
+        setUserCreatedAlert({
+          name: created.full_name || addName,
+          username: created.username || addEmail,
+          email: created.email || addEmail,
+          teamOrUnit: `BMC: ${assignedUnit?.name || 'Assigned BMC'}`,
+          password: created.temp_password || addPassword,
+        });
+      }
 
       setShowAddModal(false);
       setSuccessMsg(
         lang === 'ta'
-          ? `பயனர் ${created.full_name} (${created.username}) வெற்றிகரமாக உருவாக்கப்பட்டார்!`
-          : `Team operator ${created.full_name} (${created.username}) created successfully!`
+          ? `பயனர் ${addName} வெற்றிகரமாக உருவாக்கப்பட்டார்!`
+          : `User ${addName} created successfully!`
       );
 
-      await Promise.all([fetchTeams(), fetchTeamUsers()]);
+      await Promise.all([fetchTeams(), fetchAllUsers()]);
     } catch (err: any) {
-      setAddUserError(err.response?.data?.error || err.message || 'Failed to create team operator');
+      setAddUserError(err.response?.data?.error || err.message || 'Failed to create user');
     } finally {
       setSavingUser(false);
     }
   };
 
-  const openEditModal = (u: TeamUserRecord) => {
+  const openEditModal = (u: MergedUserRecord) => {
     setEditTarget(u);
     setEditName(u.full_name || '');
     setEditUserId(u.username || '');
     setEditPhone(u.phone ? u.phone.replace('+91', '').trim() : '');
+    setEditUnitId(u.unit_id || (units[0]?.id ?? ''));
     setEditShift(u.shift || 'General');
     setEditActive(u.is_active !== false);
     setEditError('');
@@ -270,17 +375,18 @@ export default function AdminTeams() {
         full_name: editName.trim(),
         username: editUserId.trim().toUpperCase() || null,
         phone: editPhone.trim() || null,
-        shift: editShift,
+        unit_id: editTarget.user_type === 'unit' ? editUnitId : undefined,
+        shift: editTarget.user_type === 'plant' ? editShift : undefined,
         is_active: editActive,
       });
 
       setSuccessMsg(
         lang === 'ta'
           ? `பயனர் விவரங்கள் வெற்றிகரமாக புதுப்பிக்கப்பட்டன!`
-          : `Operator details for ${editName} updated successfully!`
+          : `Details for ${editName} updated successfully!`
       );
       setEditTarget(null);
-      await Promise.all([fetchTeams(), fetchTeamUsers()]);
+      await Promise.all([fetchTeams(), fetchAllUsers()]);
     } catch (err: any) {
       setEditError(err.response?.data?.error || err.message || 'Failed to update user');
     } finally {
@@ -288,7 +394,7 @@ export default function AdminTeams() {
     }
   };
 
-  const openMoveModal = (u: TeamUserRecord) => {
+  const openMoveModal = (u: MergedUserRecord) => {
     setMoveTarget(u);
     const curr = (u.team?.code || u.role || 'GATE').toUpperCase() as 'GATE' | 'QC' | 'UNLOADING';
     const next = curr === 'GATE' ? 'QC' : curr === 'QC' ? 'UNLOADING' : 'GATE';
@@ -300,24 +406,25 @@ export default function AdminTeams() {
   const handleConfirmMove = async () => {
     if (!moveTarget) return;
     if (!moveReason.trim()) {
-      setMoveError('A reason for moving team is mandatory');
+      setMoveError('Reason is required for the audit log');
       return;
     }
+
     setMovingTeam(true);
     setMoveError('');
     try {
       await api.post(`/users/${moveTarget.id}/move-team`, {
-        new_team: newTeam,
+        target_team: newTeam,
         reason: moveReason.trim(),
       });
 
       setSuccessMsg(
         lang === 'ta'
           ? `${moveTarget.full_name} வெற்றிகரமாக ${newTeam} குழுவிற்கு மாற்றப்பட்டார்!`
-          : `${moveTarget.full_name} moved to ${newTeam} team successfully!`
+          : `Moved ${moveTarget.full_name} to ${newTeam} team successfully!`
       );
       setMoveTarget(null);
-      await Promise.all([fetchTeams(), fetchTeamUsers()]);
+      await Promise.all([fetchTeams(), fetchAllUsers()]);
     } catch (err: any) {
       setMoveError(err.response?.data?.error || err.message || 'Failed to move user');
     } finally {
@@ -329,8 +436,8 @@ export default function AdminTeams() {
     if (team.active && team.waiting_tankers_count > 0) {
       setBlockedWarning(
         lang === 'ta'
-          ? `மன்னிக்கவும்! ${team.name} குழுவை முடக்க முடியாது. தற்போது ${team.waiting_tankers_count} டேங்கர்கள் இந்தக் குழுவின் பணிக்காக காத்திருக்கின்றன. அவற்றை முடித்த பின்னரே முடக்க முடியும்.`
-          : `Cannot deactivate ${team.name}: ${team.waiting_tankers_count} tanker(s) are currently waiting on this team. Complete or reassign waiting tankers before deactivating the team.`
+          ? `இக்குழுவை முடக்க முடியாது: தற்போது ${team.waiting_tankers_count} டேங்கர்கள் ${team.name} குழுவிற்காக காத்திருக்கின்றன. காத்திருப்புக் குழுவை முதலில் முடிக்கவும்.`
+          : `Cannot deactivate ${team.name}: ${team.waiting_tankers_count} tanker(s) are currently waiting for this team. Please clear the waiting queue first.`
       );
       return;
     }
@@ -340,38 +447,70 @@ export default function AdminTeams() {
   const handleConfirmToggle = async () => {
     if (!targetTeam) return;
     setToggling(true);
-    setError('');
-    setSuccessMsg('');
     try {
       const nextActive = !targetTeam.active;
       await api.patch(`/teams/${targetTeam.code}/status`, { active: nextActive });
       setSuccessMsg(
         lang === 'ta'
-          ? `${targetTeam.name} வெற்றிகரமாக ${nextActive ? 'செயல்படுத்தப்பட்டது' : 'முடக்கப்பட்டது'}`
-          : `${targetTeam.name} has been successfully ${nextActive ? 'activated' : 'deactivated'}`
+          ? `${targetTeam.name} குழு ${nextActive ? 'செயல்படுத்தப்பட்டது' : 'முடக்கப்பட்டது'}!`
+          : `Team ${targetTeam.name} ${nextActive ? 'activated' : 'deactivated'} successfully!`
       );
       setTargetTeam(null);
       await fetchTeams();
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Failed to update team status');
-      setTargetTeam(null);
     } finally {
       setToggling(false);
     }
   };
 
+  const handleResetPassword = async () => {
+    if (!resetTarget) return;
+    setResetting(true);
+    setResetError('');
+    try {
+      const res = await api.post<{ temp_password?: string; temporaryPassword?: string }>(
+        `/users/${resetTarget.id}/reset-password`
+      );
+      const tempPwd = res.data?.temp_password || res.data?.temporaryPassword || generateRandomPassword();
+      setResetTempPwd(tempPwd);
+    } catch (err: any) {
+      setResetError(err.response?.data?.error || err.message || 'Failed to reset password');
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const handleToggleUserStatus = async () => {
+    if (!toggleUserTarget) return;
+    setTogglingUser(true);
+    try {
+      const nextActive = !toggleUserTarget.is_active;
+      await api.patch(`/users/${toggleUserTarget.id}`, { is_active: nextActive });
+      setSuccessMsg(
+        lang === 'ta'
+          ? `பயனர் ${toggleUserTarget.full_name} ${nextActive ? 'செயல்படுத்தப்பட்டார்' : 'முடக்கப்பட்டார்'}!`
+          : `User ${toggleUserTarget.full_name} ${nextActive ? 'activated' : 'deactivated'} successfully!`
+      );
+      setToggleUserTarget(null);
+      await fetchAllUsers();
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message || 'Failed to update user status');
+    } finally {
+      setTogglingUser(false);
+    }
+  };
+
   const handleSeedUsers = async () => {
     setSeeding(true);
-    setError('');
-    setSuccessMsg('');
     try {
       await api.post('/teams/seed-users');
       setSuccessMsg(
         lang === 'ta'
           ? 'மாதிரி பயனர்கள் (gate_test, qc_test, unloading_test) வெற்றிகரமாக உருவாக்கப்பட்டனர்!'
-          : 'Test operators (gate_test, qc_test, unloading_test) created successfully with default password!'
+          : 'Test operators (gate_test, qc_test, unloading_test) seeded successfully!'
       );
-      await Promise.all([fetchTeams(), fetchTeamUsers()]);
+      await Promise.all([fetchTeams(), fetchAllUsers()]);
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Failed to seed test users');
     } finally {
@@ -379,21 +518,52 @@ export default function AdminTeams() {
     }
   };
 
-  // Filtered Team Users
+  // User counts per scope
+  const scopeCounts = useMemo(() => {
+    return {
+      all: teamUsers.length,
+      plant: teamUsers.filter((u) => u.user_type === 'plant').length,
+      unit: teamUsers.filter((u) => u.user_type === 'unit').length,
+      admin: teamUsers.filter((u) => u.user_type === 'admin').length,
+    };
+  }, [teamUsers]);
+
+  // Filtered Users List
   const filteredUsers = useMemo(() => {
     let list = [...teamUsers];
+
+    // Scope filter
+    if (userScope !== 'all') {
+      list = list.filter((u) => u.user_type === userScope);
+    }
+
+    // Team Filter
     if (filterTeam) {
       const t = filterTeam.toUpperCase();
-      list = list.filter((u) => u.team?.code === t || u.role.toUpperCase() === t);
+      list = list.filter((u) => {
+        const uTeam = (u.team?.code || u.role || '').toUpperCase();
+        return uTeam === t;
+      });
     }
+
+    // BMC Unit Filter
+    if (filterUnit) {
+      list = list.filter((u) => u.unit_id === filterUnit);
+    }
+
+    // Shift Filter
     if (filterShift) {
       list = list.filter((u) => u.shift === filterShift);
     }
+
+    // Status Filter
     if (filterStatus === 'active') {
       list = list.filter((u) => u.is_active);
     } else if (filterStatus === 'inactive') {
       list = list.filter((u) => !u.is_active);
     }
+
+    // Search Query
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       list = list.filter(
@@ -401,14 +571,15 @@ export default function AdminTeams() {
           u.full_name.toLowerCase().includes(q) ||
           (u.username || '').toLowerCase().includes(q) ||
           (u.email || '').toLowerCase().includes(q) ||
-          (u.phone || '').toLowerCase().includes(q)
+          (u.phone || '').toLowerCase().includes(q) ||
+          (u.units?.name || '').toLowerCase().includes(q)
       );
     }
     return list;
-  }, [teamUsers, filterTeam, filterShift, filterStatus, searchQuery]);
+  }, [teamUsers, userScope, filterTeam, filterUnit, filterShift, filterStatus, searchQuery]);
 
-  // Data Table Columns for Team Users
-  const userColumns: DataColumn<TeamUserRecord>[] = [
+  // Data Table Columns
+  const userColumns: DataColumn<MergedUserRecord>[] = [
     {
       key: 'username',
       header: 'Unique User ID',
@@ -425,13 +596,13 @@ export default function AdminTeams() {
             border: '1px solid #cbd5e1',
           }}
         >
-          {u.username || '—'}
+          {u.username || (u.units?.unit_code ? `BMC_${u.units.unit_code}` : '—')}
         </code>
       ),
     },
     {
       key: 'name',
-      header: 'Operator Name',
+      header: 'Name',
       sortValue: (u) => u.full_name,
       render: (u) => (
         <div>
@@ -441,12 +612,53 @@ export default function AdminTeams() {
       ),
     },
     {
-      key: 'team',
-      header: 'Team',
-      sortValue: (u) => u.team?.name || u.role,
+      key: 'team_or_unit',
+      header: 'Role & Team / BMC',
+      sortValue: (u) => u.team?.name || u.units?.name || u.role,
       render: (u) => {
-        const tCode = (u.team?.code || u.role).toUpperCase();
-        const cfg = TEAM_COLOR_CONFIG[tCode] || { tone: 'indigo', border: '#cbd5e1', bg: '#f8fafc', dot: '#475569' };
+        if (u.user_type === 'plant') {
+          const tCode = (u.team?.code || u.role).toUpperCase();
+          const cfg = TEAM_COLOR_CONFIG[tCode] || { tone: 'indigo', border: '#cbd5e1', bg: '#f8fafc', dot: '#475569' };
+          return (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '3px 8px',
+                borderRadius: 6,
+                fontSize: '0.76rem',
+                fontWeight: 700,
+                background: cfg.bg,
+                border: `1px solid ${cfg.border}`,
+                color: cfg.dot,
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: cfg.dot }} />
+              {tCode} TEAM
+            </span>
+          );
+        }
+        if (u.user_type === 'unit') {
+          return (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '3px 8px',
+                borderRadius: 6,
+                fontSize: '0.76rem',
+                fontWeight: 600,
+                background: '#f0fdf4',
+                border: '1px solid #86efac',
+                color: '#166534',
+              }}
+            >
+              🏢 {u.units?.name ? `BMC: ${u.units.name}` : 'BMC Staff'}
+            </span>
+          );
+        }
         return (
           <span
             style={{
@@ -457,13 +669,12 @@ export default function AdminTeams() {
               borderRadius: 6,
               fontSize: '0.76rem',
               fontWeight: 700,
-              background: cfg.bg,
-              border: `1px solid ${cfg.border}`,
-              color: cfg.dot,
+              background: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              color: '#334155',
             }}
           >
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: cfg.dot }} />
-            {tCode}
+            🛡️ Admin
           </span>
         );
       },
@@ -471,18 +682,21 @@ export default function AdminTeams() {
     {
       key: 'shift',
       header: 'Shift',
-      sortValue: (u) => u.shift,
-      render: (u) => (
-        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
-          {u.shift === 'Morning' ? '🌅 Morning' : u.shift === 'Evening' ? '🌇 Evening' : '🕒 General'}
-        </span>
-      ),
+      sortValue: (u) => u.shift || '',
+      render: (u) =>
+        u.user_type === 'plant' && u.shift ? (
+          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
+            {u.shift === 'Morning' ? '🌅 Morning' : u.shift === 'Evening' ? '🌇 Evening' : '🕒 General'}
+          </span>
+        ) : (
+          <span style={{ color: '#94a3b8' }}>—</span>
+        ),
     },
     {
       key: 'phone',
       header: 'Mobile Phone',
       sortValue: (u) => u.phone || '',
-      render: (u) => <span>{u.phone || '—'}</span>,
+      render: (u) => <span>{normalizeIndianPhone(u.phone || '') || u.phone || '—'}</span>,
     },
     {
       key: 'status',
@@ -499,30 +713,59 @@ export default function AdminTeams() {
       header: 'Actions',
       align: 'center',
       render: (u) => (
-        <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+        <div style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center' }}>
+          {/* Edit */}
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              openEditModal(u);
-            }}
             className="btn-secondary btn-sm"
-            style={{ padding: '3px 8px', fontSize: '0.78rem' }}
-            title="Edit operator details"
+            onClick={() => openEditModal(u)}
+            title="Edit user details"
+            style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem' }}
           >
-            ✏️ Edit
+            ✏️
           </button>
+
+          {/* Move Team (plant operators only) */}
+          {u.user_type === 'plant' && (
+            <button
+              type="button"
+              className="btn-secondary btn-sm"
+              onClick={() => openMoveModal(u)}
+              title="Move to another plant team"
+              style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem' }}
+            >
+              ⇄
+            </button>
+          )}
+
+          {/* Reset Password */}
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              openMoveModal(u);
-            }}
             className="btn-secondary btn-sm"
-            style={{ padding: '3px 8px', fontSize: '0.78rem' }}
-            title="Move operator to another plant team"
+            onClick={() => {
+              setResetTarget(u);
+              setResetTempPwd('');
+              setResetError('');
+            }}
+            title="Reset Password"
+            style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem' }}
           >
-            🔄 Move
+            🔑
+          </button>
+
+          {/* Toggle Active Status */}
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            onClick={() => setToggleUserTarget(u)}
+            title={u.is_active ? 'Deactivate user' : 'Activate user'}
+            style={{
+              padding: '0.25rem 0.5rem',
+              fontSize: '0.78rem',
+              color: u.is_active ? '#dc2626' : '#16a34a',
+            }}
+          >
+            {u.is_active ? '⏻' : '✓'}
           </button>
         </div>
       ),
@@ -531,7 +774,7 @@ export default function AdminTeams() {
 
   return (
     <div className="page" style={{ padding: '1.5rem', maxWidth: 1400, margin: '0 auto' }}>
-      {/* 1. TOP PAGE HEADER WITH "ADD USER" BUTTON */}
+      {/* 1. PAGE HEADER WITH TOP "ADD USER" BUTTON */}
       <div
         className="page-header"
         style={{
@@ -545,17 +788,17 @@ export default function AdminTeams() {
       >
         <div>
           <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.25rem' }}>
-            {lang === 'ta' ? 'தொழிற்சாலை குழுக்கள் மேலாண்மை' : 'Plant Teams Management'}
+            {lang === 'ta' ? 'குழுக்கள் & பயனர்கள்' : 'Teams & Users'}
           </h1>
           <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>
             {lang === 'ta'
-              ? 'நுழைவாயில் (GATE), தரக்கட்டுப்பாடு (QC) மற்றும் இறக்குதல் (UNLOADING) குழுக்களின் செயல்பாடுகள் மற்றும் பயனர்கள்'
-              : 'Configure plant teams, monitor stage ownership, active staff counts, and tankers waiting per team'}
+              ? 'தொழிற்சாலை குழுக்கள் (Gate, QC, Unloading) மற்றும் பி.எம்.சி பணியாளர்களின் ஒருங்கிணைந்த மேலாண்மை'
+              : 'Unified management of plant operational teams (Gate, QC, Unloading), plant operators, and BMC staff'}
           </p>
         </div>
 
         <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* Prominent "Add user" button */}
+          {/* Prominent "Add User" button */}
           <button
             type="button"
             onClick={() => openAddUserModal()}
@@ -578,7 +821,7 @@ export default function AdminTeams() {
             type="button"
             onClick={() => {
               void fetchTeams();
-              void fetchTeamUsers();
+              void fetchAllUsers();
             }}
             className="btn-secondary"
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
@@ -628,8 +871,8 @@ export default function AdminTeams() {
               </div>
               <div style={{ marginTop: '0.4rem', fontSize: '0.85rem', display: 'flex', flexWrap: 'wrap', gap: '1.25rem' }}>
                 <div>Name: <strong>{userCreatedAlert.name}</strong></div>
-                <div>Unique User ID: <code style={{ background: '#d1fae5', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>{userCreatedAlert.username}</code></div>
-                <div>Team: <strong>{userCreatedAlert.team}</strong></div>
+                <div>User ID: <code style={{ background: '#d1fae5', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>{userCreatedAlert.username}</code></div>
+                <div>Assignment: <strong>{userCreatedAlert.teamOrUnit}</strong></div>
                 <div>Email: <strong>{userCreatedAlert.email}</strong></div>
                 {userCreatedAlert.password && (
                   <div>Temp Password: <code style={{ background: '#d1fae5', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>{userCreatedAlert.password}</code></div>
@@ -673,205 +916,266 @@ export default function AdminTeams() {
         </div>
       )}
 
-      {/* 2. TEAMS SUMMARY CARDS */}
-      {loadingTeams ? (
-        <div style={{ textAlign: 'center', padding: '2.5rem', color: '#64748b' }}>
-          {lang === 'ta' ? 'குழுக்கள் ஏற்றப்படுகின்றன...' : 'Loading plant teams...'}
+      {/* 2. PLANT TEAMS OVERVIEW CARDS */}
+      <div style={{ marginBottom: '1.75rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>
+            {lang === 'ta' ? 'தொழிற்சாலை குழுக்கள் (Plant Operations Teams)' : 'Plant Operations Teams'}
+          </h2>
+          <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+            3 operational teams with strict stage ownership
+          </span>
         </div>
-      ) : (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-            gap: '1.25rem',
-            marginBottom: '2rem',
-          }}
-        >
-          {teams.map((team) => {
-            const cfg = TEAM_COLOR_CONFIG[team.code] || { tone: 'indigo', border: '#cbd5e1', bg: '#f8fafc', dot: '#475569' };
-            const stageLabels = lang === 'ta' ? STAGE_LABELS_TA : STAGE_LABELS_EN;
 
-            return (
-              <div
-                key={team.id || team.code}
-                className="card"
-                style={{
-                  background: '#ffffff',
-                  border: `1px solid ${team.active ? cfg.border : '#e2e8f0'}`,
-                  borderTop: `4px solid ${team.active ? cfg.dot : '#94a3b8'}`,
-                  borderRadius: 10,
-                  padding: '1.25rem',
-                  boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.07)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
-                        <span
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: '50%',
-                            background: team.active ? cfg.dot : '#94a3b8',
-                            display: 'inline-block',
-                          }}
-                        />
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.05em', color: cfg.dot }}>
-                          {team.code} TEAM
-                        </span>
+        {loadingTeams ? (
+          <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+            {lang === 'ta' ? 'குழுக்கள் ஏற்றப்படுகின்றன...' : 'Loading plant teams...'}
+          </div>
+        ) : (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+              gap: '1.25rem',
+            }}
+          >
+            {teams.map((team) => {
+              const cfg = TEAM_COLOR_CONFIG[team.code] || { tone: 'indigo', border: '#cbd5e1', bg: '#f8fafc', dot: '#475569' };
+              const stageLabels = lang === 'ta' ? STAGE_LABELS_TA : STAGE_LABELS_EN;
+
+              return (
+                <div
+                  key={team.id || team.code}
+                  className="card"
+                  style={{
+                    background: '#ffffff',
+                    border: `1px solid ${team.active ? cfg.border : '#e2e8f0'}`,
+                    borderTop: `4px solid ${team.active ? cfg.dot : '#94a3b8'}`,
+                    borderRadius: 10,
+                    padding: '1.25rem',
+                    boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.07)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              background: team.active ? cfg.dot : '#94a3b8',
+                              display: 'inline-block',
+                            }}
+                          />
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.05em', color: cfg.dot }}>
+                            {team.code} TEAM
+                          </span>
+                        </div>
+                        <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
+                          {team.name}
+                        </h3>
                       </div>
-                      <h2 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
-                        {team.name}
-                      </h2>
+
+                      <StatusBadge tone={team.active ? 'green' : 'grey'}>
+                        {team.active ? (lang === 'ta' ? 'செயலில்' : 'Active') : (lang === 'ta' ? 'முடக்கப்பட்டது' : 'Inactive')}
+                      </StatusBadge>
                     </div>
 
-                    <StatusBadge tone={team.active ? 'green' : 'grey'}>
-                      {team.active ? (lang === 'ta' ? 'செயலில்' : 'Active') : (lang === 'ta' ? 'முடக்கப்பட்டது' : 'Inactive')}
-                    </StatusBadge>
-                  </div>
-
-                  {/* Metrics */}
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      gap: '0.65rem',
-                      margin: '0.85rem 0',
-                      padding: '0.65rem',
-                      background: '#f8fafc',
-                      borderRadius: 8,
-                      border: '1px solid #e2e8f0',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
-                        {lang === 'ta' ? 'செயலில் உள்ள பயனர்கள்' : 'Active Operators'}
+                    {/* Metrics */}
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '0.65rem',
+                        margin: '0.85rem 0',
+                        padding: '0.65rem',
+                        background: '#f8fafc',
+                        borderRadius: 8,
+                        border: '1px solid #e2e8f0',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
+                          {lang === 'ta' ? 'செயலில் உள்ள பணியாளர்கள்' : 'Active Operators'}
+                        </div>
+                        <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#0f172a', marginTop: '0.15rem' }}>
+                          {team.active_user_count}
+                        </div>
                       </div>
-                      <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#0f172a', marginTop: '0.15rem' }}>
-                        {team.active_user_count}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
-                        {lang === 'ta' ? 'காத்திருக்கும் டேங்கர்கள்' : 'Tankers Waiting'}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: '1.35rem',
-                          fontWeight: 700,
-                          color: team.waiting_tankers_count > 0 ? '#ea580c' : '#059669',
-                          marginTop: '0.15rem',
-                        }}
-                      >
-                        {team.waiting_tankers_count}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Owned Stages */}
-                  <div style={{ marginBottom: '1rem' }}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: '0.4rem' }}>
-                      {lang === 'ta' ? 'குழுவின் கட்டாய பொறுப்புகள்:' : 'Owned Pipeline Stages:'}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                      {team.owned_stages.map((stKey) => (
+                      <div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
+                          {lang === 'ta' ? 'காத்திருக்கும் டேங்கர்கள்' : 'Tankers Waiting'}
+                        </div>
                         <div
-                          key={stKey}
                           style={{
-                            fontSize: '0.78rem',
-                            color: '#334155',
-                            background: '#f1f5f9',
-                            padding: '0.3rem 0.55rem',
-                            borderRadius: 5,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.35rem',
+                            fontSize: '1.35rem',
+                            fontWeight: 700,
+                            color: team.waiting_tankers_count > 0 ? '#ea580c' : '#059669',
+                            marginTop: '0.15rem',
                           }}
                         >
-                          <span style={{ color: '#16a34a', fontWeight: 700 }}>✓</span>
-                          <span>{stageLabels[stKey] || stKey}</span>
+                          {team.waiting_tankers_count}
                         </div>
-                      ))}
+                      </div>
+                    </div>
+
+                    {/* Owned Stages */}
+                    <div style={{ marginBottom: '1rem' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: '0.4rem' }}>
+                        {lang === 'ta' ? 'குழுவின் கட்டாய பொறுப்புகள்:' : 'Owned Pipeline Stages:'}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                        {team.owned_stages.map((stKey) => (
+                          <div
+                            key={stKey}
+                            style={{
+                              fontSize: '0.78rem',
+                              color: '#334155',
+                              background: '#f1f5f9',
+                              padding: '0.3rem 0.55rem',
+                              borderRadius: 5,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.35rem',
+                            }}
+                          >
+                            <span style={{ color: '#16a34a', fontWeight: 700 }}>✓</span>
+                            <span>{stageLabels[stKey] || stKey}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Card Action Buttons */}
-                <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  {/* Card Actions */}
+                  <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={() => openAddUserModal(team.code)}
+                        style={{ fontSize: '0.82rem', padding: '0.45rem 0.65rem', justifyContent: 'center' }}
+                      >
+                        + {lang === 'ta' ? 'பயனர் சேர்' : 'Add User'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => {
+                          setUserScope('plant');
+                          setFilterTeam(team.code);
+                          const el = document.getElementById('team-users-section');
+                          if (el) el.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                        style={{ fontSize: '0.82rem', padding: '0.45rem 0.65rem', justifyContent: 'center' }}
+                      >
+                        👁️ {lang === 'ta' ? 'பயனர்கள்' : 'View Users'}
+                      </button>
+                    </div>
+
                     <button
                       type="button"
-                      className="btn-primary"
-                      onClick={() => openAddUserModal(team.code)}
-                      style={{ fontSize: '0.82rem', padding: '0.45rem 0.65rem', justifyContent: 'center' }}
-                    >
-                      + {lang === 'ta' ? 'பயனர் சேர்' : 'Add User'}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => {
-                        setFilterTeam(team.code);
-                        const el = document.getElementById('team-users-section');
-                        if (el) el.scrollIntoView({ behavior: 'smooth' });
+                      onClick={() => handleToggleClick(team)}
+                      className={team.active ? 'btn-secondary' : 'btn-primary'}
+                      style={{
+                        fontSize: '0.8rem',
+                        padding: '0.4rem',
+                        color: team.active ? '#dc2626' : undefined,
+                        borderColor: team.active ? '#fca5a5' : undefined,
+                        background: team.active ? '#fef2f2' : undefined,
+                        width: '100%',
+                        justifyContent: 'center',
                       }}
-                      style={{ fontSize: '0.82rem', padding: '0.45rem 0.65rem', justifyContent: 'center' }}
                     >
-                      👁️ {lang === 'ta' ? 'பயனர்கள்' : 'View Users'}
+                      {team.active
+                        ? lang === 'ta' ? 'குழுவை முடக்கு' : 'Deactivate Team'
+                        : lang === 'ta' ? 'குழுவை செயல்படுத்து' : 'Activate Team'}
                     </button>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleToggleClick(team)}
-                    className={team.active ? 'btn-secondary' : 'btn-primary'}
-                    style={{
-                      fontSize: '0.8rem',
-                      padding: '0.4rem',
-                      color: team.active ? '#dc2626' : undefined,
-                      borderColor: team.active ? '#fca5a5' : undefined,
-                      background: team.active ? '#fef2f2' : undefined,
-                      width: '100%',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    {team.active
-                      ? lang === 'ta' ? 'குழுவை முடக்கு' : 'Deactivate Team'
-                      : lang === 'ta' ? 'குழுவை செயல்படுத்து' : 'Activate Team'}
-                  </button>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-      {/* 3. SHOW ENTIRE TEAM LIST SECTION */}
-      <div id="team-users-section" className="card" style={{ padding: '1.5rem', marginTop: '1rem', background: '#ffffff', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+      {/* 3. SHOW ENTIRE USER DIRECTORY & PLANT TEAM MEMBERS */}
+      <div id="team-users-section" className="card" style={{ padding: '1.5rem', background: '#ffffff', borderRadius: 10, border: '1px solid #e2e8f0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
           <div>
             <h2 style={{ fontSize: '1.3rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
-              {lang === 'ta' ? 'தொழிற்சாலை குழு பயனர்கள் பட்டியல்' : 'Plant Team Members & Operators'} ({filteredUsers.length})
+              {lang === 'ta' ? 'பயனர்கள் பட்டியல்' : 'Plant Team Members & Operators'} ({filteredUsers.length})
             </h2>
             <p style={{ margin: '0.2rem 0 0 0', color: '#64748b', fontSize: '0.85rem' }}>
               {lang === 'ta'
-                ? 'அனைத்து குழுக்களின் பதிவு செய்யப்பட்ட பயனர்கள் மற்றும் தனித்துவ பயனர் எண்கள் (Unique User ID)'
-                : 'All registered operators across Gate, QC, and Unloading teams with structured unique user IDs'}
+                ? 'அனைத்து குழுக்களின் பதிவு செய்யப்பட்ட பயனர்கள், தனித்துவ அடையாள எண் (AV_IT_001) மற்றும் பி.எம்.சி பணியாளர்கள்'
+                : 'All registered operators across Gate, QC, Unloading teams, and BMC collection staff'}
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => openAddUserModal(filterTeam as any || 'GATE')}
-            className="btn-primary"
-            style={{ fontSize: '0.84rem', padding: '0.45rem 0.95rem' }}
-          >
-            ➕ {lang === 'ta' ? 'புதிய பயனர்' : 'Add New Operator'}
-          </button>
+          {/* Scope Segmented Tabs */}
+          <div style={{ display: 'flex', gap: '0.35rem', background: '#f1f5f9', padding: '3px', borderRadius: 8 }}>
+            <button
+              type="button"
+              onClick={() => {
+                setUserScope('all');
+                setFilterTeam('');
+                setFilterUnit('');
+              }}
+              style={{
+                border: 'none',
+                background: userScope === 'all' ? '#ffffff' : 'transparent',
+                fontWeight: userScope === 'all' ? 700 : 500,
+                color: userScope === 'all' ? '#0f172a' : '#64748b',
+                padding: '0.35rem 0.75rem',
+                borderRadius: 6,
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                boxShadow: userScope === 'all' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+              }}
+            >
+              All Users ({scopeCounts.all})
+            </button>
+            <button
+              type="button"
+              onClick={() => setUserScope('plant')}
+              style={{
+                border: 'none',
+                background: userScope === 'plant' ? '#ffffff' : 'transparent',
+                fontWeight: userScope === 'plant' ? 700 : 500,
+                color: userScope === 'plant' ? '#0f172a' : '#64748b',
+                padding: '0.35rem 0.75rem',
+                borderRadius: 6,
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                boxShadow: userScope === 'plant' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+              }}
+            >
+              Plant Teams ({scopeCounts.plant})
+            </button>
+            <button
+              type="button"
+              onClick={() => setUserScope('unit')}
+              style={{
+                border: 'none',
+                background: userScope === 'unit' ? '#ffffff' : 'transparent',
+                fontWeight: userScope === 'unit' ? 700 : 500,
+                color: userScope === 'unit' ? '#0f172a' : '#64748b',
+                padding: '0.35rem 0.75rem',
+                borderRadius: 6,
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                boxShadow: userScope === 'unit' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+              }}
+            >
+              BMC Staff ({scopeCounts.unit})
+            </button>
+          </div>
         </div>
 
         {/* Filter Toolbar */}
@@ -911,6 +1215,22 @@ export default function AdminTeams() {
             <option value="UNLOADING">Milk Unloading (UNLOAD)</option>
           </select>
 
+          {/* BMC Unit Filter */}
+          {units.length > 0 && (
+            <select
+              value={filterUnit}
+              onChange={(e) => setFilterUnit(e.target.value)}
+              style={{ padding: '0.45rem 0.65rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.84rem' }}
+            >
+              <option value="">All BMCs</option>
+              {units.map((u) => (
+                <option key={u.id} value={u.id}>
+                  BMC: {u.name} ({u.unit_code})
+                </option>
+              ))}
+            </select>
+          )}
+
           {/* Shift Filter */}
           <select
             value={filterShift}
@@ -934,11 +1254,13 @@ export default function AdminTeams() {
             <option value="inactive">Inactive Only</option>
           </select>
 
-          {(filterTeam || filterShift || filterStatus !== 'all' || searchQuery) && (
+          {(filterTeam || filterUnit || filterShift || filterStatus !== 'all' || searchQuery || userScope !== 'all') && (
             <button
               type="button"
               onClick={() => {
+                setUserScope('all');
                 setFilterTeam('');
+                setFilterUnit('');
                 setFilterShift('');
                 setFilterStatus('all');
                 setSearchQuery('');
@@ -958,9 +1280,7 @@ export default function AdminTeams() {
           <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#64748b' }}>
             <div style={{ fontSize: '2rem', marginBottom: '0.4rem' }}>👥</div>
             <div style={{ fontWeight: 600, color: '#1e293b' }}>
-              {filterTeam
-                ? `No operators registered for ${filterTeam} team yet.`
-                : 'No team operators found matching criteria.'}
+              No users found matching current filters.
             </div>
             <button
               type="button"
@@ -968,7 +1288,7 @@ export default function AdminTeams() {
               className="btn-primary"
               style={{ marginTop: '0.75rem', fontSize: '0.84rem', padding: '0.45rem 0.95rem' }}
             >
-              + Create First {filterTeam || 'Plant'} Operator
+              + Create User
             </button>
           </div>
         ) : (
@@ -989,12 +1309,18 @@ export default function AdminTeams() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>
-                  {lang === 'ta' ? 'புதிய தொழிற்சாலை பணியாளர் சேர்' : 'Add Plant Team User'}
+                  {addUserType === 'plant'
+                    ? lang === 'ta' ? 'புதிய தொழிற்சாலை பணியாளர் சேர்' : 'Add Plant Team User'
+                    : lang === 'ta' ? 'புதிய பி.எம்.சி பணியாளர் சேர்' : 'Add BMC Staff User'}
                 </h3>
                 <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.84rem', color: '#64748b' }}>
-                  {lang === 'ta'
-                    ? 'குழுவைத் தேர்வு செய்து தனித்துவ அடையாள எண்ணை (AV_IT_001) ஒதுக்கவும்'
-                    : 'Assign team, generate a structured Unique User ID (e.g. AV_IT_001) and set credentials'}
+                  {addUserType === 'plant'
+                    ? lang === 'ta'
+                      ? 'குழுவைத் தேர்வு செய்து தனித்துவ அடையாள எண்ணை (AV_IT_001) ஒதுக்கவும்'
+                      : 'Assign team, generate a structured Unique User ID (e.g. AV_IT_001) and set credentials'
+                    : lang === 'ta'
+                      ? 'பி.எம்.சி மையத்தை ஒதுக்கி பணியாளரை பதிவு செய்யவும்'
+                      : 'Assign BMC unit and configure user login credentials'}
                 </p>
               </div>
               <button
@@ -1006,126 +1332,222 @@ export default function AdminTeams() {
               </button>
             </div>
 
+            {/* Toggle User Type */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', background: '#f1f5f9', padding: '3px', borderRadius: 8 }}>
+              <button
+                type="button"
+                onClick={() => setAddUserType('plant')}
+                style={{
+                  flex: 1,
+                  padding: '0.45rem',
+                  borderRadius: 6,
+                  border: 'none',
+                  fontSize: '0.85rem',
+                  fontWeight: addUserType === 'plant' ? 700 : 500,
+                  background: addUserType === 'plant' ? '#ffffff' : 'transparent',
+                  color: addUserType === 'plant' ? '#0f172a' : '#64748b',
+                  cursor: 'pointer',
+                  boxShadow: addUserType === 'plant' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                }}
+              >
+                🏭 Plant Team Operator (Gate, QC, Unload)
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddUserType('unit')}
+                style={{
+                  flex: 1,
+                  padding: '0.45rem',
+                  borderRadius: 6,
+                  border: 'none',
+                  fontSize: '0.85rem',
+                  fontWeight: addUserType === 'unit' ? 700 : 500,
+                  background: addUserType === 'unit' ? '#ffffff' : 'transparent',
+                  color: addUserType === 'unit' ? '#0f172a' : '#64748b',
+                  cursor: 'pointer',
+                  boxShadow: addUserType === 'unit' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                }}
+              >
+                🏢 BMC Staff (Unit)
+              </button>
+            </div>
+
             {addUserError && <ErrorBanner message={addUserError} />}
 
             <form onSubmit={handleCreateUser} className="entry-form" style={{ marginTop: '0.75rem' }}>
-              {/* Row 1: Team Dropdown & Unique User ID */}
-              <div className="form-row">
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>
-                    {lang === 'ta' ? 'குழு (Select Team)' : 'Select Team'} *
-                  </label>
-                  <select
-                    value={addTeam}
-                    onChange={(e) => handleTeamChangeInModal(e.target.value as any)}
-                    required
-                    style={{ fontWeight: 600 }}
-                  >
-                    <option value="GATE">GATE — Vehicle Entry & Weighbridge</option>
-                    <option value="QC">QC — Quality Testing & CIP</option>
-                    <option value="UNLOADING">UNLOAD — Silo & Milk Reception</option>
-                  </select>
-                </div>
+              {addUserType === 'plant' ? (
+                <>
+                  {/* Row 1: Team Dropdown & Unique User ID */}
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600 }}>
+                        {lang === 'ta' ? 'குழு (Select Team)' : 'Select Team'} *
+                      </label>
+                      <select
+                        value={addTeam}
+                        onChange={(e) => handleTeamChangeInModal(e.target.value as any)}
+                        required
+                        style={{ fontWeight: 600 }}
+                      >
+                        <option value="GATE">GATE — Vehicle Entry & Weighbridge</option>
+                        <option value="QC">QC — Quality Testing & CIP</option>
+                        <option value="UNLOADING">UNLOAD — Silo & Milk Reception</option>
+                      </select>
+                    </div>
 
-                <div className="form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <label style={{ fontWeight: 600 }}>
-                      Unique User ID *
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => void fetchNextUserId(addTeam)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#2563eb',
-                        fontSize: '0.75rem',
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                        padding: 0,
-                      }}
-                    >
-                      ⚡ Auto-Generate
-                    </button>
+                    <div className="form-group">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <label style={{ fontWeight: 600 }}>Unique User ID *</label>
+                        <button
+                          type="button"
+                          onClick={() => void fetchNextUserId(addTeam)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#2563eb',
+                            fontSize: '0.75rem',
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                            padding: 0,
+                          }}
+                        >
+                          ⚡ Auto-Generate
+                        </button>
+                      </div>
+                      <input
+                        value={addUserId}
+                        onChange={(e) => setAddUserId(e.target.value.toUpperCase())}
+                        placeholder="e.g. AV_IT_001"
+                        required
+                        style={{ fontWeight: 700, letterSpacing: '0.04em' }}
+                      />
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px', display: 'block' }}>
+                        Format example: <code>AV_IT_001</code>, <code>AV_GT_001</code>. Stored in database.
+                      </span>
+                    </div>
                   </div>
-                  <input
-                    value={addUserId}
-                    onChange={(e) => setAddUserId(e.target.value.toUpperCase())}
-                    placeholder="e.g. AV_IT_001"
-                    required
-                    style={{ fontWeight: 700, letterSpacing: '0.04em' }}
-                  />
-                  <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px', display: 'block' }}>
-                    Format example: <code>AV_IT_001</code>, <code>AV_GT_001</code>. Stored in database.
-                  </span>
-                </div>
-              </div>
 
-              {/* Row 2: Full Name & Shift */}
-              <div className="form-row">
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>
-                    {lang === 'ta' ? 'முழு பெயர்' : 'Full Name'} *
-                  </label>
-                  <input
-                    value={addName}
-                    onChange={(e) => setAddName(e.target.value)}
-                    placeholder="e.g. Raman K"
-                    required
-                  />
-                </div>
+                  {/* Row 2: Full Name & Shift */}
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'முழு பெயர்' : 'Full Name'} *</label>
+                      <input
+                        value={addName}
+                        onChange={(e) => setAddName(e.target.value)}
+                        placeholder="e.g. Raman K"
+                        required
+                      />
+                    </div>
 
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>
-                    {lang === 'ta' ? 'பணி முறை (Shift)' : 'Shift'} *
-                  </label>
-                  <select
-                    value={addShift}
-                    onChange={(e) => setAddShift(e.target.value as any)}
-                    required
-                  >
-                    <option value="Morning">Morning (AM)</option>
-                    <option value="Evening">Evening (PM)</option>
-                    <option value="General">General (Full Day)</option>
-                  </select>
-                </div>
-              </div>
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'பணி முறை (Shift)' : 'Shift'} *</label>
+                      <select value={addShift} onChange={(e) => setAddShift(e.target.value as any)} required>
+                        <option value="Morning">Morning (AM)</option>
+                        <option value="Evening">Evening (PM)</option>
+                        <option value="General">General (Full Day)</option>
+                      </select>
+                    </div>
+                  </div>
 
-              {/* Row 3: Email & Phone */}
-              <div className="form-row">
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>
-                    {lang === 'ta' ? 'மின்னஞ்சல்' : 'Email Address'} *
-                  </label>
-                  <input
-                    type="email"
-                    value={addEmail}
-                    onChange={(e) => setAddEmail(e.target.value)}
-                    placeholder="e.g. raman.gate@aavin.internal"
-                    required
-                  />
-                </div>
+                  {/* Row 3: Email & Phone */}
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'மின்னஞ்சல்' : 'Email Address'}</label>
+                      <input
+                        type="email"
+                        value={addEmail}
+                        onChange={(e) => setAddEmail(e.target.value)}
+                        placeholder="e.g. raman.gate@aavin.internal"
+                      />
+                    </div>
 
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>
-                    {lang === 'ta' ? 'அலைபேசி எண்' : 'Mobile Number (+91)'}
-                  </label>
-                  <input
-                    type="tel"
-                    value={addPhone}
-                    onChange={(e) => setAddPhone(e.target.value)}
-                    placeholder="9876543210"
-                    maxLength={10}
-                  />
-                </div>
-              </div>
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'அலைபேசி எண்' : 'Mobile Number (+91)'}</label>
+                      <input
+                        type="tel"
+                        value={addPhone}
+                        onChange={(e) => setAddPhone(e.target.value)}
+                        placeholder="9876543210"
+                        maxLength={10}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* BMC Staff Form */}
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600 }}>Assign to BMC *</label>
+                      <select value={addUnitId} onChange={(e) => setAddUnitId(e.target.value)} required>
+                        {units.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name} ({u.unit_code})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-              {/* Row 4: Password with Auto-generate */}
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600 }}>Sub-Role</label>
+                      <select value={addSubRole} onChange={(e) => setAddSubRole(e.target.value as any)}>
+                        <option value="operator">Operator (Data Entry)</option>
+                        <option value="supervisor">Supervisor</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600 }}>Full Name *</label>
+                      <input
+                        value={addName}
+                        onChange={(e) => setAddName(e.target.value)}
+                        placeholder="e.g. Murugan S"
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600 }}>Email Address *</label>
+                      <input
+                        type="email"
+                        value={addEmail}
+                        onChange={(e) => setAddEmail(e.target.value)}
+                        placeholder="e.g. murugan@aavin.internal"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600 }}>Mobile Number (+91)</label>
+                      <input
+                        type="tel"
+                        value={addPhone}
+                        onChange={(e) => setAddPhone(e.target.value)}
+                        placeholder="9876543210"
+                        maxLength={10}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600 }}>Username (Optional)</label>
+                      <input
+                        value={addUserId}
+                        onChange={(e) => setAddUserId(e.target.value)}
+                        placeholder="e.g. salem_op_1"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Password with Auto-generate */}
               <div className="form-group">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label style={{ fontWeight: 600 }}>
-                    {lang === 'ta' ? 'கடவுச்சொல்' : 'Initial Password'} *
-                  </label>
+                  <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'கடவுச்சொல்' : 'Initial Password'} *</label>
                   <button
                     type="button"
                     onClick={() => setAddPassword(generateRandomPassword())}
@@ -1173,19 +1595,10 @@ export default function AdminTeams() {
 
               {/* Modal Buttons */}
               <div className="modal-actions" style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowAddModal(false)}
-                >
+                <button type="button" className="btn-secondary" onClick={() => setShowAddModal(false)}>
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="btn-primary"
-                  disabled={savingUser}
-                  style={{ minWidth: 140 }}
-                >
+                <button type="submit" className="btn-primary" disabled={savingUser} style={{ minWidth: 140 }}>
                   {savingUser ? 'Creating…' : 'Create User'}
                 </button>
               </div>
@@ -1199,7 +1612,7 @@ export default function AdminTeams() {
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal-card" style={{ maxWidth: 480 }}>
             <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', fontWeight: 700, color: '#0f172a' }}>
-              Edit Operator — {editTarget.full_name}
+              Edit User — {editTarget.full_name}
             </h3>
 
             {editError && <ErrorBanner message={editError} />}
@@ -1211,7 +1624,7 @@ export default function AdminTeams() {
               </div>
 
               <div className="form-group">
-                <label>Unique User ID</label>
+                <label>Unique User ID / Username</label>
                 <input
                   value={editUserId}
                   onChange={(e) => setEditUserId(e.target.value.toUpperCase())}
@@ -1219,19 +1632,34 @@ export default function AdminTeams() {
                 />
               </div>
 
+              {editTarget.user_type === 'unit' && units.length > 0 && (
+                <div className="form-group">
+                  <label>Assign to BMC</label>
+                  <select value={editUnitId} onChange={(e) => setEditUnitId(e.target.value)}>
+                    {units.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} ({u.unit_code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="form-row">
                 <div className="form-group">
                   <label>Mobile Number</label>
                   <input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="9876543210" />
                 </div>
-                <div className="form-group">
-                  <label>Shift</label>
-                  <select value={editShift} onChange={(e) => setEditShift(e.target.value as any)}>
-                    <option value="Morning">Morning</option>
-                    <option value="Evening">Evening</option>
-                    <option value="General">General</option>
-                  </select>
-                </div>
+                {editTarget.user_type === 'plant' && (
+                  <div className="form-group">
+                    <label>Shift</label>
+                    <select value={editShift} onChange={(e) => setEditShift(e.target.value as any)}>
+                      <option value="Morning">Morning</option>
+                      <option value="Evening">Evening</option>
+                      <option value="General">General</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div className="form-group">
@@ -1312,7 +1740,82 @@ export default function AdminTeams() {
         </div>
       )}
 
-      {/* 7. DEACTIVATE / ACTIVATE CONFIRMATION MODAL */}
+      {/* 7. RESET PASSWORD MODAL */}
+      {resetTarget && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal-card" style={{ maxWidth: 460 }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.2rem', fontWeight: 700, color: '#0f172a' }}>
+              Reset Password — {resetTarget.full_name}
+            </h3>
+            <p style={{ color: '#64748b', fontSize: '0.85rem', margin: '0 0 1rem 0' }}>
+              Generate a temporary password for this user. They will be forced to change it on their next login.
+            </p>
+
+            {resetError && <ErrorBanner message={resetError} />}
+
+            {resetTempPwd ? (
+              <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '1rem', borderRadius: 8, marginBottom: '1.25rem' }}>
+                <div style={{ fontSize: '0.8rem', color: '#065f46', fontWeight: 600, marginBottom: '0.4rem' }}>
+                  Temporary Password Generated:
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <code style={{ fontSize: '1.1rem', fontWeight: 700, color: '#047857', flex: 1, background: '#ffffff', padding: '0.4rem 0.65rem', borderRadius: 6, border: '1px solid #6ee7b7' }}>
+                    {resetTempPwd}
+                  </code>
+                  <button
+                    type="button"
+                    className="btn-primary btn-sm"
+                    onClick={() => copyToClipboard(resetTempPwd, 'reset')}
+                  >
+                    {copiedKey === 'reset' ? 'Copied! ✓' : '📋 Copy'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setResetTarget(null);
+                  setResetTempPwd('');
+                }}
+              >
+                {resetTempPwd ? 'Done' : 'Cancel'}
+              </button>
+              {!resetTempPwd && (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={resetting}
+                  onClick={() => void handleResetPassword()}
+                >
+                  {resetting ? 'Resetting…' : 'Generate New Password'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 8. DEACTIVATE USER CONFIRMATION MODAL */}
+      <ConfirmDialog
+        open={Boolean(toggleUserTarget)}
+        title={toggleUserTarget?.is_active ? `Deactivate ${toggleUserTarget?.full_name}?` : `Activate ${toggleUserTarget?.full_name}?`}
+        message={
+          toggleUserTarget?.is_active
+            ? `Are you sure you want to deactivate ${toggleUserTarget?.full_name}? They will not be able to log in until reactivated.`
+            : `Re-activate ${toggleUserTarget?.full_name}'s account so they can log in?`
+        }
+        confirmLabel={toggleUserTarget?.is_active ? 'Deactivate' : 'Activate'}
+        danger={toggleUserTarget?.is_active}
+        loading={togglingUser}
+        onConfirm={() => void handleToggleUserStatus()}
+        onCancel={() => setToggleUserTarget(null)}
+      />
+
+      {/* 9. DEACTIVATE / ACTIVATE TEAM CONFIRMATION MODAL */}
       <ConfirmDialog
         open={Boolean(targetTeam)}
         title={
@@ -1340,7 +1843,7 @@ export default function AdminTeams() {
         onCancel={() => setTargetTeam(null)}
       />
 
-      {/* 8. BLOCKED WARNING MODAL */}
+      {/* 10. BLOCKED WARNING MODAL */}
       {blockedWarning && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal-card" style={{ maxWidth: 460 }}>
