@@ -1,20 +1,30 @@
 import type { Request, Response, NextFunction } from 'express';
 import { supabase, createUserScopedClient } from '../supabase';
 
-const PROFILE_COLUMNS = 'id, role, zone_id, unit_id, full_name';
+const EXTENDED_PROFILE_COLUMNS = 'id, role, zone_id, unit_id, full_name, team_id, shift, username';
+const BASE_PROFILE_COLUMNS = 'id, role, zone_id, unit_id, full_name';
 
 async function loadProfile(userId: string, token: string) {
   let result = await supabase
     .from('profiles')
-    .select(PROFILE_COLUMNS)
+    .select(EXTENDED_PROFILE_COLUMNS)
     .eq('id', userId)
     .maybeSingle();
+
+  // If extended columns are not yet in database, fall back to base columns
+  if (result.error && (result.error.message.includes('column') || result.error.code === '42703')) {
+    result = await supabase
+      .from('profiles')
+      .select(BASE_PROFILE_COLUMNS)
+      .eq('id', userId)
+      .maybeSingle();
+  }
 
   // Retry once on transient network/DB failure
   if (result.error) {
     result = await supabase
       .from('profiles')
-      .select(PROFILE_COLUMNS)
+      .select(BASE_PROFILE_COLUMNS)
       .eq('id', userId)
       .maybeSingle();
   }
@@ -24,7 +34,7 @@ async function loadProfile(userId: string, token: string) {
     const userClient = createUserScopedClient(token);
     result = await userClient
       .from('profiles')
-      .select(PROFILE_COLUMNS)
+      .select(BASE_PROFILE_COLUMNS)
       .eq('id', userId)
       .maybeSingle();
   }

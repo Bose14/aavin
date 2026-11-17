@@ -280,7 +280,205 @@ export default function AdminSettings() {
             </div>
           </div>
 
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.9rem', cursor: 'pointer' }}>
+          {/* Tanker Journey & Plant Operations Configuration */}
+          <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', color: '#1e293b' }}>
+              Tanker Journey &amp; Plant Operations Thresholds
+            </h3>
+            <p className="chart-subtitle" style={{ marginBottom: '1rem' }}>
+              Configure per-stage SLA time limits, transit loss alert thresholds, milk density for volume conversion, and mismatch warning levels.
+            </p>
+
+            <div className="form-row" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
+              <div className="form-group">
+                <label>Gate Entry SLA (min)</label>
+                <input
+                  type="number"
+                  min="5"
+                  value={form.stage_time_limits_min?.vehicle_entered ?? 15}
+                  onChange={e =>
+                    setForm({
+                      ...form,
+                      stage_time_limits_min: {
+                        ...(form.stage_time_limits_min || {} as any),
+                        vehicle_entered: parseInt(e.target.value, 10) || 15,
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label>Gross Weighing SLA (min)</label>
+                <input
+                  type="number"
+                  min="5"
+                  value={form.stage_time_limits_min?.gross_weight ?? 15}
+                  onChange={e =>
+                    setForm({
+                      ...form,
+                      stage_time_limits_min: {
+                        ...(form.stage_time_limits_min || {} as any),
+                        gross_weight: parseInt(e.target.value, 10) || 15,
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label>QC Testing SLA (min)</label>
+                <input
+                  type="number"
+                  min="5"
+                  value={form.stage_time_limits_min?.qc_completed ?? 30}
+                  onChange={e =>
+                    setForm({
+                      ...form,
+                      stage_time_limits_min: {
+                        ...(form.stage_time_limits_min || {} as any),
+                        qc_completed: parseInt(e.target.value, 10) || 30,
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label>Unloading Bay SLA (min)</label>
+                <input
+                  type="number"
+                  min="10"
+                  value={form.stage_time_limits_min?.unloaded ?? 45}
+                  onChange={e =>
+                    setForm({
+                      ...form,
+                      stage_time_limits_min: {
+                        ...(form.stage_time_limits_min || {} as any),
+                        unloaded: parseInt(e.target.value, 10) || 45,
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label>Tare Weighing SLA (min)</label>
+                <input
+                  type="number"
+                  min="5"
+                  value={form.stage_time_limits_min?.tare_weight ?? 15}
+                  onChange={e =>
+                    setForm({
+                      ...form,
+                      stage_time_limits_min: {
+                        ...(form.stage_time_limits_min || {} as any),
+                        tare_weight: parseInt(e.target.value, 10) || 15,
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label>CIP Sanitization SLA (min)</label>
+                <input
+                  type="number"
+                  min="5"
+                  value={form.stage_time_limits_min?.cip_completed ?? 30}
+                  onChange={e =>
+                    setForm({
+                      ...form,
+                      stage_time_limits_min: {
+                        ...(form.stage_time_limits_min || {} as any),
+                        cip_completed: parseInt(e.target.value, 10) || 30,
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label>Vehicle Exit SLA (min)</label>
+                <input
+                  type="number"
+                  min="5"
+                  value={form.stage_time_limits_min?.vehicle_exit ?? 15}
+                  onChange={e =>
+                    setForm({
+                      ...form,
+                      stage_time_limits_min: {
+                        ...(form.stage_time_limits_min || {} as any),
+                        vehicle_exit: parseInt(e.target.value, 10) || 15,
+                      },
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="form-row" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+              <div className="form-group">
+                <label>Transit Loss Warning / Danger (%)</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={form.transit_loss_warn_pct ?? 1.0}
+                    onChange={e => setForm({ ...form, transit_loss_warn_pct: parseFloat(e.target.value) || 1.0 })}
+                  />
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={form.transit_loss_danger_pct ?? 2.0}
+                    onChange={e => setForm({ ...form, transit_loss_danger_pct: parseFloat(e.target.value) || 2.0 })}
+                  />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Milk Density (kg / Litre)</label>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={form.milk_density_kg_per_litre ?? 1.030}
+                  onChange={e => setForm({ ...form, milk_density_kg_per_litre: parseFloat(e.target.value) || 1.030 })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Net Wt vs Dispatched Mismatch (kg)</label>
+                <input
+                  type="number"
+                  step="5"
+                  value={form.net_weight_diff_threshold_kg ?? 50}
+                  onChange={e => setForm({ ...form, net_weight_diff_threshold_kg: parseFloat(e.target.value) || 50 })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Fat Drop Alert Threshold (%)</label>
+                <input
+                  type="number"
+                  step="0.05"
+                  value={form.quality_drop_threshold_fat ?? 0.30}
+                  onChange={e => setForm({ ...form, quality_drop_threshold_fat: parseFloat(e.target.value) || 0.30 })}
+                />
+              </div>
+              <div className="form-group">
+                <label>SNF Drop Alert Threshold (%)</label>
+                <input
+                  type="number"
+                  step="0.05"
+                  value={form.quality_drop_threshold_snf ?? 0.20}
+                  onChange={e => setForm({ ...form, quality_drop_threshold_snf: parseFloat(e.target.value) || 0.20 })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Live Auto-Refresh Interval (sec)</label>
+                <input
+                  type="number"
+                  min="15"
+                  max="120"
+                  value={form.auto_refresh_interval_sec ?? 30}
+                  onChange={e => setForm({ ...form, auto_refresh_interval_sec: parseInt(e.target.value, 10) || 30 })}
+                />
+              </div>
+            </div>
+          </div>
+
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.9rem', cursor: 'pointer', marginTop: '1rem' }}>
             <input
               type="checkbox"
               checked={form.show_unit_profit}

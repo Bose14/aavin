@@ -19,6 +19,7 @@ const superAdminNav: NavItem[] = [
 const adminNav: NavItem[] = [
   { to: '/admin', labelKey: 'navDashboard', fallbackLabel: 'Dashboard' },
   { to: '/admin/units', labelKey: 'navUnits', fallbackLabel: 'Units' },
+  { to: '/admin/teams', labelKey: 'navTeams', fallbackLabel: 'Teams' },
   { to: '/admin/users', labelKey: 'navUsers', fallbackLabel: 'Users' },
   { to: '/admin/milk', labelKey: 'navMilkRecords', fallbackLabel: 'Milk Records' },
   { to: '/admin/tanker', labelKey: 'navTankerRecords', fallbackLabel: 'Tanker Records' },
@@ -30,6 +31,21 @@ const unitNav: NavItem[] = [
   { to: '/unit/milk-entry', labelKey: 'navMilkEntry', fallbackLabel: 'Milk Entry' },
   { to: '/unit/tanker', labelKey: 'navTankerDispatch', fallbackLabel: 'Tanker Dispatch' },
   { to: '/unit/records', labelKey: 'navMyRecords', fallbackLabel: 'My Records' },
+];
+
+const gateNav: NavItem[] = [
+  { to: '/gate', labelKey: 'navGateQueue', fallbackLabel: 'Gate Queue' },
+  { to: '/gate/records', labelKey: 'navMyRecords', fallbackLabel: 'My Records' },
+];
+
+const qcNav: NavItem[] = [
+  { to: '/qc', labelKey: 'navQCQueue', fallbackLabel: 'QC Queue' },
+  { to: '/qc/records', labelKey: 'navMyRecords', fallbackLabel: 'My Records' },
+];
+
+const unloadingNav: NavItem[] = [
+  { to: '/unloading', labelKey: 'navUnloadingQueue', fallbackLabel: 'Unloading Queue' },
+  { to: '/unloading/records', labelKey: 'navMyRecords', fallbackLabel: 'My Records' },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -70,8 +86,12 @@ export default function Layout({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const nav = profile?.role === 'superadmin' ? superAdminNav
-    : profile?.role === 'admin' ? adminNav
+  const userRole = (profile?.role || '').toLowerCase();
+  const nav = userRole === 'superadmin' ? superAdminNav
+    : userRole === 'admin' ? adminNav
+    : userRole === 'gate' ? gateNav
+    : userRole === 'qc' ? qcNav
+    : userRole === 'unloading' ? unloadingNav
     : unitNav;
 
   const handleSignOut = async () => {

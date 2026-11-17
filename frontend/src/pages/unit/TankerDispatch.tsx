@@ -13,6 +13,8 @@ import {
 import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
 import { ConfirmDialog, ErrorBanner, StatusBadge, TableSkeleton } from '../../components/UiPrimitives';
+import { TankerTimeline } from '../../components/TankerTimeline';
+import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
 
 interface Dispatch {
   id: string;
@@ -63,6 +65,8 @@ export default function TankerDispatch() {
   const [warningMsg, setWarningMsg] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Dispatch | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const fetchAll = useCallback(async () => {
     setListLoading(true);
@@ -198,12 +202,49 @@ export default function TankerDispatch() {
       },
     },
     {
+      key: 'progress',
+      header: 'Plant Progress',
+      render: (r: any) =>
+        r.journey ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <TankerTimeline
+              journey={r.journey}
+              variant="mini"
+              onStepClick={() => {
+                setSelectedTrip(r);
+                setDrawerOpen(true);
+              }}
+            />
+            <span style={{ fontSize: '11px', color: '#64748b' }}>
+              {r.journey.tripStatusLabel}
+            </span>
+          </div>
+        ) : (
+          <span style={{ color: '#94a3b8' }}>—</span>
+        ),
+    },
+    {
       key: 'actions',
       header: '',
-      render: r => (
-        <button type="button" onClick={() => setDeleteTarget(r)} className="btn-danger btn-sm">
-          Delete
-        </button>
+      render: (r: any) => (
+        <div style={{ display: 'flex', gap: '6px' }}>
+          {r.journey && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedTrip(r);
+                setDrawerOpen(true);
+              }}
+              className="btn btn-secondary btn-sm"
+              title="Track live journey timeline"
+            >
+              Track
+            </button>
+          )}
+          <button type="button" onClick={() => setDeleteTarget(r)} className="btn-danger btn-sm">
+            Delete
+          </button>
+        </div>
       ),
     },
   ];
@@ -383,6 +424,17 @@ export default function TankerDispatch() {
         loading={deleting}
         onConfirm={() => void confirmDelete()}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <TankerDetailDrawer
+        isOpen={drawerOpen}
+        onClose={() => {
+          setDrawerOpen(false);
+          setSelectedTrip(null);
+        }}
+        trip={selectedTrip}
+        onTripUpdated={() => void fetchAll()}
+        isAdmin={false}
       />
     </div>
   );

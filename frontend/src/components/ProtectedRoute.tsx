@@ -3,13 +3,17 @@ import { useAuth } from '../context/AuthContext';
 
 interface Props {
   children: React.ReactNode;
-  role?: 'superadmin' | 'admin' | 'unit';
+  role?: string | string[];
   allowPasswordChange?: boolean;
 }
 
-function roleHome(role: string) {
-  if (role === 'superadmin') return '/superadmin';
-  if (role === 'admin') return '/admin';
+export function roleHome(role: string) {
+  const r = (role || '').toLowerCase();
+  if (r === 'superadmin') return '/superadmin';
+  if (r === 'admin') return '/admin';
+  if (r === 'gate') return '/gate';
+  if (r === 'qc') return '/qc';
+  if (r === 'unloading') return '/unloading';
   return '/unit';
 }
 
@@ -24,8 +28,14 @@ export default function ProtectedRoute({ children, role, allowPasswordChange = f
     return <Navigate to="/change-password" replace />;
   }
 
-  if (role && profile.role !== role) {
-    return <Navigate to={roleHome(profile.role)} replace />;
+  if (role) {
+    const userRole = (profile.role || '').toLowerCase();
+    const allowedRoles = Array.isArray(role)
+      ? role.map((x) => x.toLowerCase())
+      : [role.toLowerCase()];
+    if (!allowedRoles.includes(userRole)) {
+      return <Navigate to={roleHome(profile.role)} replace />;
+    }
   }
 
   return <>{children}</>;

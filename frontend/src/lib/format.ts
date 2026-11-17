@@ -8,6 +8,16 @@ export interface SellingRateRule {
   created_at?: string;
 }
 
+export interface StageTimeLimits {
+  vehicle_entered: number;
+  gross_weight: number;
+  qc_completed: number;
+  unloaded: number;
+  tare_weight: number;
+  cip_completed: number;
+  vehicle_exit: number;
+}
+
 export interface ZoneSettings {
   zone_id?: string;
   rate_base: number;
@@ -26,7 +36,25 @@ export interface ZoneSettings {
   show_unit_profit: boolean;
   destinations: string[];
   locations: string[];
+  stage_time_limits_min: StageTimeLimits;
+  transit_loss_warn_pct: number;
+  transit_loss_danger_pct: number;
+  net_weight_diff_threshold_kg: number;
+  quality_drop_threshold_fat: number;
+  quality_drop_threshold_snf: number;
+  milk_density_kg_per_litre: number;
+  auto_refresh_interval_sec: number;
 }
+
+export const DEFAULT_STAGE_TIME_LIMITS: StageTimeLimits = {
+  vehicle_entered: 15,
+  gross_weight: 15,
+  qc_completed: 30,
+  unloaded: 45,
+  tare_weight: 15,
+  cip_completed: 30,
+  vehicle_exit: 15,
+};
 
 export const DEFAULT_SELLING_RATE = 52;
 
@@ -59,6 +87,14 @@ export const DEFAULT_ZONE_SETTINGS: ZoneSettings = {
     'Puduchatram',
     'Other',
   ],
+  stage_time_limits_min: { ...DEFAULT_STAGE_TIME_LIMITS },
+  transit_loss_warn_pct: 0.5,
+  transit_loss_danger_pct: 1.5,
+  net_weight_diff_threshold_kg: 50.0,
+  quality_drop_threshold_fat: 0.20,
+  quality_drop_threshold_snf: 0.20,
+  milk_density_kg_per_litre: 1.030,
+  auto_refresh_interval_sec: 30,
 };
 
 /** Format currency in Indian numbering with negative sign placed before ₹ (e.g. -₹1,930, ₹1,25,000). */

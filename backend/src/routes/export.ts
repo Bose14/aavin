@@ -287,12 +287,12 @@ router.get('/milk', async (req, res) => {
   }
 });
 
-// GET /export/tanker?from=&to=&format=csv|xlsx&unit_id=
+// GET /export/tanker?from=&to=&format=csv|xlsx&unit_id=&status=&stage=&waiting_team=&delayed_only=&search=
 router.get('/tanker', async (req, res) => {
-  const { from, to, format = 'xlsx', unit_id } = req.query as Record<string, string>;
+  const { from, to, format = 'xlsx', unit_id, status, stage, waiting_team, delayed_only, search } = req.query as Record<string, string>;
   const zoneId = req.profile.zone_id;
   const effectiveUnitId = req.profile.role === 'unit' ? req.profile.unit_id : unit_id;
-  const prefix = await resolveFilePrefix(zoneId, effectiveUnitId);
+  const settings = await getZoneSettings(zoneId);
 
   const runT = (sel: string) => {
     let q = supabase
@@ -306,16 +306,74 @@ router.get('/tanker', async (req, res) => {
     return q;
   };
 
-  let resT = await runT('date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct, received_qty, receipt_time, received_fat_pct, received_snf_pct, units(name, unit_code)');
+  let resT = await runT('id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct, received_qty, receipt_time, received_fat_pct, received_snf_pct, gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data, units(name, unit_code)');
   if (resT.error && isMissingSchemaError(resT.error)) {
-    resT = await runT('date, tanker_number, quantity_dispatched, destination, units(name, unit_code)');
+    resT = await runT('id, date, tanker_number, quantity_dispatched, destination, units(name, unit_code)');
   }
   if (resT.error) { res.status(500).json({ error: resT.error.message }); return; }
 
-  const rows = ((resT.data ?? []) as unknown as Array<Record<string, unknown>>).map(r => {
+  const rawRows = (resT.data ?? []) as unknown as Array<Record<string, unknown>>;
+  const tripIds = rawRows.map((r) => String(r.id));
+  const { getTankerStagesForTrips } = await import('../lib/settingsStore');
+  const { deriveTankerJourneyState } = await import('../lib/tankerJourney');
+  const stageMap = await getTankerStagesForTrips(tripIds);
+
+  let enrichedList: any[] = rawRows.map((r) => {
+    const id = String(r.id);
+    const stages = stageMap[id] ?? [];
+    const tripInput = {
+      id,
+      date: String(r.date),
+      tanker_number: String(r.tanker_number ?? ''),
+      driver_name: (r.driver_name as string) || null,
+      seal_number: (r.seal_number as string) || null,
+      dispatch_time: (r.dispatch_time as string) || null,
+      quantity_dispatched: Number(r.quantity_dispatched ?? 0),
+      destination: (r.destination as string) || null,
+      dispatch_fat_pct: r.dispatch_fat_pct != null ? Number(r.dispatch_fat_pct) : null,
+      dispatch_snf_pct: r.dispatch_snf_pct != null ? Number(r.dispatch_snf_pct) : null,
+      received_qty: r.received_qty != null ? Number(r.received_qty) : null,
+      receipt_time: (r.receipt_time as string) || null,
+      received_fat_pct: r.received_fat_pct != null ? Number(r.received_fat_pct) : null,
+      received_snf_pct: r.received_snf_pct != null ? Number(r.received_snf_pct) : null,
+      gross_weight_kg: r.gross_weight_kg != null ? Number(r.gross_weight_kg) : null,
+      tare_weight_kg: r.tare_weight_kg != null ? Number(r.tare_weight_kg) : null,
+      net_weight_kg: r.net_weight_kg != null ? Number(r.net_weight_kg) : null,
+      qc_status: (r.qc_status as string) || null,
+      trip_status: (r.trip_status as any) || undefined,
+      stage_data: (r.stage_data as any) || {},
+      stages,
+    };
+    const journey = deriveTankerJourneyState(tripInput as any, settings);
+    return { ...r, journey };
+  });
+
+  if (stage) enrichedList = enrichedList.filter((r) => r.journey.tripStatus === stage);
+  if (waiting_team) enrichedList = enrichedList.filter((r) => r.journey.waitingTeam === waiting_team);
+  if (status === 'waiting') {
+    enrichedList = enrichedList.filter((r) => r.journey.tripStatus !== 'exited' && r.journey.tripStatus !== 'qc_rejected');
+  } else if (status === 'processed') {
+    enrichedList = enrichedList.filter((r) => r.journey.tripStatus === 'exited');
+  } else if (status === 'rejected') {
+    enrichedList = enrichedList.filter((r) => r.journey.tripStatus === 'qc_rejected');
+  }
+  if (delayed_only === 'true') {
+    enrichedList = enrichedList.filter((r) => r.journey.isOverLimit);
+  }
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    enrichedList = enrichedList.filter((r) => {
+      const tankerNo = String(r.tanker_number || '').toLowerCase();
+      const sealNo = String(r.seal_number || '').toLowerCase();
+      const driver = String(r.driver_name || '').toLowerCase();
+      return tankerNo.includes(q) || sealNo.includes(q) || driver.includes(q);
+    });
+  }
+
+  const rows = enrichedList.map((r) => {
     const u = r.units as { name: string; unit_code: string } | null;
     const disp = Number(r.quantity_dispatched ?? 0);
-    const rec = r.received_qty != null ? Number(r.received_qty) : null;
+    const rec = r.journey.calculated.received_litres;
     return {
       Date: formatDateDDMMYYYY(String(r.date)),
       Unit: u?.name ?? '',
@@ -325,20 +383,28 @@ router.get('/tanker', async (req, res) => {
       'Seal Number': r.seal_number ?? '',
       'Dispatch Time': r.dispatch_time ?? '',
       'Quantity Dispatched (L)': disp,
-      'Dispatch Fat (%)': r.dispatch_fat_pct ?? '',
-      'Dispatch SNF (%)': r.dispatch_snf_pct ?? '',
-      Destination: r.destination ?? '',
+      'Stage': r.journey.tripStatusLabel,
+      'Waiting Team': r.journey.waitingTeamLabel,
+      'Waiting (min)': r.journey.waitingSinceMinutes,
+      'Over-limit Flag': r.journey.isOverLimit ? 'YES' : 'NO',
+      'Gross (kg)': r.journey.calculated.gross_weight_kg ?? '',
+      'Tare (kg)': r.journey.calculated.tare_weight_kg ?? '',
+      'Net (kg)': r.journey.calculated.net_weight_kg ?? '',
       'Received Qty (L)': rec ?? '',
-      'Receipt Time': r.receipt_time ?? '',
-      'Transit Loss/Gain (L)': rec != null ? +(disp - rec).toFixed(2) : '',
+      'Transit Loss (L)': r.journey.calculated.transit_loss_litres ?? '',
+      'Transit Loss (%)': r.journey.calculated.transit_loss_pct != null ? `${r.journey.calculated.transit_loss_pct}%` : '',
+      'Total Turnaround (min)': r.journey.calculated.total_turnaround_min ?? '',
     };
   });
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(rows);
-  XLSX.utils.book_append_sheet(wb, ws, 'Tanker Dispatches');
+  XLSX.utils.book_append_sheet(wb, ws, 'Tanker Records');
 
-  const baseName = `${prefix}_TANKER_${buildRangeTag(from, to)}`;
+  const tabTitle = status ? (status.charAt(0).toUpperCase() + status.slice(1)) : 'All';
+  const todayDDMM = formatDateDDMMYYYY(new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10));
+  const baseName = `Tanker_Records_${tabTitle}_${todayDDMM}`;
+
   if (format === 'csv') {
     const csv = XLSX.utils.sheet_to_csv(ws);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

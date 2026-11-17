@@ -1,3 +1,13 @@
+export interface StageTimeLimits {
+  vehicle_entered: number;
+  gross_weight: number;
+  qc_completed: number;
+  unloaded: number;
+  tare_weight: number;
+  cip_completed: number;
+  vehicle_exit: number;
+}
+
 export interface ZoneSettings {
   zone_id: string;
   fat_min: number;
@@ -18,6 +28,15 @@ export interface ZoneSettings {
   show_unit_profit: boolean;
   destinations: string[];
   locations: string[];
+  /** Tanker Journey Assumptions & Configurations */
+  stage_time_limits_min: StageTimeLimits;
+  transit_loss_warn_pct: number;
+  transit_loss_danger_pct: number;
+  net_weight_diff_threshold_kg: number;
+  quality_drop_threshold_fat: number;
+  quality_drop_threshold_snf: number;
+  milk_density_kg_per_litre: number;
+  auto_refresh_interval_sec: number;
   updated_at?: string;
 }
 
@@ -29,6 +48,16 @@ export interface SellingRateRule {
   notes?: string | null;
   created_at?: string;
 }
+
+export const DEFAULT_STAGE_TIME_LIMITS: StageTimeLimits = {
+  vehicle_entered: 15,
+  gross_weight: 15,
+  qc_completed: 30,
+  unloaded: 45,
+  tare_weight: 15,
+  cip_completed: 30,
+  vehicle_exit: 15,
+};
 
 export const DEFAULT_ASSUMPTIONS = {
   sellingRatePerLitre: 52.0,
@@ -67,6 +96,14 @@ export const DEFAULT_ASSUMPTIONS = {
     'Puduchatram',
     'Other',
   ],
+  stageTimeLimitsMin: DEFAULT_STAGE_TIME_LIMITS,
+  transitLossWarnPct: 0.5,
+  transitLossDangerPct: 1.5,
+  netWeightDiffThresholdKg: 50.0,
+  qualityDropThresholdFat: 0.20,
+  qualityDropThresholdSnf: 0.20,
+  milkDensityKgPerLitre: 1.030,
+  autoRefreshIntervalSec: 30,
 } as const;
 
 export function buildDefaultZoneSettings(zoneId: string): ZoneSettings {
@@ -88,6 +125,14 @@ export function buildDefaultZoneSettings(zoneId: string): ZoneSettings {
     show_unit_profit: DEFAULT_ASSUMPTIONS.showUnitProfitToStaff,
     destinations: [...DEFAULT_ASSUMPTIONS.destinations],
     locations: [...DEFAULT_ASSUMPTIONS.locations],
+    stage_time_limits_min: { ...DEFAULT_ASSUMPTIONS.stageTimeLimitsMin },
+    transit_loss_warn_pct: DEFAULT_ASSUMPTIONS.transitLossWarnPct,
+    transit_loss_danger_pct: DEFAULT_ASSUMPTIONS.transitLossDangerPct,
+    net_weight_diff_threshold_kg: DEFAULT_ASSUMPTIONS.netWeightDiffThresholdKg,
+    quality_drop_threshold_fat: DEFAULT_ASSUMPTIONS.qualityDropThresholdFat,
+    quality_drop_threshold_snf: DEFAULT_ASSUMPTIONS.qualityDropThresholdSnf,
+    milk_density_kg_per_litre: DEFAULT_ASSUMPTIONS.milkDensityKgPerLitre,
+    auto_refresh_interval_sec: DEFAULT_ASSUMPTIONS.autoRefreshIntervalSec,
   };
 }
 

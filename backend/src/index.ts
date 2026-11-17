@@ -10,6 +10,7 @@ import analyticsRouter from './routes/analytics';
 import exportRouter from './routes/export';
 import usersRouter from './routes/users';
 import settingsRouter from './routes/settings';
+import teamsRouter from './routes/teams';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -51,6 +52,7 @@ app.use('/tanker', tankerRouter);
 app.use('/analytics', analyticsRouter);
 app.use('/export', exportRouter);
 app.use('/users', usersRouter);
+app.use('/teams', teamsRouter);
 app.use('/settings', settingsRouter);
 
 app.listen(PORT, () => {

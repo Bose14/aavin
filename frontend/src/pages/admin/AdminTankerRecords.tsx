@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../../lib/api';
-import { useTranslation } from '../../context/LanguageContext';
 import {
   formatDateDDMMYYYY,
   formatFatSnf,
@@ -9,7 +8,11 @@ import {
 } from '../../lib/format';
 import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
-import { ConfirmDialog, ErrorBanner, StatusBadge, TableSkeleton } from '../../components/UiPrimitives';
+import { ConfirmDialog, ErrorBanner, TableSkeleton } from '../../components/UiPrimitives';
+import { TankerTimeline } from '../../components/TankerTimeline';
+import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
+import { StagePipeline } from '../../components/StagePipeline';
+import { STAGE_COLORS } from '../../lib/tankerJourney';
 
 interface Unit {
   id: string;
@@ -17,104 +20,310 @@ interface Unit {
   unit_code: string;
 }
 
-interface Dispatch {
-  id: string;
-  date: string;
-  tanker_number: string;
-  driver_name?: string | null;
-  seal_number?: string | null;
-  dispatch_time?: string | null;
-  quantity_dispatched: number;
-  destination: string | null;
-  dispatch_fat_pct?: number | null;
-  dispatch_snf_pct?: number | null;
-  received_qty?: number | null;
-  receipt_time?: string | null;
-  received_fat_pct?: number | null;
-  received_snf_pct?: number | null;
-  transit_loss_qty?: number | null;
-  transit_loss_pct?: number | null;
-  fat_diff?: number | null;
-  snf_diff?: number | null;
-  units: { name: string; unit_code: string } | null;
+interface StatsResponse {
+  chips: Record<string, { count: number; delayedCount: number; label: string; color: string }>;
+  tabs: { waiting: number; processed: number; rejected: number; all: number };
+  kpis: {
+    total_dispatched_count: number;
+    total_dispatched_litres: number;
+    received_at_dairy_count: number;
+    received_at_dairy_label: string;
+    in_plant_count: number;
+    waiting_too_long_count: number;
+    qc_rejected_count: number;
+    qc_rejected_litres: number;
+    transit_loss_litres: number;
+    transit_loss_pct: number;
+    transit_loss_tone: 'green' | 'amber' | 'red';
+    avg_turnaround_min: number | null;
+  };
+  time_limits?: Record<string, number>;
 }
 
+const LOCAL_STORAGE_KEY_FILTERS = 'aavin_admin_tanker_filters_v2';
+const LOCAL_STORAGE_KEY_COLUMNS = 'aavin_admin_tanker_columns_v2';
+
+const ALL_COLUMNS = [
+  { id: 'date', label: 'Date / Entry' },
+  { id: 'unit', label: 'Unit' },
+  { id: 'tanker', label: 'Tanker / Seal' },
+  { id: 'driver', label: 'Driver' },
+  { id: 'dispatched', label: 'Dispatched (L)' },
+  { id: 'stage', label: 'Stage Badge' },
+  { id: 'progress', label: '7-Dot Progress' },
+  { id: 'waiting_on', label: 'Waiting On (Team)' },
+  { id: 'waiting_since', label: 'Waiting Since' },
+  { id: 'weights', label: 'Gross / Tare / Net' },
+  { id: 'qc', label: 'QC (Fat/SNF)' },
+  { id: 'received', label: 'Received (L)' },
+  { id: 'transit_loss', label: 'Transit Loss' },
+  { id: 'actions', label: 'Actions' },
+];
+
 export default function AdminTankerRecords() {
-  const { t } = useTranslation();
-  const [records, setRecords] = useState<Dispatch[]>([]);
+  // Records and stats data
+  const [records, setRecords] = useState<any[]>([]);
+  const [stats, setStats] = useState<StatsResponse | null>(null);
   const [units, setUnits] = useState<Unit[]>([]);
-
-  const [unitId, setUnitId] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-
+  const [teamUserCounts, setTeamUserCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [autoRefreshIntervalSec] = useState<number>(30);
 
-  // Receipt modal
-  const [receiveTarget, setReceiveTarget] = useState<Dispatch | null>(null);
-  const [recQty, setRecQty] = useState('');
-  const [recTime, setRecTime] = useState('');
-  const [recFat, setRecFat] = useState('');
-  const [recSnf, setRecSnf] = useState('');
-  const [savingReceipt, setSavingReceipt] = useState(false);
+  // Filters (initialized from localStorage if available)
+  const [activeTab, setActiveTab] = useState<'waiting' | 'processed' | 'rejected' | 'all'>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS);
+      return saved ? JSON.parse(saved).tab || 'waiting' : 'waiting';
+    } catch {
+      return 'waiting';
+    }
+  });
 
-  // Delete confirm
-  const [deleteTarget, setDeleteTarget] = useState<Dispatch | null>(null);
+  const [selectedStageChip, setSelectedStageChip] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS);
+      return saved ? JSON.parse(saved).stage || '' : '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [selectedUnitId, setSelectedUnitId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS);
+      return saved ? JSON.parse(saved).unitId || '' : '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [waitingTeamFilter, setWaitingTeamFilter] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS);
+      return saved ? JSON.parse(saved).waitingTeam || '' : '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [delayedOnly, setDelayedOnly] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS);
+      return saved ? Boolean(JSON.parse(saved).delayedOnly) : false;
+    } catch {
+      return false;
+    }
+  });
+
+  const [fromDate, setFromDate] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS);
+      return saved ? JSON.parse(saved).from || '' : '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [toDate, setToDate] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS);
+      return saved ? JSON.parse(saved).to || '' : '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Column visibility
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_COLUMNS);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    const initial: Record<string, boolean> = {};
+    for (const c of ALL_COLUMNS) initial[c.id] = true;
+    return initial;
+  });
+  const [showColumnChooser, setShowColumnChooser] = useState(false);
+
+  // Drawer state
+  const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Delete modal
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const params: Record<string, string> = {};
-      if (from) params.from = from;
-      if (to) params.to = to;
-      if (unitId) params.unit_id = unitId;
+  // Seed status
+  const [seeding, setSeeding] = useState(false);
+  const [seedNotice, setSeedNotice] = useState('');
 
-      const [rRes, uRes] = await Promise.all([
-        api.get<Dispatch[]>('/tanker', { params }),
-        api.get<Unit[]>('/units'),
-      ]);
-      setRecords(rRes.data);
-      setUnits(uRes.data);
-    } catch (err: unknown) {
-      setError((err as Error)?.message || 'Failed to load tanker records');
-    } finally {
-      setLoading(false);
-    }
-  }, [from, to, unitId]);
-
+  // Persist filters to localStorage
   useEffect(() => {
-    void fetchAll();
-  }, [fetchAll]);
+    const filters = {
+      tab: activeTab,
+      stage: selectedStageChip,
+      unitId: selectedUnitId,
+      waitingTeam: waitingTeamFilter,
+      delayedOnly,
+      from: fromDate,
+      to: toDate,
+    };
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY_FILTERS, JSON.stringify(filters));
+    } catch {}
+  }, [activeTab, selectedStageChip, selectedUnitId, waitingTeamFilter, delayedOnly, fromDate, toDate]);
 
-  const openReceiptModal = (d: Dispatch) => {
-    setReceiveTarget(d);
-    setRecQty(d.received_qty != null ? String(d.received_qty) : String(d.quantity_dispatched));
-    setRecTime(d.receipt_time || '');
-    setRecFat(d.received_fat_pct != null ? String(d.received_fat_pct) : (d.dispatch_fat_pct != null ? String(d.dispatch_fat_pct) : ''));
-    setRecSnf(d.received_snf_pct != null ? String(d.received_snf_pct) : (d.dispatch_snf_pct != null ? String(d.dispatch_snf_pct) : ''));
+  // Persist columns to localStorage
+  const toggleColumn = (id: string) => {
+    const updated = { ...visibleColumns, [id]: !visibleColumns[id] };
+    setVisibleColumns(updated);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY_COLUMNS, JSON.stringify(updated));
+    } catch {}
   };
 
-  const handleSaveReceipt = async () => {
-    if (!receiveTarget) return;
-    setSavingReceipt(true);
-    setError('');
-    try {
-      await api.patch(`/tanker/${receiveTarget.id}/receive`, {
-        received_qty: parseFloat(recQty),
-        receipt_time: recTime || undefined,
-        received_fat_pct: recFat ? parseFloat(recFat) : undefined,
-        received_snf_pct: recSnf ? parseFloat(recSnf) : undefined,
-      });
-      setReceiveTarget(null);
-      await fetchAll();
-    } catch (err: unknown) {
-      setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to log receipt');
-    } finally {
-      setSavingReceipt(false);
+  // Fetch Tanker Records and Stats
+  const fetchData = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      setError('');
+      try {
+        const params: Record<string, any> = {
+          status: activeTab,
+        };
+        if (selectedStageChip) params.stage = selectedStageChip;
+        if (selectedUnitId) params.unit_id = selectedUnitId;
+        if (waitingTeamFilter) params.waiting_team = waitingTeamFilter;
+        if (delayedOnly) params.delayed_only = 'true';
+        if (fromDate) params.from = fromDate;
+        if (toDate) params.to = toDate;
+        if (searchQuery.trim()) params.search = searchQuery.trim();
+
+        const [tResSettled, sResSettled, uResSettled, teamsResSettled] = await Promise.allSettled([
+          api.get<any[]>('/tanker', { params }),
+          api.get<StatsResponse>('/tanker/stats', {
+            params: {
+              from: fromDate || undefined,
+              to: toDate || undefined,
+              unit_id: selectedUnitId || undefined,
+            },
+          }),
+          api.get<Unit[]>('/units'),
+          api.get<any[]>('/teams'),
+        ]);
+
+        if (tResSettled.status === 'fulfilled') {
+          const data = tResSettled.value.data || [];
+          setRecords(data);
+          if (selectedTrip) {
+            const fresh = data.find((r: any) => r.id === selectedTrip.id);
+            if (fresh) setSelectedTrip(fresh);
+          }
+        } else {
+          const reason =
+            (tResSettled.reason as any)?.response?.data?.error ||
+            (tResSettled.reason as any)?.message ||
+            'Failed to fetch tanker records';
+          setError(reason);
+        }
+
+        if (uResSettled.status === 'fulfilled') {
+          setUnits(uResSettled.value.data || []);
+        }
+
+        if (teamsResSettled.status === 'fulfilled') {
+          const counts: Record<string, number> = {};
+          for (const tm of (teamsResSettled.value.data || [])) {
+            counts[tm.code.toUpperCase()] = tm.active_user_count || 0;
+            counts[tm.code.toLowerCase()] = tm.active_user_count || 0;
+          }
+          setTeamUserCounts(counts);
+        }
+
+        if (sResSettled.status === 'fulfilled') {
+          setStats(sResSettled.value.data);
+        } else if (tResSettled.status === 'fulfilled') {
+          // Derive fallback stats locally from records if stats endpoint fails
+          const list = tResSettled.value.data || [];
+          const waitingCount = list.filter(
+            (r: any) => r.journey?.tripStatus !== 'exited' && r.journey?.tripStatus !== 'qc_rejected',
+          ).length;
+          const processedCount = list.filter((r: any) => r.journey?.tripStatus === 'exited').length;
+          const rejectedCount = list.filter((r: any) => r.journey?.tripStatus === 'qc_rejected').length;
+          setStats({
+            chips: {},
+            tabs: { waiting: waitingCount, processed: processedCount, rejected: rejectedCount, all: list.length },
+            kpis: {
+              total_dispatched_count: list.length,
+              total_dispatched_litres: list.reduce(
+                (sum: number, r: any) => sum + (Number(r.quantity_dispatched) || 0),
+                0,
+              ),
+              received_at_dairy_count: processedCount,
+              received_at_dairy_label: `${processedCount} of ${list.length} tankers`,
+              in_plant_count: list.filter(
+                (r: any) =>
+                  r.journey?.tripStatus !== 'on_the_way' &&
+                  r.journey?.tripStatus !== 'exited' &&
+                  r.journey?.tripStatus !== 'qc_rejected',
+              ).length,
+              waiting_too_long_count: list.filter((r: any) => r.journey?.isOverLimit).length,
+              qc_rejected_count: rejectedCount,
+              qc_rejected_litres: list
+                .filter((r: any) => r.journey?.tripStatus === 'qc_rejected')
+                .reduce((sum: number, r: any) => sum + (Number(r.quantity_dispatched) || 0), 0),
+              transit_loss_litres: 0,
+              transit_loss_pct: 0,
+              transit_loss_tone: 'green',
+              avg_turnaround_min: null,
+            },
+          });
+        }
+
+        setLastUpdated(new Date());
+      } catch (err: any) {
+        setError(err.response?.data?.error || err.message || 'Failed to fetch tanker data');
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [activeTab, selectedStageChip, selectedUnitId, waitingTeamFilter, delayedOnly, fromDate, toDate, searchQuery, selectedTrip],
+  );
+
+  // Initial fetch
+  useEffect(() => {
+    void fetchData();
+  }, [activeTab, selectedStageChip, selectedUnitId, waitingTeamFilter, delayedOnly, fromDate, toDate]);
+
+  // Configurable Auto-Refresh (30-60s)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void fetchData(true);
+    }, Math.max(10, autoRefreshIntervalSec) * 1000);
+    return () => clearInterval(interval);
+  }, [fetchData, autoRefreshIntervalSec]);
+
+  // Handle stage chip click (clicking again toggles it off)
+  const handleChipClick = (stageKey: string) => {
+    if (selectedStageChip === stageKey) {
+      setSelectedStageChip('');
+    } else {
+      setSelectedStageChip(stageKey);
     }
+  };
+
+  const handleOpenDrawer = (trip: any) => {
+    setSelectedTrip(trip);
+    setDrawerOpen(true);
+  };
+
+  const handleCloseDrawer = () => {
+    setDrawerOpen(false);
+    setSelectedTrip(null);
   };
 
   const handleConfirmDelete = async () => {
@@ -123,7 +332,7 @@ export default function AdminTankerRecords() {
     try {
       await api.delete(`/tanker/${deleteTarget.id}`);
       setDeleteTarget(null);
-      await fetchAll();
+      await fetchData();
     } catch (err: unknown) {
       setError((err as Error)?.message || 'Delete failed');
     } finally {
@@ -131,259 +340,776 @@ export default function AdminTankerRecords() {
     }
   };
 
-  const totalDispatched = records.reduce((s, r) => s + Number(r.quantity_dispatched), 0);
-  const receivedRecords = records.filter(r => r.received_qty != null);
-  const totalReceived = receivedRecords.reduce((s, r) => s + Number(r.received_qty ?? 0), 0);
-  const matchedDispatched = receivedRecords.reduce((s, r) => s + Number(r.quantity_dispatched), 0);
-  const totalTransitLoss = +(matchedDispatched - totalReceived).toFixed(2);
-  const transitLossPct = matchedDispatched > 0 ? +((totalTransitLoss / matchedDispatched) * 100).toFixed(2) : 0;
+  const handleSeedData = async () => {
+    setSeeding(true);
+    setSeedNotice('');
+    try {
+      const res = await api.post('/tanker/seed');
+      setSeedNotice(res.data.message || 'Seeded successfully!');
+      await fetchData();
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message || 'Failed to seed');
+    } finally {
+      setSeeding(false);
+    }
+  };
 
-  const columns: DataColumn<Dispatch>[] = [
-    { key: 'date', header: 'Date', sortValue: r => r.date, render: r => formatDateDDMMYYYY(r.date) },
-    {
-      key: 'unit',
-      header: 'Unit',
-      sortValue: r => r.units?.name ?? '',
-      render: r => (
-        <span>
-          {r.units?.name ?? '—'} <span className="unit-code">{r.units?.unit_code}</span>
-        </span>
-      ),
-    },
-    {
-      key: 'tanker',
-      header: 'Tanker / Seal',
-      sortValue: r => r.tanker_number,
-      render: r => (
-        <div>
-          <strong>{r.tanker_number}</strong>
-          {r.seal_number && <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Seal: {r.seal_number}</div>}
-        </div>
-      ),
-    },
-    {
-      key: 'driver',
-      header: 'Driver / Time',
-      sortValue: r => r.driver_name ?? '',
-      render: r => (
-        <div>
-          <span>{r.driver_name || '—'}</span>
-          {r.dispatch_time && <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Out: {r.dispatch_time}</div>}
-        </div>
-      ),
-    },
-    {
-      key: 'dispatched',
-      header: 'Dispatched',
-      sortValue: r => Number(r.quantity_dispatched),
-      render: r => (
-        <div>
-          <strong>{formatLitres(Number(r.quantity_dispatched), 1)}</strong>
-          {r.dispatch_fat_pct != null && r.dispatch_snf_pct != null && (
-            <div style={{ fontSize: '0.74rem', color: '#6b7280' }}>
-              {formatFatSnf(r.dispatch_fat_pct)}% / {formatFatSnf(r.dispatch_snf_pct)}%
-            </div>
-          )}
-        </div>
-      ),
-      footerCell: <strong>{formatLitres(totalDispatched, 1)}</strong>,
-    },
-    { key: 'dest', header: 'Destination', sortValue: r => r.destination ?? '', render: r => r.destination || '—' },
-    {
-      key: 'received',
-      header: 'Dairy Receipt',
-      sortValue: r => Number(r.received_qty ?? -1),
-      render: r => {
-        if (r.received_qty == null) return <StatusBadge tone="amber">Pending Receipt</StatusBadge>;
-        return (
-          <div>
-            <StatusBadge tone="green">{formatLitres(Number(r.received_qty), 1)}</StatusBadge>
-            {r.receipt_time && <div style={{ fontSize: '0.74rem', color: '#6b7280', marginTop: 2 }}>In: {r.receipt_time}</div>}
-          </div>
-        );
-      },
-      footerCell: <strong>{receivedRecords.length > 0 ? formatLitres(totalReceived, 1) : '—'}</strong>,
-    },
-    {
-      key: 'loss',
-      header: 'Transit Loss / Diff',
-      sortValue: r => Number(r.transit_loss_qty ?? 0),
-      render: r => {
-        if (r.received_qty == null) return '—';
-        const loss = r.transit_loss_qty ?? (Number(r.quantity_dispatched) - Number(r.received_qty));
-        return (
-          <div>
-            <span className={loss > 0 ? 'profit-neg' : 'profit-pos'}>
-              {loss >= 0 ? `-${formatLitres(loss, 1)}` : `+${formatLitres(Math.abs(loss), 1)}`}
-            </span>
-            {(r.fat_diff != null || r.snf_diff != null) && (
-              <div style={{ fontSize: '0.72rem', color: '#6b7280' }}>
-                ΔFat {r.fat_diff ?? 0} / ΔSNF {r.snf_diff ?? 0}
+  // Export handlers respecting active filters
+  const exportParams = useMemo(() => {
+    const p: Record<string, string> = {};
+    if (activeTab) p.status = activeTab;
+    if (selectedStageChip) p.stage = selectedStageChip;
+    if (selectedUnitId) p.unit_id = selectedUnitId;
+    if (waitingTeamFilter) p.waiting_team = waitingTeamFilter;
+    if (delayedOnly) p.delayed_only = 'true';
+    if (fromDate) p.from = fromDate;
+    if (toDate) p.to = toDate;
+    if (searchQuery.trim()) p.search = searchQuery.trim();
+    return p;
+  }, [activeTab, selectedStageChip, selectedUnitId, waitingTeamFilter, delayedOnly, fromDate, toDate, searchQuery]);
+
+  const handleExport = (format: 'xlsx' | 'csv') => {
+    const todayDDMM = formatDateDDMMYYYY(new Date().toISOString().slice(0, 10));
+    const tabTitle = activeTab.charAt(0).toUpperCase() + activeTab.slice(1);
+    const filename = `Tanker_Records_${tabTitle}_${todayDDMM}.${format}`;
+    void triggerBlobDownload('/export/tanker', { ...exportParams, format }, filename);
+  };
+
+  const handleExportStageWise = () => {
+    void triggerBlobDownload('/tanker/export/stage-wise', exportParams, `Tanker_Stage_Progression_${Date.now()}.csv`);
+  };
+
+  // Table Columns Definition
+  const columns: DataColumn<any>[] = useMemo(() => {
+    const cols: DataColumn<any>[] = [];
+
+    if (visibleColumns.date) {
+      cols.push({
+        key: 'date',
+        header: 'Date / Entry',
+        sortValue: (r) => r.date,
+        render: (r) => {
+          const entryTime = r.journey?.timelineSteps?.[0]?.done_at;
+          const stageBorderColor = r.journey?.isOverLimit
+            ? '#ef4444'
+            : r.journey?.tripStatus === 'qc_rejected'
+            ? '#ef4444'
+            : r.journey?.stageColor?.border || '#cbd5e1';
+
+          return (
+            <div style={{ borderLeft: `4px solid ${stageBorderColor}`, paddingLeft: '8px' }}>
+              <div style={{ fontWeight: 600, color: '#1e293b' }}>{formatDateDDMMYYYY(r.date)}</div>
+              <div style={{ fontSize: '11px', color: '#64748b' }}>
+                {entryTime ? `Entered: ${entryTime.slice(11, 16)}` : r.dispatch_time ? `Disp: ${r.dispatch_time}` : 'On the way'}
               </div>
-            )}
+            </div>
+          );
+        },
+      });
+    }
+
+    if (visibleColumns.unit) {
+      cols.push({
+        key: 'unit',
+        header: 'Unit',
+        sortValue: (r) => r.units?.name || '',
+        searchValue: (r) => `${r.units?.name} ${r.units?.unit_code}`,
+        render: (r) => (
+          <div>
+            <div style={{ fontWeight: 600 }}>{r.units?.name || 'Village Unit'}</div>
+            <div style={{ fontSize: '11px', color: '#64748b' }}>{r.units?.unit_code || '—'}</div>
           </div>
-        );
-      },
-      footerCell: (
-        <strong className={totalTransitLoss > 0 ? 'profit-neg' : 'profit-pos'}>
-          {receivedRecords.length > 0 ? `${formatLitres(totalTransitLoss, 1)} (${transitLossPct}%)` : '—'}
-        </strong>
-      ),
-    },
-    {
-      key: 'actions',
-      header: 'Actions',
-      render: r => (
-        <div className="action-row">
-          <button type="button" className="btn-secondary btn-sm" onClick={() => openReceiptModal(r)}>
-            {r.received_qty != null ? 'Update Receipt' : 'Record Receipt'}
-          </button>
-          <button type="button" className="btn-danger btn-sm" onClick={() => setDeleteTarget(r)}>
-            Delete
-          </button>
-        </div>
-      ),
-    },
-  ];
+        ),
+      });
+    }
+
+    if (visibleColumns.tanker) {
+      cols.push({
+        key: 'tanker',
+        header: 'Tanker / Seal',
+        sortValue: (r) => r.tanker_number,
+        searchValue: (r) => `${r.tanker_number} ${r.seal_number}`,
+        render: (r) => (
+          <div>
+            <div style={{ fontWeight: 700, color: '#0f172a' }}>{r.tanker_number}</div>
+            <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span>Seal: {r.seal_number || '—'}</span>
+              {r.seal_number && <span title="Seal verified OK" style={{ color: '#16a34a' }}>✓</span>}
+            </div>
+          </div>
+        ),
+      });
+    }
+
+    if (visibleColumns.driver) {
+      cols.push({
+        key: 'driver',
+        header: 'Driver',
+        sortValue: (r) => r.driver_name || '',
+        searchValue: (r) => r.driver_name || '',
+        render: (r) => <span>{r.driver_name || '—'}</span>,
+      });
+    }
+
+    if (visibleColumns.dispatched) {
+      cols.push({
+        key: 'dispatched',
+        header: 'Dispatched (L)',
+        align: 'right',
+        sortValue: (r) => Number(r.quantity_dispatched || 0),
+        render: (r) => <strong>{formatLitres(r.quantity_dispatched)}</strong>,
+      });
+    }
+
+    if (visibleColumns.stage) {
+      cols.push({
+        key: 'stage',
+        header: 'Stage',
+        sortValue: (r) => r.journey?.tripStatus || '',
+        render: (r) => {
+          const color = r.journey?.stageColor || STAGE_COLORS.on_the_way;
+          return (
+            <span
+              style={{
+                display: 'inline-block',
+                padding: '3px 8px',
+                borderRadius: '12px',
+                fontSize: '11px',
+                fontWeight: 700,
+                backgroundColor: color.badgeBg,
+                color: color.badgeText,
+                border: `1px solid ${color.border}`,
+              }}
+            >
+              {r.journey?.tripStatusLabel}
+            </span>
+          );
+        },
+      });
+    }
+
+    if (visibleColumns.progress) {
+      cols.push({
+        key: 'progress',
+        header: '7-Dot Progress',
+        render: (r) => (
+          <TankerTimeline
+            journey={r.journey}
+            variant="mini"
+            onStepClick={() => handleOpenDrawer(r)}
+          />
+        ),
+      });
+    }
+
+    if (visibleColumns.waiting_on) {
+      cols.push({
+        key: 'waiting_on',
+        header: 'Waiting On',
+        sortValue: (r) => r.journey?.waitingTeam || '',
+        render: (r) => {
+          const team = r.journey?.waitingTeam;
+          if (!team || team === 'transit') {
+            return <span style={{ color: '#64748b' }}>Transit</span>;
+          }
+          return (
+            <span
+              style={{
+                padding: '2px 6px',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontWeight: 700,
+                backgroundColor: '#f1f5f9',
+                color: '#334155',
+                textTransform: 'uppercase',
+              }}
+            >
+              {r.journey?.waitingTeamLabel}
+            </span>
+          );
+        },
+      });
+    }
+
+    if (visibleColumns.waiting_since) {
+      cols.push({
+        key: 'waiting_since',
+        header: 'Waiting Since',
+        sortValue: (r) => r.journey?.waitingSinceMinutes ?? 0,
+        render: (r) => {
+          const mins = r.journey?.waitingSinceMinutes ?? 0;
+          const isOver = r.journey?.isOverLimit;
+          const isDone = r.journey?.tripStatus === 'exited' || r.journey?.tripStatus === 'qc_rejected';
+
+          if (isDone) return <span style={{ color: '#16a34a' }}>Completed</span>;
+
+          return (
+            <span
+              style={{
+                fontWeight: 600,
+                color: isOver ? '#dc2626' : mins > 20 ? '#d97706' : '#475569',
+              }}
+            >
+              {mins} min
+              {isOver && <span style={{ marginLeft: '4px', fontSize: '10px', color: '#dc2626' }}>⚠️</span>}
+            </span>
+          );
+        },
+      });
+    }
+
+    if (visibleColumns.weights) {
+      cols.push({
+        key: 'weights',
+        header: 'Gross / Tare / Net (kg)',
+        align: 'right',
+        render: (r) => {
+          const c = r.journey?.calculated;
+          if (!c?.gross_weight_kg && !c?.tare_weight_kg) return <span style={{ color: '#94a3b8' }}>—</span>;
+          return (
+            <div style={{ fontSize: '12px' }}>
+              <div>G: {c?.gross_weight_kg ? `${c.gross_weight_kg.toLocaleString('en-IN')}` : '—'}</div>
+              <div>T: {c?.tare_weight_kg ? `${c.tare_weight_kg.toLocaleString('en-IN')}` : '—'}</div>
+              {c?.net_weight_kg != null && (
+                <div style={{ fontWeight: 700, color: '#0369a1' }}>
+                  Net: {c.net_weight_kg.toLocaleString('en-IN')} kg
+                </div>
+              )}
+            </div>
+          );
+        },
+      });
+    }
+
+    if (visibleColumns.qc) {
+      cols.push({
+        key: 'qc',
+        header: 'QC (Fat / SNF)',
+        render: (r) => {
+          const isRej = r.journey?.isQcRejected;
+          if (isRej) {
+            return (
+              <span style={{ color: '#dc2626', fontWeight: 700 }}>
+                REJECTED
+              </span>
+            );
+          }
+          if (r.received_fat_pct != null || r.dispatch_fat_pct != null) {
+            return (
+              <div style={{ fontSize: '12px' }}>
+                <div>Fat: {formatFatSnf(r.received_fat_pct ?? r.dispatch_fat_pct)}</div>
+                <div>SNF: {formatFatSnf(r.received_snf_pct ?? r.dispatch_snf_pct)}</div>
+              </div>
+            );
+          }
+          return <span style={{ color: '#94a3b8' }}>Pending</span>;
+        },
+      });
+    }
+
+    if (visibleColumns.received) {
+      cols.push({
+        key: 'received',
+        header: 'Received (L)',
+        align: 'right',
+        sortValue: (r) => Number(r.journey?.calculated?.received_litres ?? 0),
+        render: (r) => {
+          const rec = r.journey?.calculated?.received_litres;
+          return rec != null ? <strong>{formatLitres(rec)}</strong> : <span style={{ color: '#94a3b8' }}>—</span>;
+        },
+      });
+    }
+
+    if (visibleColumns.transit_loss) {
+      cols.push({
+        key: 'transit_loss',
+        header: 'Transit Loss',
+        align: 'right',
+        sortValue: (r) => Number(r.journey?.calculated?.transit_loss_litres ?? 0),
+        render: (r) => {
+          const loss = r.journey?.calculated?.transit_loss_litres;
+          const lossPct = r.journey?.calculated?.transit_loss_pct;
+          if (loss == null) return <span style={{ color: '#94a3b8' }}>—</span>;
+
+          const isHigh = (lossPct ?? 0) > 1.0;
+          return (
+            <span style={{ color: isHigh ? '#dc2626' : '#16a34a', fontWeight: 600 }}>
+              {formatLitres(loss)} ({lossPct}%)
+            </span>
+          );
+        },
+      });
+    }
+
+    if (visibleColumns.actions) {
+      cols.push({
+        key: 'actions',
+        header: 'Actions',
+        align: 'center',
+        render: (r) => (
+          <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenDrawer(r);
+              }}
+              className="btn btn-secondary"
+              style={{ padding: '4px 8px', fontSize: '12px' }}
+              title="Open Stage Timeline Drawer"
+            >
+              👁️ View
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeleteTarget(r);
+              }}
+              className="btn btn-danger"
+              style={{ padding: '4px 6px', fontSize: '12px' }}
+              title="Delete record"
+            >
+              🗑️
+            </button>
+          </div>
+        ),
+      });
+    }
+
+    return cols;
+  }, [visibleColumns, handleOpenDrawer]);
 
   return (
-    <div className="page">
-      <div className="page-header">
+    <div className="page" style={{ maxWidth: '100%' }}>
+      {/* Page Title & Auto-refresh header */}
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1>Tanker Dispatch &amp; Receipt Records</h1>
-          <p className="page-subtitle">Track dispatched tankers, dairy intake weights, Fat/SNF differences &amp; transit losses</p>
+          <h1 style={{ margin: 0 }}>Tanker Journey &amp; Plant Operations</h1>
+          <p className="page-subtitle" style={{ margin: '4px 0 0 0' }}>
+            Live strict 7-stage tanker tracking across Gate, QC &amp; Unloading teams
+          </p>
         </div>
-        <div className="header-actions">
-          <select value={unitId} onChange={e => setUnitId(e.target.value)} aria-label="Filter by unit">
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontSize: '12px', color: '#64748b' }}>
+            Last updated: <strong>{lastUpdated.toLocaleTimeString()}</strong>
+          </span>
+          <button
+            onClick={() => void fetchData()}
+            className="btn btn-secondary"
+            style={{ fontSize: '12px', padding: '6px 12px' }}
+            title="Refresh records now"
+          >
+            🔄 Refresh
+          </button>
+          <button
+            onClick={() => void handleSeedData()}
+            className="btn btn-secondary"
+            style={{ fontSize: '12px', padding: '6px 12px' }}
+            disabled={seeding}
+            title="Inject test seed data for all stages, QC rejection & delay"
+          >
+            {seeding ? '🌱 Seeding…' : '🌱 Seed Test Data'}
+          </button>
+        </div>
+      </div>
+
+      {seedNotice && (
+        <div style={{ padding: '8px 16px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', borderRadius: '6px', marginBottom: '16px' }}>
+          {seedNotice}
+        </div>
+      )}
+
+      {error && <ErrorBanner message={error} onRetry={() => void fetchData()} />}
+
+      {/* 1. STAGE PIPELINE STRIP (top of page overview filter - connected stepper design) */}
+      <StagePipeline
+        chips={stats?.chips || {}}
+        selectedStage={selectedStageChip}
+        onSelectStage={(key) => handleChipClick(key)}
+        inPlantCount={stats?.kpis?.in_plant_count ?? 0}
+        waitingTooLongCount={stats?.kpis?.waiting_too_long_count ?? 0}
+        qcRejectedCount={stats?.kpis?.qc_rejected_count ?? 0}
+        totalTankersCount={stats?.kpis?.total_dispatched_count ?? records.length}
+        teamUserCounts={teamUserCounts}
+      />
+
+      {/* 2. KPI CARDS */}
+      <div
+        className="kpi-grid"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gap: '12px',
+          marginBottom: '20px',
+        }}
+      >
+        <div className="card" style={{ padding: '12px', borderLeft: '4px solid #3b82f6' }}>
+          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Total Dispatched</div>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b', marginTop: '2px' }}>
+            {stats?.kpis.total_dispatched_count ?? 0}
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>
+            {formatLitres(stats?.kpis.total_dispatched_litres ?? 0)}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '12px', borderLeft: '4px solid #10b981' }}>
+          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Received at Dairy</div>
+          <div style={{ fontSize: '16px', fontWeight: 700, color: '#10b981', marginTop: '2px' }}>
+            {stats?.kpis.received_at_dairy_label ?? '0 of 0'}
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Entered plant gates</div>
+        </div>
+
+        <div
+          className="card"
+          style={{
+            padding: '12px',
+            borderLeft: `4px solid ${
+              stats?.kpis.transit_loss_tone === 'red'
+                ? '#ef4444'
+                : stats?.kpis.transit_loss_tone === 'amber'
+                ? '#f59e0b'
+                : '#10b981'
+            }`,
+          }}
+        >
+          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Transit Loss</div>
+          <div
+            style={{
+              fontSize: '18px',
+              fontWeight: 700,
+              color:
+                stats?.kpis.transit_loss_tone === 'red'
+                  ? '#ef4444'
+                  : stats?.kpis.transit_loss_tone === 'amber'
+                  ? '#d97706'
+                  : '#10b981',
+              marginTop: '2px',
+            }}
+          >
+            {formatLitres(stats?.kpis.transit_loss_litres ?? 0)}
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>
+            {stats?.kpis.transit_loss_pct ?? 0}% overall loss
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '12px', borderLeft: '4px solid #6366f1' }}>
+          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>In Plant Now</div>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: '#4f46e5', marginTop: '2px' }}>
+            {stats?.kpis.in_plant_count ?? 0} tankers
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Inside gate boundaries</div>
+        </div>
+
+        <div className="card" style={{ padding: '12px', borderLeft: '4px solid #ef4444' }}>
+          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Waiting Too Long</div>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: '#dc2626', marginTop: '2px' }}>
+            {stats?.kpis.waiting_too_long_count ?? 0}
+          </div>
+          <div style={{ fontSize: '11px', color: '#dc2626' }}>Exceeded time limits</div>
+        </div>
+
+        <div className="card" style={{ padding: '12px', borderLeft: '4px solid #dc2626' }}>
+          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>QC Rejected</div>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: '#dc2626', marginTop: '2px' }}>
+            {stats?.kpis.qc_rejected_count ?? 0}
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>
+            {formatLitres(stats?.kpis.qc_rejected_litres ?? 0)} rejected
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '12px', borderLeft: '4px solid #06b6d4' }}>
+          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Avg Turnaround</div>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: '#0891b2', marginTop: '2px' }}>
+            {stats?.kpis.avg_turnaround_min != null ? `${stats.kpis.avg_turnaround_min} min` : '—'}
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Entry to Exit average</div>
+        </div>
+      </div>
+
+      {/* 3. TABS WITH COUNTS */}
+      <div
+        className="tabs-header"
+        style={{
+          display: 'flex',
+          borderBottom: '2px solid #e2e8f0',
+          marginBottom: '16px',
+          gap: '8px',
+        }}
+      >
+        <button
+          onClick={() => setActiveTab('waiting')}
+          style={{
+            padding: '10px 18px',
+            border: 'none',
+            background: 'none',
+            fontSize: '14px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            color: activeTab === 'waiting' ? '#2563eb' : '#64748b',
+            borderBottom: activeTab === 'waiting' ? '3px solid #2563eb' : '3px solid transparent',
+          }}
+        >
+          Waiting ({stats?.tabs.waiting ?? 0})
+        </button>
+
+        <button
+          onClick={() => setActiveTab('processed')}
+          style={{
+            padding: '10px 18px',
+            border: 'none',
+            background: 'none',
+            fontSize: '14px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            color: activeTab === 'processed' ? '#2563eb' : '#64748b',
+            borderBottom: activeTab === 'processed' ? '3px solid #2563eb' : '3px solid transparent',
+          }}
+        >
+          Processed ({stats?.tabs.processed ?? 0})
+        </button>
+
+        <button
+          onClick={() => setActiveTab('rejected')}
+          style={{
+            padding: '10px 18px',
+            border: 'none',
+            background: 'none',
+            fontSize: '14px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            color: activeTab === 'rejected' ? '#2563eb' : '#64748b',
+            borderBottom: activeTab === 'rejected' ? '3px solid #2563eb' : '3px solid transparent',
+          }}
+        >
+          QC Rejected ({stats?.tabs.rejected ?? 0})
+        </button>
+
+        <button
+          onClick={() => setActiveTab('all')}
+          style={{
+            padding: '10px 18px',
+            border: 'none',
+            background: 'none',
+            fontSize: '14px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            color: activeTab === 'all' ? '#2563eb' : '#64748b',
+            borderBottom: activeTab === 'all' ? '3px solid #2563eb' : '3px solid transparent',
+          }}
+        >
+          All ({stats?.tabs.all ?? 0})
+        </button>
+      </div>
+
+      {/* 5. FILTERS & SEARCH TOOLBAR */}
+      <div
+        className="filter-bar card"
+        style={{
+          padding: '12px 16px',
+          marginBottom: '16px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '12px',
+          alignItems: 'center',
+          backgroundColor: '#ffffff',
+          borderRadius: '8px',
+          border: '1px solid #e2e8f0',
+        }}
+      >
+        {/* Search */}
+        <div style={{ flex: '1 1 200px' }}>
+          <input
+            type="search"
+            placeholder="Search tanker, seal, driver, gate pass..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+          />
+        </div>
+
+        {/* Unit Filter */}
+        <div>
+          <select
+            value={selectedUnitId}
+            onChange={(e) => setSelectedUnitId(e.target.value)}
+            style={{ padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+          >
             <option value="">All Units</option>
-            {units.map(u => (
+            {units.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name} ({u.unit_code})
               </option>
             ))}
           </select>
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)} aria-label="From date" />
-          <input type="date" value={to} onChange={e => setTo(e.target.value)} aria-label="To date" />
-          <button
-            type="button"
-            onClick={() => void triggerBlobDownload('/export/tanker', { from, to, unit_id: unitId, format: 'csv' }, 'tanker_records.csv')}
-            className="btn-secondary"
+        </div>
+
+        {/* Waiting Team Filter */}
+        <div>
+          <select
+            value={waitingTeamFilter}
+            onChange={(e) => setWaitingTeamFilter(e.target.value)}
+            style={{ padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
           >
-            {t('exportCsv')}
-          </button>
-          <button
-            type="button"
-            onClick={() => void triggerBlobDownload('/export/tanker', { from, to, unit_id: unitId, format: 'xlsx' }, 'tanker_records.xlsx')}
-            className="btn-secondary"
-          >
-            {t('exportXlsx')}
-          </button>
+            <option value="">All Teams</option>
+            <option value="gate">Gate</option>
+            <option value="qc">QC</option>
+            <option value="unloading">Unloading</option>
+            <option value="transit">Transit</option>
+          </select>
         </div>
-      </div>
 
-      <div className="stats-grid">
-        <div className="stat-card">
-          <p className="stat-label">Total Dispatched</p>
-          <p className="stat-value">{formatLitres(totalDispatched, 1)}</p>
-        </div>
-        <div className="stat-card">
-          <p className="stat-label">Received at Dairy</p>
-          <p className="stat-value">{formatLitres(totalReceived, 1)}</p>
-          <p className="stat-sub">{receivedRecords.length} of {records.length} tankers logged</p>
-        </div>
-        <div className="stat-card">
-          <p className="stat-label">Transit Loss</p>
-          <p className={`stat-value ${totalTransitLoss > 0 ? 'profit-neg' : 'profit-pos'}`}>
-            {formatLitres(totalTransitLoss, 1)} ({transitLossPct}%)
-          </p>
-        </div>
-      </div>
+        {/* Delayed Only Checkbox */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={delayedOnly}
+            onChange={(e) => setDelayedOnly(e.target.checked)}
+          />
+          <span style={{ color: delayedOnly ? '#dc2626' : '#334155', fontWeight: delayedOnly ? 700 : 500 }}>
+            Delayed Only
+          </span>
+        </label>
 
-      {error && <ErrorBanner message={error} onRetry={fetchAll} />}
-
-      {loading ? (
-        <TableSkeleton rows={5} cols={9} />
-      ) : (
-        <div className="card table-card">
-          <DataTable
-            rows={records}
-            columns={columns}
-            getRowKey={r => r.id}
-            getRowClassName={r => (r.transit_loss_pct != null && r.transit_loss_pct > 2 ? 'row-danger' : '')}
-            emptyMessage="No tanker dispatches match these filters."
-            showTotalsRow
+        {/* Date Range */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            style={{ padding: '5px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+          />
+          <span style={{ color: '#64748b' }}>to</span>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            style={{ padding: '5px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}
           />
         </div>
-      )}
 
-      {/* Record Receipt Modal */}
-      {receiveTarget && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="modal-card">
-            <h3 className="modal-title">Record Dairy Receipt — {receiveTarget.tanker_number}</h3>
-            <p className="modal-body-text">
-              Dispatched {formatLitres(Number(receiveTarget.quantity_dispatched), 1)} on{' '}
-              {formatDateDDMMYYYY(receiveTarget.date)}.
-            </p>
-            <div className="entry-form">
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Received Quantity (L)</label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    step="0.1"
-                    min="0"
-                    value={recQty}
-                    onChange={e => setRecQty(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Receipt Time</label>
-                  <input type="time" value={recTime} onChange={e => setRecTime(e.target.value)} />
-                </div>
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Received Fat %</label>
-                  <input type="number" inputMode="decimal" step="0.01" value={recFat} onChange={e => setRecFat(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label>Received SNF %</label>
-                  <input type="number" inputMode="decimal" step="0.01" value={recSnf} onChange={e => setRecSnf(e.target.value)} />
-                </div>
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={() => setReceiveTarget(null)}>Cancel</button>
-              <button
-                type="button"
-                className="btn-primary"
-                style={{ width: 'auto' }}
-                disabled={savingReceipt || !recQty}
-                onClick={() => void handleSaveReceipt()}
-              >
-                {savingReceipt ? 'Saving…' : 'Save Receipt'}
-              </button>
-            </div>
+        {/* Action Buttons: Column Chooser, Exports */}
+        <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
+          <button
+            type="button"
+            onClick={() => setShowColumnChooser(!showColumnChooser)}
+            className="btn btn-secondary"
+            style={{ fontSize: '12px', padding: '6px 10px' }}
+          >
+            ⚙️ Columns
+          </button>
+          <button
+            type="button"
+            onClick={() => handleExport('xlsx')}
+            className="btn btn-secondary"
+            style={{ fontSize: '12px', padding: '6px 10px' }}
+          >
+            Excel
+          </button>
+          <button
+            type="button"
+            onClick={() => handleExport('csv')}
+            className="btn btn-secondary"
+            style={{ fontSize: '12px', padding: '6px 10px' }}
+          >
+            CSV
+          </button>
+          <button
+            type="button"
+            onClick={handleExportStageWise}
+            className="btn btn-secondary"
+            style={{ fontSize: '12px', padding: '6px 10px' }}
+            title="Export complete stage-by-stage timestamps and users"
+          >
+            Stage Report
+          </button>
+        </div>
+      </div>
+
+      {/* Column Chooser Popover */}
+      {showColumnChooser && (
+        <div
+          className="card"
+          style={{
+            padding: '12px 16px',
+            marginBottom: '16px',
+            backgroundColor: '#f8fafc',
+            border: '1px solid #cbd5e1',
+            borderRadius: '6px',
+          }}
+        >
+          <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '8px', color: '#1e293b' }}>
+            Show / Hide Table Columns:
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+            {ALL_COLUMNS.map((col) => (
+              <label key={col.id} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <input
+                  type="checkbox"
+                  checked={visibleColumns[col.id] ?? true}
+                  onChange={() => toggleColumn(col.id)}
+                />
+                {col.label}
+              </label>
+            ))}
           </div>
         </div>
       )}
 
+      {/* 4. MAIN TANKER TABLE */}
+      {loading ? (
+        <TableSkeleton rows={8} cols={9} />
+      ) : records.length === 0 ? (
+        <div className="card" style={{ padding: '40px 20px', textAlign: 'center', color: '#64748b' }}>
+          <div style={{ fontSize: '28px', marginBottom: '8px' }}>🥛</div>
+          <h3 style={{ margin: '0 0 6px 0', fontSize: '16px', color: '#1e293b' }}>
+            {activeTab === 'waiting'
+              ? 'No tankers waiting. All caught up!'
+              : activeTab === 'processed'
+              ? 'No processed tankers found for the selected period.'
+              : activeTab === 'rejected'
+              ? 'No rejected tankers. Quality checks clean!'
+              : 'No tanker records found.'}
+          </h3>
+          <p style={{ margin: 0, fontSize: '13px' }}>
+            Try clearing filters or click &quot;🌱 Seed Test Data&quot; to inject complete test journeys.
+          </p>
+        </div>
+      ) : (
+        <div className="table-responsive">
+          <DataTable
+            rows={records}
+            columns={columns}
+            getRowKey={(r) => r.id}
+            searchable={false}
+            pageSize={20}
+          />
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="Delete Tanker Record?"
-        message={
-          deleteTarget
-            ? `Remove dispatch ${deleteTarget.tanker_number} (${formatDateDDMMYYYY(deleteTarget.date)})? This restores the dispatched litres to available stock.`
-            : ''
-        }
-        confirmLabel="Delete Record"
+        title="Delete Tanker Dispatch Record"
+        message={`Are you sure you want to delete dispatch record for tanker ${deleteTarget?.tanker_number}? This cannot be undone.`}
+        confirmLabel={deleting ? 'Deleting…' : 'Delete'}
         danger
-        loading={deleting}
         onConfirm={() => void handleConfirmDelete()}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* PART B: ROW DETAIL DRAWER */}
+      <TankerDetailDrawer
+        isOpen={drawerOpen}
+        onClose={handleCloseDrawer}
+        trip={selectedTrip}
+        onTripUpdated={() => void fetchData()}
+        isAdmin={true}
       />
     </div>
   );

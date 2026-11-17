@@ -36,11 +36,27 @@ export interface CorrectionRequest {
   created_at: string;
 }
 
+export interface TeamRow {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+  created_at?: string;
+}
+
+export const DEFAULT_TEAMS: TeamRow[] = [
+  { id: '11111111-1111-4111-8111-111111111111', code: 'GATE', name: 'Gate Operations Team', active: true },
+  { id: '22222222-2222-4222-8222-222222222222', code: 'QC', name: 'Quality Control (QC) Team', active: true },
+  { id: '33333333-3333-4333-8333-333333333333', code: 'UNLOADING', name: 'Milk Unloading Team', active: true },
+];
+
 interface FallbackStoreData {
   zoneSettings: Record<string, ZoneSettings>;
   sellingRates: Record<string, SellingRateRule[]>;
   auditLogs: AuditLogEntry[];
   correctionRequests: CorrectionRequest[];
+  tankerStages: Record<string, any[]>;
+  teams?: Record<string, TeamRow>;
 }
 
 const FALLBACK_DIR = path.resolve(__dirname, '../../.data');
@@ -53,11 +69,16 @@ export function isMissingSchemaError(err: { code?: string; message?: string } | 
   return (
     code === '42P01' ||
     code === '42703' ||
+    code === 'PGRST100' ||
+    code === 'PGRST200' ||
     code === 'PGRST204' ||
     code === 'PGRST205' ||
     msg.includes('does not exist') ||
-    msg.includes('could not find the table') ||
-    msg.includes('schema cache')
+    msg.includes('could not find') ||
+    msg.includes('schema cache') ||
+    msg.includes('column') ||
+    msg.includes('relation') ||
+    msg.includes('table')
   );
 }
 
@@ -65,17 +86,25 @@ function readFallback(): FallbackStoreData {
   try {
     if (fs.existsSync(FALLBACK_FILE)) {
       const parsed = JSON.parse(fs.readFileSync(FALLBACK_FILE, 'utf8')) as Partial<FallbackStoreData>;
+      const teams = parsed.teams ?? {};
+      for (const def of DEFAULT_TEAMS) {
+        if (!teams[def.code]) teams[def.code] = { ...def };
+      }
       return {
         zoneSettings: parsed.zoneSettings ?? {},
         sellingRates: parsed.sellingRates ?? {},
         auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
         correctionRequests: Array.isArray(parsed.correctionRequests) ? parsed.correctionRequests : [],
+        tankerStages: parsed.tankerStages && typeof parsed.tankerStages === 'object' ? parsed.tankerStages : {},
+        teams,
       };
     }
   } catch {
     // Corrupted fallback ignored; return empty store
   }
-  return { zoneSettings: {}, sellingRates: {}, auditLogs: [], correctionRequests: [] };
+  const teams: Record<string, TeamRow> = {};
+  for (const def of DEFAULT_TEAMS) teams[def.code] = { ...def };
+  return { zoneSettings: {}, sellingRates: {}, auditLogs: [], correctionRequests: [], tankerStages: {}, teams };
 }
 
 function writeFallback(data: FallbackStoreData): void {
@@ -85,45 +114,55 @@ function writeFallback(data: FallbackStoreData): void {
 
 export async function getZoneSettings(zoneId: string): Promise<ZoneSettings> {
   const defaults = buildDefaultZoneSettings(zoneId);
-  const { data, error } = await supabase
-    .from('zone_settings')
-    .select('*')
-    .eq('zone_id', zoneId)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('zone_settings')
+      .select('*')
+      .eq('zone_id', zoneId)
+      .maybeSingle();
 
-  if (error) {
-    if (isMissingSchemaError(error)) {
+    if (error) {
       const store = readFallback();
       return { ...defaults, ...(store.zoneSettings[zoneId] ?? {}) };
     }
-    throw new Error(error.message);
-  }
 
-  if (!data) {
+    if (!data) {
+      const store = readFallback();
+      return { ...defaults, ...(store.zoneSettings[zoneId] ?? {}) };
+    }
+
+    return {
+      zone_id: zoneId,
+      fat_min: Number(data.fat_min ?? defaults.fat_min),
+      fat_max: Number(data.fat_max ?? defaults.fat_max),
+      fat_benchmark: Number(data.fat_benchmark ?? defaults.fat_benchmark),
+      snf_min: Number(data.snf_min ?? defaults.snf_min),
+      snf_max: Number(data.snf_max ?? defaults.snf_max),
+      snf_benchmark: Number(data.snf_benchmark ?? defaults.snf_benchmark),
+      rejection_warn_pct: Number(data.rejection_warn_pct ?? defaults.rejection_warn_pct),
+      rejection_danger_pct: Number(data.rejection_danger_pct ?? defaults.rejection_danger_pct),
+      rate_base: Number(data.rate_base ?? defaults.rate_base),
+      rate_fat_coeff: Number(data.rate_fat_coeff ?? defaults.rate_fat_coeff),
+      rate_snf_coeff: Number(data.rate_snf_coeff ?? defaults.rate_snf_coeff),
+      rejection_payment_rule: (data.rejection_payment_rule === 'gross' ? 'gross' : 'net'),
+      edit_lock_hours: Number(data.edit_lock_hours ?? defaults.edit_lock_hours),
+      show_unit_profit: Boolean(data.show_unit_profit),
+      destinations: Array.isArray(data.destinations) ? data.destinations : defaults.destinations,
+      locations: Array.isArray(data.locations) ? data.locations : defaults.locations,
+      stage_time_limits_min: data.stage_time_limits_min ?? defaults.stage_time_limits_min,
+      transit_loss_warn_pct: Number(data.transit_loss_warn_pct ?? defaults.transit_loss_warn_pct),
+      transit_loss_danger_pct: Number(data.transit_loss_danger_pct ?? defaults.transit_loss_danger_pct),
+      net_weight_diff_threshold_kg: Number(data.net_weight_diff_threshold_kg ?? defaults.net_weight_diff_threshold_kg),
+      quality_drop_threshold_fat: Number(data.quality_drop_threshold_fat ?? defaults.quality_drop_threshold_fat),
+      quality_drop_threshold_snf: Number(data.quality_drop_threshold_snf ?? defaults.quality_drop_threshold_snf),
+      milk_density_kg_per_litre: Number(data.milk_density_kg_per_litre ?? defaults.milk_density_kg_per_litre),
+      auto_refresh_interval_sec: Number(data.auto_refresh_interval_sec ?? defaults.auto_refresh_interval_sec),
+      updated_at: data.updated_at,
+    };
+  } catch {
     const store = readFallback();
     return { ...defaults, ...(store.zoneSettings[zoneId] ?? {}) };
   }
-
-  return {
-    zone_id: zoneId,
-    fat_min: Number(data.fat_min ?? defaults.fat_min),
-    fat_max: Number(data.fat_max ?? defaults.fat_max),
-    fat_benchmark: Number(data.fat_benchmark ?? defaults.fat_benchmark),
-    snf_min: Number(data.snf_min ?? defaults.snf_min),
-    snf_max: Number(data.snf_max ?? defaults.snf_max),
-    snf_benchmark: Number(data.snf_benchmark ?? defaults.snf_benchmark),
-    rejection_warn_pct: Number(data.rejection_warn_pct ?? defaults.rejection_warn_pct),
-    rejection_danger_pct: Number(data.rejection_danger_pct ?? defaults.rejection_danger_pct),
-    rate_base: Number(data.rate_base ?? defaults.rate_base),
-    rate_fat_coeff: Number(data.rate_fat_coeff ?? defaults.rate_fat_coeff),
-    rate_snf_coeff: Number(data.rate_snf_coeff ?? defaults.rate_snf_coeff),
-    rejection_payment_rule: (data.rejection_payment_rule === 'gross' ? 'gross' : 'net'),
-    edit_lock_hours: Number(data.edit_lock_hours ?? defaults.edit_lock_hours),
-    show_unit_profit: Boolean(data.show_unit_profit),
-    destinations: Array.isArray(data.destinations) ? data.destinations : defaults.destinations,
-    locations: Array.isArray(data.locations) ? data.locations : defaults.locations,
-    updated_at: data.updated_at,
-  };
 }
 
 export async function saveZoneSettings(zoneId: string, patch: Partial<ZoneSettings>): Promise<ZoneSettings> {
@@ -135,18 +174,22 @@ export async function saveZoneSettings(zoneId: string, patch: Partial<ZoneSettin
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase
-    .from('zone_settings')
-    .upsert(next, { onConflict: 'zone_id' });
+  try {
+    const { error } = await supabase
+      .from('zone_settings')
+      .upsert(next, { onConflict: 'zone_id' });
 
-  if (error) {
-    if (isMissingSchemaError(error)) {
+    if (error) {
       const store = readFallback();
       store.zoneSettings[zoneId] = next;
       writeFallback(store);
       return next;
     }
-    throw new Error(error.message);
+  } catch {
+    const store = readFallback();
+    store.zoneSettings[zoneId] = next;
+    writeFallback(store);
+    return next;
   }
   return next;
 }
@@ -369,4 +412,212 @@ export async function resolveCorrectionRequest(
     }
   }
 }
+
+export interface TankerStageRecordRow {
+  id?: string;
+  trip_id: string;
+  stage_name: string;
+  team: string;
+  status: 'done' | 'rejected' | 'skipped';
+  stage_data?: Record<string, unknown>;
+  done_by?: string | null;
+  done_by_name?: string | null;
+  done_at?: string;
+  created_at?: string;
+}
+
+export async function recordTankerStageInDb(stage: TankerStageRecordRow): Promise<TankerStageRecordRow> {
+  const insertPayload = {
+    trip_id: stage.trip_id,
+    stage_name: stage.stage_name,
+    team: stage.team,
+    status: stage.status || 'done',
+    stage_data: stage.stage_data || {},
+    done_by: stage.done_by || null,
+    done_by_name: stage.done_by_name || null,
+    done_at: stage.done_at || new Date().toISOString(),
+  };
+
+  try {
+    const { data, error } = await supabase
+      .from('tanker_stages')
+      .upsert(insertPayload, { onConflict: 'trip_id,stage_name' })
+      .select()
+      .single();
+
+    if (error) {
+      const store = readFallback();
+      if (!store.tankerStages[stage.trip_id]) {
+        store.tankerStages[stage.trip_id] = [];
+      }
+      const list = store.tankerStages[stage.trip_id];
+      const existingIdx = list.findIndex((s) => s.stage_name === stage.stage_name);
+      const row: TankerStageRecordRow = {
+        id: existingIdx >= 0 ? list[existingIdx].id : crypto.randomUUID(),
+        ...insertPayload,
+        created_at: new Date().toISOString(),
+      };
+      if (existingIdx >= 0) list[existingIdx] = row;
+      else list.push(row);
+      writeFallback(store);
+      return row;
+    }
+
+    return data as TankerStageRecordRow;
+  } catch {
+    const store = readFallback();
+    if (!store.tankerStages[stage.trip_id]) {
+      store.tankerStages[stage.trip_id] = [];
+    }
+    const list = store.tankerStages[stage.trip_id];
+    const existingIdx = list.findIndex((s) => s.stage_name === stage.stage_name);
+    const row: TankerStageRecordRow = {
+      id: existingIdx >= 0 ? list[existingIdx].id : crypto.randomUUID(),
+      ...insertPayload,
+      created_at: new Date().toISOString(),
+    };
+    if (existingIdx >= 0) list[existingIdx] = row;
+    else list.push(row);
+    writeFallback(store);
+    return row;
+  }
+}
+
+export async function getTankerStagesForTrip(tripId: string): Promise<TankerStageRecordRow[]> {
+  try {
+    const { data, error } = await supabase
+      .from('tanker_stages')
+      .select('*')
+      .eq('trip_id', tripId)
+      .order('done_at', { ascending: true });
+
+    if (error) {
+      const store = readFallback();
+      return store.tankerStages[tripId] ?? [];
+    }
+    const dbStages = (data ?? []) as TankerStageRecordRow[];
+    const store = readFallback();
+    const fbStages = store.tankerStages[tripId] ?? [];
+    if (dbStages.length === 0 && fbStages.length > 0) return fbStages;
+    return dbStages;
+  } catch {
+    const store = readFallback();
+    return store.tankerStages[tripId] ?? [];
+  }
+}
+
+export async function getTankerStagesForTrips(tripIds: string[]): Promise<Record<string, TankerStageRecordRow[]>> {
+  if (tripIds.length === 0) return {};
+  try {
+    const { data, error } = await supabase
+      .from('tanker_stages')
+      .select('*')
+      .in('trip_id', tripIds)
+      .order('done_at', { ascending: true });
+
+    const store = readFallback();
+    if (error) {
+      const result: Record<string, TankerStageRecordRow[]> = {};
+      for (const id of tripIds) {
+        if (store.tankerStages[id]) {
+          result[id] = store.tankerStages[id];
+        }
+      }
+      return result;
+    }
+
+    const result: Record<string, TankerStageRecordRow[]> = {};
+    for (const row of (data ?? []) as TankerStageRecordRow[]) {
+      if (!result[row.trip_id]) result[row.trip_id] = [];
+      result[row.trip_id].push(row);
+    }
+    for (const id of tripIds) {
+      if (!result[id] && store.tankerStages[id]) {
+        result[id] = store.tankerStages[id];
+      }
+    }
+    return result;
+  } catch {
+    const store = readFallback();
+    const result: Record<string, TankerStageRecordRow[]> = {};
+    for (const id of tripIds) {
+      if (store.tankerStages[id]) {
+        result[id] = store.tankerStages[id];
+      }
+    }
+    return result;
+  }
+}
+
+async function withTimeout<T>(thenable: any, ms = 800): Promise<T> {
+  let timeoutId: NodeJS.Timeout;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('DB timeout')), ms);
+  });
+  return Promise.race([Promise.resolve(thenable) as Promise<T>, timeoutPromise]).finally(() => clearTimeout(timeoutId));
+}
+
+export async function getTeamsFromDb(): Promise<TeamRow[]> {
+  try {
+    const res: any = await withTimeout(supabase.from('teams').select('*').order('code'));
+    if (!res?.error && res?.data && res.data.length > 0) {
+      return res.data as TeamRow[];
+    }
+  } catch {
+    // fallback
+  }
+
+  const store = readFallback();
+  return Object.values(store.teams || {});
+}
+
+export async function getTeamByCode(code: string): Promise<TeamRow | null> {
+  const norm = code.trim().toUpperCase();
+  try {
+    const res: any = await withTimeout(supabase.from('teams').select('*').eq('code', norm).maybeSingle());
+    if (!res?.error && res?.data) {
+      return res.data as TeamRow;
+    }
+  } catch {
+    // fallback
+  }
+
+  const store = readFallback();
+  return store.teams?.[norm] || DEFAULT_TEAMS.find((t) => t.code === norm) || null;
+}
+
+export async function updateTeamStatusInDb(code: string, active: boolean): Promise<TeamRow> {
+  const norm = code.trim().toUpperCase();
+  let updatedRow: TeamRow | null = null;
+  try {
+    const res: any = await withTimeout(
+      supabase
+        .from('teams')
+        .update({ active })
+        .eq('code', norm)
+        .select()
+        .maybeSingle()
+    );
+    if (!res?.error && res?.data) {
+      updatedRow = res.data as TeamRow;
+    }
+  } catch {
+    // fallback
+  }
+
+  const store = readFallback();
+  if (!store.teams) store.teams = {};
+  const current = store.teams[norm] || DEFAULT_TEAMS.find((t) => t.code === norm) || {
+    id: norm === 'GATE' ? '11111111-1111-4111-8111-111111111111' : norm === 'QC' ? '22222222-2222-4222-8222-222222222222' : '33333333-3333-4333-8333-333333333333',
+    code: norm,
+    name: norm === 'GATE' ? 'Gate Operations Team' : norm === 'QC' ? 'Quality Control (QC) Team' : 'Milk Unloading Team',
+    active: true,
+  };
+  current.active = active;
+  store.teams[norm] = current;
+  writeFallback(store);
+
+  return updatedRow || current;
+}
+
 
