@@ -1152,8 +1152,8 @@ router.get('/export/stage-wise', async (req, res) => {
       const rowOut: Record<string, any> = {
         'Date': formatDateDDMMYYYY(String(r.date)),
         'Tanker Number': r.tanker_number,
-        'Unit': u?.name ?? '',
-        'Unit Code': u?.unit_code ?? '',
+        'BMC': u?.name ?? '',
+        'BMC Code': u?.unit_code ?? '',
         'Driver': r.driver_name ?? '',
         'Seal Number': r.seal_number ?? '',
         'Dispatched (L)': r.quantity_dispatched,

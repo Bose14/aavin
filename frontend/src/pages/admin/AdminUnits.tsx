@@ -181,10 +181,10 @@ export default function AdminUnits() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Manage Units</h1>
+          <h1>Manage BMCs</h1>
           <p className="page-subtitle">
-            Create, edit, and monitor collection units in your zone
-            {missingTodayCount > 0 && ` · ${missingTodayCount} active unit(s) pending today`}
+            Create, edit, and monitor Bulk Milk Chilling Centres (BMCs) in your zone
+            {missingTodayCount > 0 && ` · ${missingTodayCount} active BMC(s) pending today`}
           </p>
         </div>
       </div>
@@ -192,15 +192,15 @@ export default function AdminUnits() {
       {error && <ErrorBanner message={error} onRetry={fetchUnits} />}
 
       <div className="card form-card">
-        <h2>Add New Unit</h2>
+        <h2>Add New BMC</h2>
         <form onSubmit={handleCreate} className="entry-form">
           <div className="form-row">
             <div className="form-group">
-              <label>Unit Name</label>
+              <label>BMC Name</label>
               <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Rasipuram" required />
             </div>
             <div className="form-group">
-              <label>Unit Code</label>
+              <label>BMC Code</label>
               <input value={unitCode} onChange={e => setUnitCode(e.target.value)} placeholder="e.g. RNK-001" required />
             </div>
           </div>
@@ -235,7 +235,7 @@ export default function AdminUnits() {
       </div>
 
       <div className="card table-card">
-        <h2>All Units in Your Zone</h2>
+        <h2>All BMCs in Your Zone</h2>
         {loadingList ? (
           <TableSkeleton rows={4} cols={7} />
         ) : (
@@ -244,23 +244,23 @@ export default function AdminUnits() {
             columns={columns}
             getRowKey={u => u.id}
             getRowClassName={u => (u.is_active && !u.submitted_today ? 'row-warn' : '')}
-            emptyMessage="No units created yet. Add your first village collection centre above."
+            emptyMessage="No BMCs created yet. Add your first bulk milk chilling centre above."
           />
         )}
       </div>
 
-      {/* Edit Unit Modal */}
+      {/* Edit BMC Modal */}
       {editTarget && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal-card">
-            <h3 className="modal-title">Edit Unit — {editTarget.name}</h3>
+            <h3 className="modal-title">Edit BMC — {editTarget.name}</h3>
             <div className="entry-form" style={{ marginTop: '0.75rem' }}>
               <div className="form-group">
-                <label>Unit Name</label>
+                <label>BMC Name</label>
                 <input value={editName} onChange={e => setEditName(e.target.value)} required />
               </div>
               <div className="form-group">
-                <label>Unit Code</label>
+                <label>BMC Code</label>
                 <input value={editCode} onChange={e => setEditCode(e.target.value)} required />
               </div>
               <div className="form-group">

@@ -45,7 +45,7 @@ const LOCAL_STORAGE_KEY_COLUMNS = 'aavin_admin_tanker_columns_v2';
 
 const ALL_COLUMNS = [
   { id: 'date', label: 'Date / Entry' },
-  { id: 'unit', label: 'Unit' },
+  { id: 'unit', label: 'BMC' },
   { id: 'tanker', label: 'Tanker / Seal' },
   { id: 'driver', label: 'Driver' },
   { id: 'dispatched', label: 'Dispatched (L)' },
@@ -71,13 +71,13 @@ export default function AdminTankerRecords() {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [autoRefreshIntervalSec] = useState<number>(30);
 
-  // Filters (initialized from localStorage if available)
-  const [activeTab, setActiveTab] = useState<'waiting' | 'processed' | 'rejected' | 'all'>(() => {
+  // Filters (initialized from localStorage if available - default to 'all')
+  const [activeTab, setActiveTab] = useState<'all' | 'waiting' | 'processed' | 'rejected'>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS);
-      return saved ? JSON.parse(saved).tab || 'waiting' : 'waiting';
+      return saved ? JSON.parse(saved).tab || 'all' : 'all';
     } catch {
-      return 'waiting';
+      return 'all';
     }
   });
 
@@ -411,12 +411,12 @@ export default function AdminTankerRecords() {
     if (visibleColumns.unit) {
       cols.push({
         key: 'unit',
-        header: 'Unit',
+        header: 'BMC',
         sortValue: (r) => r.units?.name || '',
         searchValue: (r) => `${r.units?.name} ${r.units?.unit_code}`,
         render: (r) => (
           <div>
-            <div style={{ fontWeight: 600 }}>{r.units?.name || 'Village Unit'}</div>
+            <div style={{ fontWeight: 600 }}>{r.units?.name || 'BMC'}</div>
             <div style={{ fontSize: '11px', color: '#64748b' }}>{r.units?.unit_code || '—'}</div>
           </div>
         ),
@@ -745,16 +745,6 @@ export default function AdminTankerRecords() {
           marginBottom: '20px',
         }}
       >
-        <div className="card" style={{ padding: '12px', borderLeft: '4px solid #3b82f6' }}>
-          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Total Dispatched</div>
-          <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b', marginTop: '2px' }}>
-            {stats?.kpis.total_dispatched_count ?? 0}
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>
-            {formatLitres(stats?.kpis.total_dispatched_litres ?? 0)}
-          </div>
-        </div>
-
         <div className="card" style={{ padding: '12px', borderLeft: '4px solid #10b981' }}>
           <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Received at Dairy</div>
           <div style={{ fontSize: '16px', fontWeight: 700, color: '#10b981', marginTop: '2px' }}>
@@ -843,6 +833,22 @@ export default function AdminTankerRecords() {
         }}
       >
         <button
+          onClick={() => setActiveTab('all')}
+          style={{
+            padding: '10px 18px',
+            border: 'none',
+            background: 'none',
+            fontSize: '14px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            color: activeTab === 'all' ? '#2563eb' : '#64748b',
+            borderBottom: activeTab === 'all' ? '3px solid #2563eb' : '3px solid transparent',
+          }}
+        >
+          All ({stats?.tabs.all ?? 0})
+        </button>
+
+        <button
           onClick={() => setActiveTab('waiting')}
           style={{
             padding: '10px 18px',
@@ -889,22 +895,6 @@ export default function AdminTankerRecords() {
         >
           QC Rejected ({stats?.tabs.rejected ?? 0})
         </button>
-
-        <button
-          onClick={() => setActiveTab('all')}
-          style={{
-            padding: '10px 18px',
-            border: 'none',
-            background: 'none',
-            fontSize: '14px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            color: activeTab === 'all' ? '#2563eb' : '#64748b',
-            borderBottom: activeTab === 'all' ? '3px solid #2563eb' : '3px solid transparent',
-          }}
-        >
-          All ({stats?.tabs.all ?? 0})
-        </button>
       </div>
 
       {/* 5. FILTERS & SEARCH TOOLBAR */}
@@ -933,14 +923,14 @@ export default function AdminTankerRecords() {
           />
         </div>
 
-        {/* Unit Filter */}
+        {/* BMC Filter */}
         <div>
           <select
             value={selectedUnitId}
             onChange={(e) => setSelectedUnitId(e.target.value)}
             style={{ padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
           >
-            <option value="">All Units</option>
+            <option value="">All BMCs</option>
             {units.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name} ({u.unit_code})
@@ -1088,6 +1078,7 @@ export default function AdminTankerRecords() {
             getRowKey={(r) => r.id}
             searchable={false}
             pageSize={20}
+            onRowClick={handleOpenDrawer}
           />
         </div>
       )}

@@ -18,7 +18,7 @@ const superAdminNav: NavItem[] = [
 
 const adminNav: NavItem[] = [
   { to: '/admin', labelKey: 'navDashboard', fallbackLabel: 'Dashboard' },
-  { to: '/admin/units', labelKey: 'navUnits', fallbackLabel: 'Units' },
+  { to: '/admin/units', labelKey: 'navUnits', fallbackLabel: 'BMCs' },
   { to: '/admin/teams', labelKey: 'navTeams', fallbackLabel: 'Teams' },
   { to: '/admin/users', labelKey: 'navUsers', fallbackLabel: 'Users' },
   { to: '/admin/milk', labelKey: 'navMilkRecords', fallbackLabel: 'Milk Records' },

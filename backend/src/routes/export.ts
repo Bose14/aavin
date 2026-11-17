@@ -376,8 +376,8 @@ router.get('/tanker', async (req, res) => {
     const rec = r.journey.calculated.received_litres;
     return {
       Date: formatDateDDMMYYYY(String(r.date)),
-      Unit: u?.name ?? '',
-      'Unit Code': u?.unit_code ?? '',
+      BMC: u?.name ?? '',
+      'BMC Code': u?.unit_code ?? '',
       'Tanker Number': r.tanker_number ?? '',
       Driver: r.driver_name ?? '',
       'Seal Number': r.seal_number ?? '',

@@ -403,7 +403,7 @@ export default function AdminUsers() {
       return lang === 'ta' ? 'இறக்குதல் பயனர்கள் இல்லை. முதல் இறக்குதல் பயனரை உருவாக்கவும்.' : 'No Unloading users yet. Create the first Unloading user.';
     }
     if (filterTeam === 'UNIT') {
-      return lang === 'ta' ? 'மையப் பணியாளர்கள் இல்லை. முதல் மையப் பணியாளரை உருவாக்கவும்.' : 'No unit staff users yet. Create the first unit user.';
+      return lang === 'ta' ? 'பி.எம்.சி பணியாளர்கள் இல்லை. முதல் பி.எம்.சி பணியாளரை உருவாக்கவும்.' : 'No BMC staff users yet. Create the first BMC user.';
     }
     return lang === 'ta' ? 'பயனர்கள் எவரும் இல்லை' : 'No users found matching current filters';
   };
@@ -439,7 +439,7 @@ export default function AdminUsers() {
     },
     {
       key: 'team_or_unit',
-      header: lang === 'ta' ? 'குழு / மையம்' : 'Team / Unit',
+      header: lang === 'ta' ? 'குழு / பி.எம்.சி' : 'Team / BMC',
       sortValue: (u) => u.team?.name || u.units?.name || '',
       render: (u) => {
         const roleUpper = (u.role || '').toUpperCase();
@@ -716,7 +716,7 @@ export default function AdminUsers() {
                 color: userType === 'unit' ? '#ffffff' : '#475569',
               }}
             >
-              🥛 {lang === 'ta' ? 'மையப் பணியாளர் (Unit Staff)' : 'Unit Staff'}
+              🥛 {lang === 'ta' ? 'பி.எம்.சி பணியாளர் (BMC Staff)' : 'BMC Staff'}
             </button>
             <button
               type="button"
@@ -800,10 +800,10 @@ export default function AdminUsers() {
 
             {userType === 'unit' ? (
               <div className="form-group">
-                <label>{lang === 'ta' ? 'ஒதுக்கப்பட்ட மையம்' : 'Assigned Unit'}</label>
+                <label>{lang === 'ta' ? 'ஒதுக்கப்பட்ட பி.எம்.சி' : 'Assigned BMC'}</label>
                 <select value={unitId} onChange={(e) => setUnitId(e.target.value)} required>
                   {units.length === 0 ? (
-                    <option value="">No units yet — create a unit first</option>
+                    <option value="">No BMCs yet — create a BMC first</option>
                   ) : (
                     units.map((u) => (
                       <option key={u.id} value={u.id}>
@@ -917,16 +917,16 @@ export default function AdminUsers() {
               <option value="GATE">Gate Operations (GATE)</option>
               <option value="QC">Quality Control (QC)</option>
               <option value="UNLOADING">Milk Unloading</option>
-              <option value="UNIT">Unit Staff Only</option>
+              <option value="UNIT">BMC Staff Only</option>
             </select>
 
-            {/* Unit Filter */}
+            {/* BMC Filter */}
             <select
               value={filterUnit}
               onChange={(e) => setFilterUnit(e.target.value)}
               style={{ padding: '0.45rem 0.65rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.84rem' }}
             >
-              <option value="">{lang === 'ta' ? 'அனைத்து மையங்களும்' : 'All Units'}</option>
+              <option value="">{lang === 'ta' ? 'அனைத்து பி.எம்.சிகளும்' : 'All BMCs'}</option>
               {units.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name}
@@ -1008,7 +1008,7 @@ export default function AdminUsers() {
               {editTarget.role === 'unit' ? (
                 <>
                   <div className="form-group">
-                    <label>{lang === 'ta' ? 'ஒதுக்கப்பட்ட மையம்' : 'Assigned Unit'}</label>
+                    <label>{lang === 'ta' ? 'ஒதுக்கப்பட்ட பி.எம்.சி' : 'Assigned BMC'}</label>
                     <select value={editUnitId} onChange={(e) => setEditUnitId(e.target.value)}>
                       {units.map((u) => (
                         <option key={u.id} value={u.id}>

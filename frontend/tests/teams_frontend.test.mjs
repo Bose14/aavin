@@ -120,6 +120,9 @@ test('3. English and Tamil translations symmetry for plant teams and navigation'
   assert.equal(TRANSLATIONS.en.navTeams, 'Teams');
   assert.equal(TRANSLATIONS.ta.navTeams, 'குழுக்கள்');
 
+  assert.equal(TRANSLATIONS.en.navUnits, 'BMCs');
+  assert.equal(TRANSLATIONS.ta.navUnits, 'பி.எம்.சி (BMC)');
+
   assert.ok(TRANSLATIONS.en.navGateQueue);
   assert.ok(TRANSLATIONS.ta.navGateQueue);
   assert.ok(TRANSLATIONS.en.navQCQueue);

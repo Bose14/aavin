@@ -187,3 +187,36 @@ test('Frontend Stage Pipeline: renders connected stepper with all 8 stages, chec
   assert.ok(html.includes('! 1'));
   assert.ok(html.includes('polyline points="20 6 9 17 4 12"'));
 });
+
+test('Frontend Tanker UX: All tab first, Total Dispatched removed, BMC column and Drawer cleanup', () => {
+  const recordsSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/admin/AdminTankerRecords.tsx'), 'utf8');
+  const drawerSrc = fs.readFileSync(path.resolve(__dirname, '../src/components/TankerDetailDrawer.tsx'), 'utf8');
+
+  // 1. Total Dispatched card removed from KPI grid
+  assert.ok(!recordsSrc.includes('Total Dispatched</div>'), 'Total Dispatched card must be removed from KPI grid');
+  assert.ok(recordsSrc.includes('Received at Dairy</div>'), 'Received at Dairy must be the first KPI card');
+
+  // 2. Default tab is All, and All tab is placed first in tabs-header
+  assert.ok(recordsSrc.includes("|| 'all' : 'all'"), "Default tab state must be 'all'");
+  const allIdx = recordsSrc.indexOf("onClick={() => setActiveTab('all')}");
+  const waitingIdx = recordsSrc.indexOf("onClick={() => setActiveTab('waiting')}");
+  const processedIdx = recordsSrc.indexOf("onClick={() => setActiveTab('processed')}");
+  const rejectedIdx = recordsSrc.indexOf("onClick={() => setActiveTab('rejected')}");
+  assert.ok(allIdx > 0 && waitingIdx > 0 && processedIdx > 0 && rejectedIdx > 0);
+  assert.ok(allIdx < waitingIdx, 'All tab button must appear before Waiting tab');
+  assert.ok(waitingIdx < processedIdx, 'Waiting tab must appear before Processed tab');
+  assert.ok(processedIdx < rejectedIdx, 'Processed tab must appear before QC Rejected tab');
+
+  // 3. DataTable receives onRowClick handler
+  assert.ok(recordsSrc.includes('onRowClick={handleOpenDrawer}'), 'DataTable must have onRowClick bound to open drawer');
+
+  // 4. Drawer does not contain "All Stage Records" or "Audit Log" tabs
+  assert.ok(!drawerSrc.includes('All Stage Records'), 'Drawer must not contain All Stage Records tab');
+  assert.ok(!drawerSrc.includes('Audit Log'), 'Drawer must not contain Audit Log tab');
+  assert.ok(!drawerSrc.includes('AuditLogItem'), 'AuditLogItem interface should not be present');
+
+  // 5. Units renamed to BMC
+  assert.ok(recordsSrc.includes("{ id: 'unit', label: 'BMC' }"), 'Column label must be BMC');
+  assert.ok(recordsSrc.includes('<option value="">All BMCs</option>'), 'Filter must say All BMCs');
+  assert.ok(drawerSrc.includes('BMC: <strong>'), 'Drawer header must say BMC');
+});
