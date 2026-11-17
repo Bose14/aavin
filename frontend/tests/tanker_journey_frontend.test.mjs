@@ -192,9 +192,9 @@ test('Frontend Tanker UX: All tab first, Total Dispatched removed, BMC column an
   const recordsSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/admin/AdminTankerRecords.tsx'), 'utf8');
   const drawerSrc = fs.readFileSync(path.resolve(__dirname, '../src/components/TankerDetailDrawer.tsx'), 'utf8');
 
-  // 1. Total Dispatched card removed from KPI grid
-  assert.ok(!recordsSrc.includes('Total Dispatched</div>'), 'Total Dispatched card must be removed from KPI grid');
-  assert.ok(recordsSrc.includes('Received at Dairy</div>'), 'Received at Dairy must be the first KPI card');
+  // 1. KPI cards grid removed
+  assert.ok(!recordsSrc.includes('className="kpi-grid"'), 'KPI cards grid must be removed');
+  assert.ok(!recordsSrc.includes('Received at Dairy</div>'), 'KPI cards must be removed');
 
   // 2. Default tab is All, and All tab is placed first in tabs-header
   assert.ok(recordsSrc.includes("|| 'all' : 'all'"), "Default tab state must be 'all'");
