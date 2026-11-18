@@ -40,6 +40,7 @@ alter table tanker_dispatches add column if not exists seal_condition text defau
 alter table tanker_dispatches add column if not exists cip_status text; -- 'pass', 'fail', 'completed'
 alter table tanker_dispatches add column if not exists total_turnaround_min integer;
 alter table tanker_dispatches add column if not exists is_delayed boolean default false;
+alter table tanker_dispatches add column if not exists dc_number text;
 alter table tanker_dispatches add column if not exists stage_data jsonb default '{}'::jsonb;
 alter table tanker_dispatches add column if not exists remarks jsonb default '[]'::jsonb;
 

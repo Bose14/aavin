@@ -1,34 +1,134 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import api from '../../lib/api';
 import { TankerTimeline } from '../../components/TankerTimeline';
-import { formatLitres } from '../../lib/format';
+import { formatLitres, getLocalTodayIso } from '../../lib/format';
 import { ErrorBanner } from '../../components/UiPrimitives';
+import { useTranslation } from '../../context/LanguageContext';
+
+interface Unit {
+  id: string;
+  name: string;
+  unit_code: string;
+}
+
+function computeTimeDifference(
+  dispDate: string,
+  dispTime: string,
+  dispAmPm: 'AM' | 'PM',
+  entryDate: string,
+  entryTime: string,
+  entryAmPm: 'AM' | 'PM'
+): string {
+  try {
+    if (!dispTime || !entryTime) return '—';
+    const parse12h = (tStr: string, ampm: 'AM' | 'PM') => {
+      const parts = tStr.split(':');
+      let h = parseInt(parts[0], 10) || 0;
+      const m = parseInt(parts[1], 10) || 0;
+      if (ampm === 'PM' && h < 12) h += 12;
+      if (ampm === 'AM' && h === 12) h = 0;
+      return { h, m };
+    };
+
+    const dTime = parse12h(dispTime, dispAmPm);
+    const eTime = parse12h(entryTime, entryAmPm);
+
+    const dIso = dispDate || new Date().toISOString().slice(0, 10);
+    const eIso = entryDate || new Date().toISOString().slice(0, 10);
+
+    const dDate = new Date(`${dIso}T${String(dTime.h).padStart(2, '0')}:${String(dTime.m).padStart(2, '0')}:00`);
+    const eDate = new Date(`${eIso}T${String(eTime.h).padStart(2, '0')}:${String(eTime.m).padStart(2, '0')}:00`);
+
+    const diffMs = eDate.getTime() - dDate.getTime();
+    if (diffMs <= 0 || isNaN(diffMs)) return '00.00';
+    const totalMin = Math.floor(diffMs / 60000);
+    const hours = Math.floor(totalMin / 60);
+    const mins = totalMin % 60;
+    return `${String(hours).padStart(2, '0')}.${String(mins).padStart(2, '0')}`;
+  } catch {
+    return '—';
+  }
+}
 
 export default function GateOperations() {
+  const { lang } = useTranslation();
   const [tankers, setTankers] = useState<any[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
   const [, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [selectedTankerId, setSelectedTankerId] = useState<string>('');
 
-  // Form states for Gate stages
+  // Step 1: Vehicle Entry form states (matching Aavin IDMS portal)
+  const [vehicleNo, setVehicleNo] = useState('');
+  const [driverName, setDriverName] = useState('');
+  const [entryDate, setEntryDate] = useState(() => getLocalTodayIso());
+  const [entryTime, setEntryTime] = useState(() => {
+    const d = new Date();
+    let h = d.getHours();
+    if (h > 12) h -= 12;
+    if (h === 0) h = 12;
+    return `${String(h).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  });
+  const [entryAmPm, setEntryAmPm] = useState<'AM' | 'PM'>(() => {
+    return new Date().getHours() >= 12 ? 'PM' : 'AM';
+  });
+  const [dispatchDate, setDispatchDate] = useState(() => getLocalTodayIso());
+  const [dispatchTime, setDispatchTime] = useState('09:00');
+  const [dispatchAmPm, setDispatchAmPm] = useState<'AM' | 'PM'>('AM');
+  const [dcNumber, setDcNumber] = useState('');
+  const [outletSealNo, setOutletSealNo] = useState('');
   const [sealVerified, setSealVerified] = useState(true);
+
+  // Step 2: Gross Weight states
   const [grossWeightKg, setGrossWeightKg] = useState('');
   const [weighbridgeSlip, setWeighbridgeSlip] = useState('');
+
+  // Step 5: Tare Weight states
   const [tareWeightKg, setTareWeightKg] = useState('');
   const [tareSlip, setTareSlip] = useState('');
+
+  // Step 7: Vehicle Exit states
   const [gatePassNo, setGatePassNo] = useState('');
+
+  // Submitting state
   const [submitting, setSubmitting] = useState(false);
+
+  // Modal: Create New Tanker at Gate
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createUnitId, setCreateUnitId] = useState('');
+  const [createVehicleNo, setCreateVehicleNo] = useState('');
+  const [createDriverName, setCreateDriverName] = useState('');
+  const [createDcNo, setCreateDcNo] = useState('');
+  const [createSealNo, setCreateSealNo] = useState('');
+  const [createQuantity, setCreateQuantity] = useState('9000');
+  const [createFat, setCreateFat] = useState('4.50');
+  const [createSnf, setCreateSnf] = useState('8.40');
+  const [creatingTanker, setCreatingTanker] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  const fetchUnits = async () => {
+    try {
+      const res = await api.get<Unit[]>('/units');
+      setUnits(res.data || []);
+      if (res.data && res.data.length > 0 && !createUnitId) {
+        setCreateUnitId(res.data[0].id);
+      }
+    } catch {
+      // non-fatal
+    }
+  };
 
   const fetchTankers = async () => {
     setLoading(true);
     setError('');
     try {
-      // Gate is interested in waiting tankers (or all today)
       const res = await api.get<any[]>('/tanker', { params: { status: 'waiting' } });
-      setTankers(res.data);
-      if (res.data.length > 0 && !selectedTankerId) {
-        setSelectedTankerId(res.data[0].id);
+      setTankers(res.data || []);
+      if (res.data && res.data.length > 0) {
+        if (!selectedTankerId || !res.data.some((t: any) => t.id === selectedTankerId)) {
+          setSelectedTankerId(res.data[0].id);
+        }
       }
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Failed to load tankers');
@@ -38,15 +138,53 @@ export default function GateOperations() {
   };
 
   useEffect(() => {
+    void fetchUnits();
     void fetchTankers();
   }, []);
 
   const activeTanker = tankers.find((t) => t.id === selectedTankerId) || tankers[0] || null;
-
-  // Determine which gate stage is currently active/needed for this tanker
-  // Gate owns: vehicle_entered (1), gross_weight (2), tare_weight (5), vehicle_exit (7)
   const journey = activeTanker?.journey;
   const currentStageKey = journey?.currentStageKey;
+
+  // Pre-fill Vehicle Entry form fields when active tanker changes
+  useEffect(() => {
+    if (activeTanker) {
+      setVehicleNo(activeTanker.tanker_number || '');
+      setDriverName(activeTanker.driver_name || '');
+      setOutletSealNo(activeTanker.seal_number || '');
+      const existingDc =
+        activeTanker.dc_number ||
+        activeTanker.stage_data?.dc_number ||
+        activeTanker.stage_data?.vehicle_entered?.dc_number ||
+        '';
+      setDcNumber(existingDc || (activeTanker.seal_number ? `DC-${activeTanker.seal_number.replace(/\D/g, '') || '101'}` : ''));
+      setDispatchDate(activeTanker.date || getLocalTodayIso());
+
+      // Parse dispatch time if available
+      if (activeTanker.dispatch_time) {
+        const parts = activeTanker.dispatch_time.split(':');
+        let h = parseInt(parts[0], 10) || 9;
+        const m = parts[1] || '00';
+        if (h >= 12) {
+          setDispatchAmPm('PM');
+          if (h > 12) h -= 12;
+        } else {
+          setDispatchAmPm('AM');
+          if (h === 0) h = 12;
+        }
+        setDispatchTime(`${String(h).padStart(2, '0')}:${m}`);
+      }
+
+      setSealVerified(true);
+      setGrossWeightKg(activeTanker.gross_weight_kg ? String(activeTanker.gross_weight_kg) : '');
+      setTareWeightKg(activeTanker.tare_weight_kg ? String(activeTanker.tare_weight_kg) : '');
+    }
+  }, [activeTanker]);
+
+  // Live auto-calculated time difference between dispatch and entry
+  const calculatedTimeDiff = useMemo(() => {
+    return computeTimeDifference(dispatchDate, dispatchTime, dispatchAmPm, entryDate, entryTime, entryAmPm);
+  }, [dispatchDate, dispatchTime, dispatchAmPm, entryDate, entryTime, entryAmPm]);
 
   const handleRecordStage = async (stageKey: string, payload: Record<string, any>) => {
     if (!activeTanker) return;
@@ -55,7 +193,11 @@ export default function GateOperations() {
     setSuccessMsg('');
     try {
       await api.post(`/tanker/${activeTanker.id}/stages/${stageKey}`, payload);
-      setSuccessMsg(`Stage ${stageKey.replace('_', ' ').toUpperCase()} recorded successfully!`);
+      setSuccessMsg(
+        lang === 'ta'
+          ? `${stageKey.replace('_', ' ').toUpperCase()} வெற்றிகரமாக பதிவு செய்யப்பட்டது!`
+          : `Stage ${stageKey.replace('_', ' ').toUpperCase()} recorded successfully!`
+      );
       // Reset forms
       setGrossWeightKg('');
       setWeighbridgeSlip('');
@@ -70,37 +212,161 @@ export default function GateOperations() {
     }
   };
 
+  const handleCreateNewTanker = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createVehicleNo.trim() || !createQuantity || Number(createQuantity) <= 0) {
+      setCreateError('Vehicle No and positive quantity are required');
+      return;
+    }
+    setCreatingTanker(true);
+    setCreateError('');
+    try {
+      const payload = {
+        unit_id: createUnitId || (units[0]?.id ?? undefined),
+        date: entryDate,
+        tanker_number: createVehicleNo.trim().toUpperCase(),
+        driver_name: createDriverName.trim() || undefined,
+        seal_number: createSealNo.trim() || undefined,
+        dc_number: createDcNo.trim() || undefined,
+        quantity_dispatched: Number(createQuantity),
+        dispatch_fat_pct: createFat ? Number(createFat) : undefined,
+        dispatch_snf_pct: createSnf ? Number(createSnf) : undefined,
+        dispatch_time: `${dispatchTime} ${dispatchAmPm}`,
+        record_vehicle_entered: true,
+        entry_date: entryDate,
+        entry_time: `${entryTime} ${entryAmPm}`,
+        time_difference: calculatedTimeDiff,
+        receiving_dairy: 'SALEM DAIRY',
+      };
+
+      const res = await api.post('/tanker', payload);
+      const created = res.data;
+
+      setSuccessMsg(`Tanker ${createVehicleNo.toUpperCase()} created and entered gate successfully!`);
+      setShowCreateModal(false);
+      setCreateVehicleNo('');
+      setCreateDriverName('');
+      setCreateDcNo('');
+      setCreateSealNo('');
+      await fetchTankers();
+      if (created?.id) setSelectedTankerId(created.id);
+    } catch (err: any) {
+      setCreateError(err.response?.data?.error || err.message || 'Failed to create tanker');
+    } finally {
+      setCreatingTanker(false);
+    }
+  };
+
+  // Count vehicles entered today
+  const vehiclesInTodayCount = tankers.filter((t) => t.journey?.tripStatus !== 'on_the_way').length;
+
   return (
-    <div className="page" style={{ maxWidth: '1000px', margin: '0 auto' }}>
-      <div className="page-header">
+    <div className="page" style={{ maxWidth: '1060px', margin: '0 auto', padding: '1.25rem' }}>
+      {/* 1. TOP HEADER & BREADCRUMB (Matching Aavin IDMS Portal) */}
+      <div
+        className="page-header"
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem',
+          marginBottom: '1rem',
+          borderBottom: '1px solid #e2e8f0',
+          paddingBottom: '0.75rem',
+        }}
+      >
         <div>
-          <h1>Gate Operations Portal</h1>
-          <p className="page-subtitle">Entry verification, weighbridge gross/tare recording, and exit gate passes</p>
+          <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.2rem' }}>
+            Dashboard &gt; Milk Receipt Entry &gt; <strong style={{ color: '#0f172a' }}>Tanker In</strong>
+          </div>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
+            {lang === 'ta' ? 'நுழைவாயில் செயல்பாடுகள் (Gate Operations)' : 'Gate Operations & Vehicle Entry'}
+          </h1>
         </div>
-        <button onClick={fetchTankers} className="btn btn-secondary">
-          🔄 Refresh
-        </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <div
+            style={{
+              background: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              padding: '0.4rem 0.85rem',
+              borderRadius: 6,
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              color: '#1e293b',
+            }}
+          >
+            No.Of Vehicles In Today : <span style={{ color: '#047857', fontSize: '1rem' }}>{vehiclesInTodayCount}</span>
+          </div>
+
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setShowCreateModal(true)}
+            style={{
+              background: '#16a34a',
+              borderColor: '#15803d',
+              fontWeight: 700,
+              padding: '0.45rem 1rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+            }}
+          >
+            ➕ Create New Tanker
+          </button>
+
+          <button type="button" onClick={fetchTankers} className="btn-secondary" style={{ padding: '0.45rem 0.85rem' }}>
+            🔄 Refresh
+          </button>
+        </div>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={fetchTankers} />}
-      {successMsg && <div className="success-banner"><span>{successMsg}</span></div>}
+      {successMsg && (
+        <div className="success-banner" style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between' }}>
+          <span>{successMsg}</span>
+          <button type="button" onClick={() => setSuccessMsg('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534' }}>✕</button>
+        </div>
+      )}
 
-      {/* Tanker Selector Bar */}
-      <div className="card" style={{ padding: '12px 16px', marginBottom: '16px' }}>
-        <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
-          Select Active Tanker in Gate Queue:
+      {/* 2. TANKER QUEUE SELECTOR BAR */}
+      <div
+        className="card"
+        style={{
+          padding: '0.75rem 1rem',
+          marginBottom: '1.25rem',
+          background: '#ffffff',
+          borderRadius: 8,
+          border: '1px solid #cbd5e1',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', minWidth: '180px' }}>
+          Select Tanker in Queue:
         </label>
         <select
           value={activeTanker?.id || ''}
           onChange={(e) => setSelectedTankerId(e.target.value)}
-          style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+          style={{
+            flex: 1,
+            padding: '0.5rem 0.75rem',
+            borderRadius: 6,
+            border: '1px solid #94a3b8',
+            fontSize: '0.88rem',
+            fontWeight: 600,
+          }}
         >
           {tankers.length === 0 ? (
-            <option value="">No tankers currently waiting at plant</option>
+            <option value="">No tankers currently waiting at dairy plant</option>
           ) : (
             tankers.map((t) => (
               <option key={t.id} value={t.id}>
-                {t.tanker_number} — {t.journey?.tripStatusLabel} (Waiting on: {t.journey?.waitingTeamLabel}) — {t.units?.name}
+                {t.tanker_number} {t.dc_number ? `(DC #${t.dc_number})` : ''} — Stage: {t.journey?.tripStatusLabel} (Waiting on: {t.journey?.waitingTeamLabel?.toUpperCase()}) — BMC: {t.units?.name}
               </option>
             ))
           )}
@@ -110,174 +376,645 @@ export default function GateOperations() {
       {activeTanker && journey ? (
         <div>
           {/* Compact Timeline at top of form */}
-          <TankerTimeline journey={journey} variant="compact" />
+          <div style={{ marginBottom: '1.25rem' }}>
+            <TankerTimeline journey={journey} variant="compact" />
+          </div>
 
           {/* Gate Action Form depending on journey state */}
-          <div className="card" style={{ padding: '20px', backgroundColor: '#ffffff', borderRadius: '8px' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#1e293b' }}>
-              Active Gate Task: {journey.waitingTeam === 'gate' ? journey.currentStageTitle : 'No gate action required right now'}
-            </h3>
-
+          <div
+            className="card"
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: 8,
+              border: '1px solid #cbd5e1',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* STAGE 1: VEHICLE ENTRY DETAILS (Matching photo layout) */}
             {currentStageKey === 'vehicle_entered' && (
               <div>
-                <p style={{ fontSize: '13px', color: '#475569', marginBottom: '16px' }}>
-                  Tanker <strong>{activeTanker.tanker_number}</strong> has arrived at the dairy gate. Verify seal and driver identity.
-                </p>
-                <div style={{ marginBottom: '12px', fontSize: '13px' }}>
-                  <div>Driver: <strong>{activeTanker.driver_name || '—'}</strong></div>
-                  <div>Seal Number on Challan: <strong>{activeTanker.seal_number || '—'}</strong></div>
-                  <div>Dispatched Quantity: <strong>{formatLitres(activeTanker.quantity_dispatched)}</strong></div>
-                </div>
-
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
-                    <input
-                      type="checkbox"
-                      checked={sealVerified}
-                      onChange={(e) => setSealVerified(e.target.checked)}
-                    />
-                    Physical seal is intact and matches seal number ({activeTanker.seal_number})
-                  </label>
-                </div>
-
-                <button
-                  onClick={() => handleRecordStage('vehicle_entered', { seal_verified: sealVerified })}
-                  disabled={submitting}
-                  className="btn btn-primary"
+                <div
+                  style={{
+                    backgroundColor: '#1e293b',
+                    color: '#ffffff',
+                    padding: '0.65rem 1rem',
+                    fontSize: '0.9rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.04em',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
                 >
-                  {submitting ? 'Recording…' : '✓ Confirm Vehicle Entered Plant'}
-                </button>
+                  <span>VEHICLE ENTRY DETAILS</span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 500, color: '#cbd5e1' }}>
+                    Dairy Gate 1 Reception
+                  </span>
+                </div>
+
+                <div style={{ padding: '1.25rem' }}>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void handleRecordStage('vehicle_entered', {
+                        driver_name: driverName.trim(),
+                        seal_number: outletSealNo.trim(),
+                        dc_number: dcNumber.trim(),
+                        entry_date: entryDate,
+                        entry_time: `${entryTime} ${entryAmPm}`,
+                        dispatch_date: dispatchDate,
+                        dispatch_time: `${dispatchTime} ${dispatchAmPm}`,
+                        time_difference: calculatedTimeDiff,
+                        receiving_dairy: 'SALEM DAIRY',
+                        seal_verified: sealVerified,
+                      });
+                    }}
+                    className="entry-form"
+                  >
+                    {/* Row 1: Vehicle No & Driver Name */}
+                    <div className="form-row">
+                      <div className="form-group">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <label style={{ fontWeight: 600 }}>Vehicle No</label>
+                          <button
+                            type="button"
+                            onClick={() => setVehicleNo('')}
+                            style={{
+                              background: '#fef08a',
+                              border: '1px solid #eab308',
+                              padding: '1px 6px',
+                              borderRadius: 3,
+                              fontSize: '0.72rem',
+                              cursor: 'pointer',
+                              fontWeight: 600,
+                            }}
+                          >
+                            none
+                          </button>
+                        </div>
+                        <input
+                          value={vehicleNo}
+                          onChange={(e) => setVehicleNo(e.target.value.toUpperCase())}
+                          placeholder="e.g. TN-28-AB-1234"
+                          required
+                          style={{ fontWeight: 700 }}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label style={{ fontWeight: 600 }}>
+                          Driver Name <span style={{ color: '#dc2626' }}>*</span>
+                        </label>
+                        <input
+                          value={driverName}
+                          onChange={(e) => setDriverName(e.target.value)}
+                          placeholder="e.g. S. Raman"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 2: Entry Date & Entry Time (12h with AM/PM) */}
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label style={{ fontWeight: 600 }}>Entry Date</label>
+                        <input
+                          type="date"
+                          value={entryDate}
+                          onChange={(e) => setEntryDate(e.target.value)}
+                          required
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label style={{ fontWeight: 600 }}>
+                          Entry Time(HHMM)(12 hour format) <span style={{ color: '#dc2626' }}>*</span>
+                        </label>
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                          <input
+                            type="text"
+                            value={entryTime}
+                            onChange={(e) => setEntryTime(e.target.value)}
+                            placeholder="12:33"
+                            required
+                            style={{ flex: 1, fontFamily: 'monospace', fontWeight: 600 }}
+                          />
+                          <select
+                            value={entryAmPm}
+                            onChange={(e) => setEntryAmPm(e.target.value as 'AM' | 'PM')}
+                            style={{ width: '80px', fontWeight: 600 }}
+                          >
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Row 3: Dispatch Date & Dispatch Time (12h with AM/PM) */}
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label style={{ fontWeight: 600 }}>Dispatch Date</label>
+                        <input
+                          type="date"
+                          value={dispatchDate}
+                          onChange={(e) => setDispatchDate(e.target.value)}
+                          required
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label style={{ fontWeight: 600 }}>
+                          Dispatch Time(HHMM)(12 hour format) <span style={{ color: '#dc2626' }}>*</span>
+                        </label>
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                          <input
+                            type="text"
+                            value={dispatchTime}
+                            onChange={(e) => setDispatchTime(e.target.value)}
+                            placeholder="09:15"
+                            required
+                            style={{ flex: 1, fontFamily: 'monospace', fontWeight: 600 }}
+                          />
+                          <select
+                            value={dispatchAmPm}
+                            onChange={(e) => setDispatchAmPm(e.target.value as 'AM' | 'PM')}
+                            style={{ width: '80px', fontWeight: 600 }}
+                          >
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Row 4: Calculated Time Difference */}
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, color: '#334155' }}>
+                        Time Difference Between Dispatch And Entry(HH.MM)
+                      </label>
+                      <input
+                        type="text"
+                        value={calculatedTimeDiff}
+                        readOnly
+                        style={{
+                          backgroundColor: '#f1f5f9',
+                          fontWeight: 700,
+                          color: '#0f172a',
+                          fontFamily: 'monospace',
+                          border: '1px solid #cbd5e1',
+                        }}
+                      />
+                    </div>
+
+                    {/* Row 5: DC No & Outlet Seal No */}
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label style={{ fontWeight: 600 }}>
+                          DC No <span style={{ color: '#dc2626' }}>*</span>
+                          <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 400, marginLeft: '4px' }}>
+                            (BMC Invoice / Challan No)
+                          </span>
+                        </label>
+                        <input
+                          type="text"
+                          value={dcNumber}
+                          onChange={(e) => setDcNumber(e.target.value.toUpperCase())}
+                          placeholder="e.g. DC-2026-9041"
+                          required
+                          style={{ fontWeight: 700, letterSpacing: '0.04em' }}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label style={{ fontWeight: 600 }}>
+                          Outlet Seal No <span style={{ color: '#dc2626' }}>*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={outletSealNo}
+                          onChange={(e) => setOutletSealNo(e.target.value.toUpperCase())}
+                          placeholder="e.g. SL-9941"
+                          required
+                          style={{ fontWeight: 700 }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 6: Receiving Dairy */}
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, color: '#475569' }}>Receiving Dairy</label>
+                      <div style={{ fontWeight: 700, color: '#1e293b', padding: '0.35rem 0' }}>
+                        SALEM DAIRY
+                      </div>
+                    </div>
+
+                    {/* Physical Seal Intact Checkbox */}
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', margin: '0.75rem 0 1.25rem', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={sealVerified}
+                        onChange={(e) => setSealVerified(e.target.checked)}
+                      />
+                      <span>Physical seal is intact and matches outlet seal number ({outletSealNo || activeTanker.seal_number || 'SL-xxx'})</span>
+                    </label>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                      <button
+                        type="submit"
+                        disabled={submitting || !dcNumber.trim()}
+                        className="btn-primary"
+                        style={{ minWidth: 220, padding: '0.6rem 1.25rem', fontWeight: 700 }}
+                      >
+                        {submitting ? 'Submitting…' : '✓ Confirm Vehicle Entry & Proceed to Weighbridge'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             )}
 
+            {/* STAGE 2: GROSS WEIGHT (WEIGHBRIDGE) */}
             {currentStageKey === 'gross_weight' && (
-              <div>
-                <p style={{ fontSize: '13px', color: '#475569', marginBottom: '16px' }}>
-                  Step 2: Weigh tanker with milk loaded on the weighbridge.
-                </p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                      Gross Weight (kg) *
-                    </label>
-                    <input
-                      type="number"
-                      placeholder="e.g. 24500"
-                      value={grossWeightKg}
-                      onChange={(e) => setGrossWeightKg(e.target.value)}
-                      style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                      Weighbridge Slip No.
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. WB-1002"
-                      value={weighbridgeSlip}
-                      onChange={(e) => setWeighbridgeSlip(e.target.value)}
-                      style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                    />
-                  </div>
+              <div style={{ padding: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>⚖️</span>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>
+                    Gross Weighbridge Measurement — {activeTanker.tanker_number}
+                  </h3>
                 </div>
-                <button
-                  onClick={() => handleRecordStage('gross_weight', { gross_weight_kg: Number(grossWeightKg), weighbridge_slip_no: weighbridgeSlip })}
-                  disabled={submitting || !grossWeightKg}
-                  className="btn btn-primary"
+                <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
+                  Tanker has entered dairy gate. Record loaded gross weight on the certified weighbridge.
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: '#f8fafc', padding: '0.75rem', borderRadius: 8, marginBottom: '1rem' }}>
+                  <div>DC No: <strong>#{activeTanker.dc_number || '—'}</strong></div>
+                  <div>Driver: <strong>{activeTanker.driver_name || '—'}</strong></div>
+                  <div>Dispatched Qty: <strong>{formatLitres(activeTanker.quantity_dispatched)}</strong></div>
+                  <div>BMC: <strong>{activeTanker.units?.name || '—'}</strong></div>
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void handleRecordStage('gross_weight', {
+                      gross_weight_kg: Number(grossWeightKg),
+                      weighbridge_slip_no: weighbridgeSlip.trim() || undefined,
+                    });
+                  }}
+                  className="entry-form"
                 >
-                  {submitting ? 'Recording…' : '✓ Record Gross Weight &amp; Hand Over to QC'}
-                </button>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600 }}>
+                        Gross Weight (kg) <span style={{ color: '#dc2626' }}>*</span>
+                      </label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 24500"
+                        value={grossWeightKg}
+                        onChange={(e) => setGrossWeightKg(e.target.value)}
+                        required
+                        style={{ fontWeight: 700, fontSize: '1.1rem' }}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600 }}>Weighbridge Gross Slip No.</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. WB-GROSS-1002"
+                        value={weighbridgeSlip}
+                        onChange={(e) => setWeighbridgeSlip(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                    <button
+                      type="submit"
+                      disabled={submitting || !grossWeightKg}
+                      className="btn-primary"
+                      style={{ minWidth: 200, padding: '0.6rem 1.25rem', fontWeight: 700 }}
+                    >
+                      {submitting ? 'Recording…' : '✓ Record Gross Weight & Hand Over to QC'}
+                    </button>
+                  </div>
+                </form>
               </div>
             )}
 
+            {/* STAGE 5: TARE WEIGHT (WEIGHBRIDGE) */}
             {currentStageKey === 'tare_weight' && (
-              <div>
-                <p style={{ fontSize: '13px', color: '#475569', marginBottom: '16px' }}>
-                  Step 5: Tanker milk is unloaded (or QC rejected). Record empty tanker tare weight on the weighbridge.
-                </p>
-                <div style={{ marginBottom: '12px', fontSize: '13px' }}>
-                  <div>Gross Weight: <strong>{journey.calculated.gross_weight_kg} kg</strong></div>
+              <div style={{ padding: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>⚖️</span>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>
+                    Tare Weighbridge Measurement — {activeTanker.tanker_number}
+                  </h3>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                      Tare Weight (kg) *
-                    </label>
-                    <input
-                      type="number"
-                      placeholder="e.g. 15200"
-                      value={tareWeightKg}
-                      onChange={(e) => setTareWeightKg(e.target.value)}
-                      style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                    />
+                <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
+                  Tanker milk has been discharged (or rejected by QC). Record empty tare weight.
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: '#f8fafc', padding: '0.75rem', borderRadius: 8, marginBottom: '1rem' }}>
+                  <div>Gross Weight: <strong>{journey.calculated?.gross_weight_kg ? `${journey.calculated.gross_weight_kg} kg` : '—'}</strong></div>
+                  <div>Dispatched Milk: <strong>{formatLitres(activeTanker.quantity_dispatched)}</strong></div>
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void handleRecordStage('tare_weight', {
+                      tare_weight_kg: Number(tareWeightKg),
+                      tare_slip_no: tareSlip.trim() || undefined,
+                    });
+                  }}
+                  className="entry-form"
+                >
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600 }}>
+                        Tare Weight (kg) <span style={{ color: '#dc2626' }}>*</span>
+                      </label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 15200"
+                        value={tareWeightKg}
+                        onChange={(e) => setTareWeightKg(e.target.value)}
+                        required
+                        style={{ fontWeight: 700, fontSize: '1.1rem' }}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600 }}>Tare Slip No.</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. WB-TARE-1002"
+                        value={tareSlip}
+                        onChange={(e) => setTareSlip(e.target.value)}
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                      Tare Slip No.
-                    </label>
+
+                  {/* Net Weight Preview */}
+                  {grossWeightKg && tareWeightKg && Number(grossWeightKg) > Number(tareWeightKg) && (
+                    <div
+                      style={{
+                        padding: '0.75rem',
+                        background: '#eff6ff',
+                        borderRadius: 6,
+                        border: '1px solid #bfdbfe',
+                        marginBottom: '1rem',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <div>
+                        Calculated Net Milk Weight: <strong>{Number(grossWeightKg) - Number(tareWeightKg)} kg</strong>
+                      </div>
+                      <div>
+                        Calculated Net Volume: <strong>{((Number(grossWeightKg) - Number(tareWeightKg)) / 1.030).toFixed(1)} L</strong>
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                    <button
+                      type="submit"
+                      disabled={submitting || !tareWeightKg}
+                      className="btn-primary"
+                      style={{ minWidth: 200, padding: '0.6rem 1.25rem', fontWeight: 700 }}
+                    >
+                      {submitting ? 'Recording…' : '✓ Record Tare Weight & Hand Over to QC for CIP'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* STAGE 7: VEHICLE EXIT */}
+            {currentStageKey === 'vehicle_exit' && (
+              <div style={{ padding: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>🚪</span>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>
+                    Vehicle Exit Authorization & Gate Pass — {activeTanker.tanker_number}
+                  </h3>
+                </div>
+                <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
+                  Post-unloading CIP sanitization is completed. Issue exit gate pass and authorize vehicle exit.
+                </p>
+
+                <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '0.75rem', borderRadius: 8, marginBottom: '1.25rem' }}>
+                  <div style={{ fontWeight: 700, color: '#065f46', marginBottom: '0.25rem' }}>
+                    ✅ Tanker Processing Complete
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: '#047857' }}>
+                    CIP Certified · Net Litres: {formatLitres(journey.calculated?.net_litres || journey.calculated?.received_litres || activeTanker.quantity_dispatched)} · Turnaround: {journey.calculated?.total_turnaround_min ?? '—'} mins
+                  </div>
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void handleRecordStage('vehicle_exit', {
+                      gate_pass_number: gatePassNo.trim() || `GP-${Date.now().toString().slice(-6)}`,
+                    });
+                  }}
+                  className="entry-form"
+                >
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600 }}>Gate Pass Number</label>
                     <input
                       type="text"
-                      placeholder="e.g. WB-TARE-1002"
-                      value={tareSlip}
-                      onChange={(e) => setTareSlip(e.target.value)}
-                      style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                      placeholder={`GP-${Date.now().toString().slice(-6)}`}
+                      value={gatePassNo}
+                      onChange={(e) => setGatePassNo(e.target.value)}
+                      style={{ fontWeight: 700, fontSize: '1rem' }}
                     />
                   </div>
-                </div>
-                {grossWeightKg && tareWeightKg && Number(grossWeightKg) > Number(tareWeightKg) && (
-                  <div style={{ marginBottom: '16px', fontSize: '13px', color: '#0369a1', fontWeight: 600 }}>
-                    Calculated Net Weight: {Number(grossWeightKg) - Number(tareWeightKg)} kg
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="btn-primary"
+                      style={{ minWidth: 200, padding: '0.6rem 1.25rem', fontWeight: 700, background: '#16a34a' }}
+                    >
+                      {submitting ? 'Releasing…' : '✓ Authorize Vehicle Exit'}
+                    </button>
                   </div>
-                )}
-                <button
-                  onClick={() => handleRecordStage('tare_weight', { tare_weight_kg: Number(tareWeightKg), tare_slip_no: tareSlip })}
-                  disabled={submitting || !tareWeightKg}
-                  className="btn btn-primary"
-                >
-                  {submitting ? 'Recording…' : '✓ Record Tare Weight &amp; Hand Over to QC for CIP'}
-                </button>
+                </form>
               </div>
             )}
 
-            {currentStageKey === 'vehicle_exit' && (
-              <div>
-                <p style={{ fontSize: '13px', color: '#475569', marginBottom: '16px' }}>
-                  Step 7: Tanker CIP is completed. Generate exit pass and release tanker from dairy premises.
-                </p>
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                    Gate Pass Number
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={`GP-${Date.now().toString().slice(-6)}`}
-                    value={gatePassNo}
-                    onChange={(e) => setGatePassNo(e.target.value)}
-                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                  />
-                </div>
-                <button
-                  onClick={() => handleRecordStage('vehicle_exit', { gate_pass_number: gatePassNo || undefined })}
-                  disabled={submitting}
-                  className="btn btn-primary"
-                >
-                  {submitting ? 'Releasing…' : '✓ Authorize Vehicle Exit'}
-                </button>
-              </div>
-            )}
-
+            {/* If waiting for another team */}
             {journey.waitingTeam !== 'gate' && (
-              <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
-                <p>This tanker is currently with the <strong>{journey.waitingTeamLabel.toUpperCase()}</strong> team.</p>
-                <p style={{ fontSize: '12px' }}>Waiting for: {journey.currentStageTitle}</p>
+              <div style={{ padding: '2.5rem 1rem', textAlign: 'center', color: '#64748b' }}>
+                <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⏳</div>
+                <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '1.05rem', marginBottom: '0.35rem' }}>
+                  Waiting for {journey.waitingTeamLabel?.toUpperCase()} Team
+                </div>
+                <div style={{ fontSize: '0.85rem' }}>
+                  Current active stage: <strong>{journey.currentStageTitle}</strong>. Gate tasks will unlock once this stage completes.
+                </div>
               </div>
             )}
           </div>
         </div>
       ) : (
-        <div className="card" style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
-          No tankers currently in queue.
+        <div className="card" style={{ padding: '3rem 1rem', textAlign: 'center', color: '#64748b' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🚚</div>
+          <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '1.1rem' }}>
+            No tankers currently waiting in queue
+          </div>
+          <p style={{ fontSize: '0.85rem', margin: '0.4rem 0 1rem' }}>
+            Click &quot;Create New Tanker&quot; above to register a new vehicle entry at the dairy gate.
+          </p>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setShowCreateModal(true)}
+          >
+            ➕ Create New Tanker
+          </button>
+        </div>
+      )}
+
+      {/* 3. CREATE NEW TANKER MODAL (Matching photo header button) */}
+      {showCreateModal && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal-card" style={{ maxWidth: 560 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>
+                  Create New Tanker Entry
+                </h3>
+                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.84rem', color: '#64748b' }}>
+                  Register tanker arrival directly at the plant gate and enter Delivery Challan details
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '1.25rem' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {createError && <ErrorBanner message={createError} />}
+
+            <form onSubmit={handleCreateNewTanker} className="entry-form" style={{ marginTop: '0.75rem' }}>
+              {/* BMC Selection */}
+              <div className="form-group">
+                <label style={{ fontWeight: 600 }}>Source BMC Unit *</label>
+                <select value={createUnitId} onChange={(e) => setCreateUnitId(e.target.value)} required>
+                  {units.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      BMC: {u.name} ({u.unit_code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Vehicle No & Driver Name */}
+              <div className="form-row">
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>Vehicle No *</label>
+                  <input
+                    value={createVehicleNo}
+                    onChange={(e) => setCreateVehicleNo(e.target.value.toUpperCase())}
+                    placeholder="e.g. TN-28-AB-1234"
+                    required
+                    style={{ fontWeight: 700 }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>Driver Name *</label>
+                  <input
+                    value={createDriverName}
+                    onChange={(e) => setCreateDriverName(e.target.value)}
+                    placeholder="e.g. S. Raman"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* DC No & Outlet Seal No */}
+              <div className="form-row">
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>
+                    DC No * <span style={{ fontSize: '0.72rem', color: '#64748b' }}>(BMC Invoice No)</span>
+                  </label>
+                  <input
+                    value={createDcNo}
+                    onChange={(e) => setCreateDcNo(e.target.value.toUpperCase())}
+                    placeholder="e.g. DC-2026-9041"
+                    required
+                    style={{ fontWeight: 700 }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>Outlet Seal No *</label>
+                  <input
+                    value={createSealNo}
+                    onChange={(e) => setCreateSealNo(e.target.value.toUpperCase())}
+                    placeholder="e.g. SL-9941"
+                    required
+                    style={{ fontWeight: 700 }}
+                  />
+                </div>
+              </div>
+
+              {/* Quantity, Fat, SNF */}
+              <div className="form-row">
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>Dispatched Milk (Litres) *</label>
+                  <input
+                    type="number"
+                    value={createQuantity}
+                    onChange={(e) => setCreateQuantity(e.target.value)}
+                    placeholder="9000"
+                    required
+                    style={{ fontWeight: 700 }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>Dispatch Fat %</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={createFat}
+                    onChange={(e) => setCreateFat(e.target.value)}
+                    placeholder="4.50"
+                  />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>Dispatch SNF %</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={createSnf}
+                    onChange={(e) => setCreateSnf(e.target.value)}
+                    placeholder="8.40"
+                  />
+                </div>
+              </div>
+
+              <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1.25rem' }}>
+                <button type="button" className="btn-secondary" onClick={() => setShowCreateModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary" disabled={creatingTanker} style={{ minWidth: 160 }}>
+                  {creatingTanker ? 'Registering…' : '✓ Register & Enter Gate'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

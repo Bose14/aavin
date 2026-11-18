@@ -220,3 +220,34 @@ test('Frontend Tanker UX: All tab first, Total Dispatched removed, BMC column an
   assert.ok(recordsSrc.includes('<option value="">All BMCs</option>'), 'Filter must say All BMCs');
   assert.ok(drawerSrc.includes('BMC: <strong>'), 'Drawer header must say BMC');
 });
+
+test('Frontend Plant Teams & Admin DC No integration (Gate, QC, Unloading, Admin)', () => {
+  const gateSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/GateOperations.tsx'), 'utf8');
+  const qcSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/QCLab.tsx'), 'utf8');
+  const unloadSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/UnloadingBay.tsx'), 'utf8');
+  const recordsSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/admin/AdminTankerRecords.tsx'), 'utf8');
+  const drawerSrc = fs.readFileSync(path.resolve(__dirname, '../src/components/TankerDetailDrawer.tsx'), 'utf8');
+
+  // Gate form contains authentic Aavin IDMS layout fields
+  assert.ok(gateSrc.includes('No.Of Vehicles In Today :'), 'Gate page has No.Of Vehicles In Today');
+  assert.ok(gateSrc.includes('Create New Tanker'), 'Gate page has Create New Tanker action');
+  assert.ok(gateSrc.includes('VEHICLE ENTRY DETAILS'), 'Gate page has VEHICLE ENTRY DETAILS heading');
+  assert.ok(gateSrc.includes('DC No'), 'Gate form has DC No input');
+  assert.ok(gateSrc.includes('Time Difference Between Dispatch And Entry(HH.MM)'), 'Gate form has Time Difference');
+  assert.ok(gateSrc.includes('SALEM DAIRY'), 'Gate form displays Receiving Dairy SALEM DAIRY');
+
+  // QC form displays DC No and quality inputs
+  assert.ok(qcSrc.includes('DC #'), 'QC page displays DC No');
+  assert.ok(qcSrc.includes('qc_completed'), 'QC page has qc_completed stage');
+  assert.ok(qcSrc.includes('rejectionReason'), 'QC page handles rejection reasons');
+
+  // Unloading Bay displays DC No, silo allocation and verification checks
+  assert.ok(unloadSrc.includes('DC #'), 'Unloading Bay displays DC No');
+  assert.ok(unloadSrc.includes('Receiving Silo / Raw Milk Bay'), 'Unloading Bay has silo allocation dropdown');
+  assert.ok(unloadSrc.includes('UNLOADING STRICTLY BLOCKED (QC REJECTED)'), 'Unloading Bay blocks QC rejected tankers');
+
+  // Admin records & drawer display DC No
+  assert.ok(recordsSrc.includes('DC #'), 'Admin tanker records table displays DC No');
+  assert.ok(drawerSrc.includes('DC No:'), 'Admin tanker detail drawer header displays DC No');
+});
+

@@ -428,16 +428,24 @@ export default function AdminTankerRecords() {
         key: 'tanker',
         header: 'Tanker / Seal',
         sortValue: (r) => r.tanker_number,
-        searchValue: (r) => `${r.tanker_number} ${r.seal_number}`,
-        render: (r) => (
-          <div>
-            <div style={{ fontWeight: 700, color: '#0f172a' }}>{r.tanker_number}</div>
-            <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span>Seal: {r.seal_number || '—'}</span>
-              {r.seal_number && <span title="Seal verified OK" style={{ color: '#16a34a' }}>✓</span>}
+        searchValue: (r) => `${r.tanker_number} ${r.seal_number} ${r.dc_number || r.stage_data?.dc_number || ''}`,
+        render: (r) => {
+          const dcNo = r.dc_number || r.stage_data?.dc_number || r.stage_data?.vehicle_entered?.dc_number;
+          return (
+            <div>
+              <div style={{ fontWeight: 700, color: '#0f172a' }}>{r.tanker_number}</div>
+              {dcNo && (
+                <div style={{ fontSize: '11px', color: '#0284c7', fontWeight: 600 }}>
+                  DC #{dcNo}
+                </div>
+              )}
+              <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span>Seal: {r.seal_number || '—'}</span>
+                {r.seal_number && <span title="Seal verified OK" style={{ color: '#16a34a' }}>✓</span>}
+              </div>
             </div>
-          </div>
-        ),
+          );
+        },
       });
     }
 

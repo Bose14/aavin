@@ -436,7 +436,8 @@ export function deriveTankerJourneyState(
         const tNo = (d.tanker_number as string) || trip.tanker_number;
         const drv = (d.driver_name as string) || trip.driver_name || 'Driver';
         const seal = (d.seal_number as string) || trip.seal_number || 'Seal OK';
-        summary = `${tNo} · ${drv} · ${seal}`;
+        const dc = (d.dc_number as string) || (trip.dc_number as string) || (trip.stage_data as any)?.dc_number || '';
+        summary = `${tNo}${dc ? ` · DC #${dc}` : ''} · ${drv} · ${seal}`;
       } else if (def.key === 'gross_weight') {
         const kg = d.gross_weight_kg ?? trip.gross_weight_kg;
         const ticket = (d.ticket_no as string) || trip.weighbridge_gross_ticket || '';

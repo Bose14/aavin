@@ -313,3 +313,38 @@ test('8. Stage chip counts and Tab status categorization logic', () => {
   // Total
   assert.equal(trips.length, 9);
 });
+
+test('9. DC Number handling: formats into vehicle_entered summary and reflects in journey', () => {
+  const trip = {
+    id: 'trip-dc-test',
+    date: '2026-11-18',
+    tanker_number: 'TN-25-DC-1234',
+    dc_number: 'DC-BMC-2026-889',
+    driver_name: 'Murugan R',
+    seal_number: 'SL-7721',
+    quantity_dispatched: 9500,
+    stages: [
+      {
+        stage_name: 'vehicle_entered',
+        team: 'gate',
+        status: 'done',
+        stage_data: {
+          tanker_number: 'TN-25-DC-1234',
+          dc_number: 'DC-BMC-2026-889',
+          driver_name: 'Murugan R',
+          seal_number: 'SL-7721',
+        },
+      },
+    ],
+  };
+
+  const journey = deriveTankerJourneyState(trip);
+  assert.equal(journey.tripStatus, 'vehicle_entered');
+  const step0 = journey.timelineSteps[0];
+  assert.equal(step0.key, 'vehicle_entered');
+  assert.equal(step0.status, 'done');
+  assert.ok(step0.keyDataSummary.includes('DC #DC-BMC-2026-889'));
+  assert.ok(step0.keyDataSummary.includes('TN-25-DC-1234'));
+  assert.ok(step0.keyDataSummary.includes('Murugan R'));
+});
+
