@@ -254,6 +254,21 @@ export default function QCLab() {
               </div>
             </div>
             <div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Driver &amp; Mobile</div>
+              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
+                {activeTanker.driver_name || activeTanker.stage_data?.driver_name || activeTanker.stage_data?.vehicle_entered?.driver_name || '—'}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                {activeTanker.driver_phone || activeTanker.stage_data?.driver_phone || '—'}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Outlet Seal No</div>
+              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#16a34a' }}>
+                {activeTanker.seal_number || activeTanker.stage_data?.seal_number || activeTanker.stage_data?.vehicle_entered?.seal_number || '—'} ✓
+              </div>
+            </div>
+            <div>
               <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Source BMC Unit</div>
               <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#1e293b' }}>
                 {activeTanker.units?.name || 'BMC'}
@@ -279,6 +294,7 @@ export default function QCLab() {
               activeTanker.compartments ||
               journey.compartments ||
               activeTanker.stage_data?.compartments ||
+              activeTanker.stage_data?.vehicle_entered?.compartments ||
               [];
             if (!comps || comps.length === 0) return null;
             return (

@@ -11,6 +11,8 @@ import {
   getTankerStagesForTrip,
   getTankerStagesForTrips,
   writeAuditLog,
+  saveTankerDispatchMetadata,
+  getTankerDispatchMetadata,
 } from '../lib/settingsStore';
 import {
   deriveTankerJourneyState,
@@ -30,8 +32,20 @@ import { formatDateDDMMYYYY } from '../lib/calculations';
 const router = Router();
 router.use(authMiddleware);
 
+const DYNAMIC_JOIN_TANKER_SELECT = `*, units(name, unit_code)`;
+
+const DYNAMIC_BARE_TANKER_SELECT = `*`;
+
+const FULL_TANKER_SELECT = `
+  id, unit_id, zone_id, date, tanker_number, driver_name, driver_phone, dc_number, seal_number, dispatch_time, dispatch_ampm,
+  quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct, compartments,
+  received_qty, receipt_time, received_fat_pct, received_snf_pct, received_by, created_at,
+  gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, current_stage, waiting_team, stage_data,
+  units(name, unit_code)
+`;
+
 const EXTENDED_TANKER_SELECT = `
-  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dispatch_time,
+  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dc_number, dispatch_time,
   quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct,
   received_qty, receipt_time, received_fat_pct, received_snf_pct, received_by, created_at,
   gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data,
@@ -39,7 +53,7 @@ const EXTENDED_TANKER_SELECT = `
 `;
 
 const OPERATIONAL_TANKER_SELECT = `
-  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dispatch_time,
+  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dc_number, dispatch_time,
   quantity_dispatched, destination,
   received_qty, receipt_time, received_fat_pct, received_snf_pct, received_by, created_at,
   gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data,
@@ -47,14 +61,10 @@ const OPERATIONAL_TANKER_SELECT = `
 `;
 
 const V2_TANKER_SELECT = `
-  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number,
+  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dc_number,
   quantity_dispatched, destination, stage_data, created_at,
   units(name, unit_code)
 `;
-
-const DYNAMIC_JOIN_TANKER_SELECT = `*, units(name, unit_code)`;
-
-const DYNAMIC_BARE_TANKER_SELECT = `*`;
 
 const MINIMAL_TANKER_SELECT = `
   id, unit_id, zone_id, date, tanker_number, quantity_dispatched, destination, stage_data, created_at,
@@ -69,11 +79,12 @@ async function runResilientTankerQuery(
   buildQuery: (selectStr: string) => any,
 ): Promise<{ data: any[]; error: any }> {
   const tiers = [
+    DYNAMIC_JOIN_TANKER_SELECT,
+    DYNAMIC_BARE_TANKER_SELECT,
+    FULL_TANKER_SELECT,
     EXTENDED_TANKER_SELECT,
     OPERATIONAL_TANKER_SELECT,
     V2_TANKER_SELECT,
-    DYNAMIC_JOIN_TANKER_SELECT,
-    DYNAMIC_BARE_TANKER_SELECT,
     MINIMAL_TANKER_SELECT,
     BARE_TANKER_SELECT,
   ];
@@ -125,60 +136,158 @@ export interface EnrichedTankerRow {
 }
 
 function enrichTankerRow(row: Record<string, unknown>, stages?: StageRecordItem[], settings?: any): EnrichedTankerRow {
+  // 1. Safely parse stage_data if returned as JSON string
+  let rowStageData: Record<string, any> = {};
+  if (typeof row.stage_data === 'string') {
+    try {
+      rowStageData = JSON.parse(row.stage_data);
+    } catch {
+      rowStageData = {};
+    }
+  } else if (row.stage_data && typeof row.stage_data === 'object') {
+    rowStageData = row.stage_data as Record<string, any>;
+  }
+
+  // 2. Safely parse compartments if returned as JSON string
+  let rowCompartments: any[] = [];
+  if (typeof row.compartments === 'string') {
+    try {
+      const parsed = JSON.parse(row.compartments);
+      if (Array.isArray(parsed)) rowCompartments = parsed;
+    } catch {
+      rowCompartments = [];
+    }
+  } else if (Array.isArray(row.compartments)) {
+    rowCompartments = row.compartments;
+  }
+
+  // 3. Fallback metadata store lookup (by ID and Tanker Number)
+  const tripId = String(row.id || '');
+  const tankerNum = String(row.tanker_number || '').toUpperCase().trim();
+  const fbMeta = getTankerDispatchMetadata(tripId) || (tankerNum ? getTankerDispatchMetadata(tankerNum) : null);
+
+  const stageDispatched = stages?.find((s) => (s.stage_name as string) === 'dispatched' || (s.stage_name as string) === 'tanker_dispatched')?.stage_data as any;
+  const stageVehicleEntered = stages?.find((s) => s.stage_name === 'vehicle_entered')?.stage_data as any;
+
   const dcNumber =
     (row.dc_number as string) ||
-    (row.stage_data as any)?.dc_number ||
-    (row.stage_data as any)?.vehicle_entered?.dc_number ||
-    (stages?.find((s) => s.stage_name === 'vehicle_entered')?.stage_data as any)?.dc_number ||
+    rowStageData?.dc_number ||
+    rowStageData?.dc_no ||
+    rowStageData?.vehicle_entered?.dc_number ||
+    fbMeta?.dc_number ||
+    stageVehicleEntered?.dc_number ||
+    stageDispatched?.dc_number ||
     null;
 
-  const compartments =
-    (row.compartments as any[]) ||
-    (row.stage_data as any)?.compartments ||
-    (row.stage_data as any)?.vehicle_entered?.compartments ||
-    [];
+  let compartments =
+    rowCompartments.length > 0
+      ? rowCompartments
+      : Array.isArray(rowStageData?.compartments) && rowStageData.compartments.length > 0
+      ? rowStageData.compartments
+      : Array.isArray(rowStageData?.vehicle_entered?.compartments) && rowStageData.vehicle_entered.compartments.length > 0
+      ? rowStageData.vehicle_entered.compartments
+      : Array.isArray(fbMeta?.compartments) && fbMeta.compartments.length > 0
+      ? fbMeta.compartments
+      : Array.isArray(stageVehicleEntered?.compartments) && stageVehicleEntered.compartments.length > 0
+      ? stageVehicleEntered.compartments
+      : Array.isArray(stageDispatched?.compartments) && stageDispatched.compartments.length > 0
+      ? stageDispatched.compartments
+      : [];
 
   const driverName =
     (row.driver_name as string) ||
-    (row.stage_data as any)?.driver_name ||
-    (row.stage_data as any)?.vehicle_entered?.driver_name ||
+    rowStageData?.driver_name ||
+    rowStageData?.vehicle_entered?.driver_name ||
+    fbMeta?.driver_name ||
+    stageVehicleEntered?.driver_name ||
+    stageDispatched?.driver_name ||
     null;
 
   const driverPhone =
     (row.driver_phone as string) ||
-    (row.stage_data as any)?.driver_phone ||
-    (row.stage_data as any)?.vehicle_entered?.driver_phone ||
+    rowStageData?.driver_phone ||
+    rowStageData?.vehicle_entered?.driver_phone ||
+    fbMeta?.driver_phone ||
+    stageVehicleEntered?.driver_phone ||
+    stageDispatched?.driver_phone ||
     null;
 
   const sealNumber =
     (row.seal_number as string) ||
-    (row.stage_data as any)?.seal_number ||
-    (row.stage_data as any)?.vehicle_entered?.seal_number ||
+    rowStageData?.seal_number ||
+    rowStageData?.outlet_seal_no ||
+    rowStageData?.vehicle_entered?.seal_number ||
+    fbMeta?.seal_number ||
+    stageVehicleEntered?.seal_number ||
+    stageDispatched?.seal_number ||
     null;
 
   const dispatchTime =
     (row.dispatch_time as string) ||
-    (row.stage_data as any)?.dispatch_time ||
+    rowStageData?.dispatch_time ||
+    fbMeta?.dispatch_time ||
+    stageVehicleEntered?.dispatch_time ||
+    stageDispatched?.dispatch_time ||
+    null;
+
+  const dispatchAmPm =
+    (row.dispatch_ampm as string) ||
+    rowStageData?.dispatch_ampm ||
+    fbMeta?.dispatch_ampm ||
+    stageVehicleEntered?.dispatch_ampm ||
     null;
 
   const destination =
     (row.destination as string) ||
-    (row.stage_data as any)?.destination ||
+    rowStageData?.destination ||
+    fbMeta?.destination ||
     'Namakkal Dairy';
 
   const dispatchFat =
     row.dispatch_fat_pct != null
       ? Number(row.dispatch_fat_pct)
-      : (row.stage_data as any)?.dispatch_fat_pct != null
-        ? Number((row.stage_data as any).dispatch_fat_pct)
-        : null;
+      : rowStageData?.dispatch_fat_pct != null
+      ? Number(rowStageData.dispatch_fat_pct)
+      : fbMeta?.dispatch_fat_pct != null
+      ? Number(fbMeta.dispatch_fat_pct)
+      : null;
 
   const dispatchSnf =
     row.dispatch_snf_pct != null
       ? Number(row.dispatch_snf_pct)
-      : (row.stage_data as any)?.dispatch_snf_pct != null
-        ? Number((row.stage_data as any).dispatch_snf_pct)
-        : null;
+      : rowStageData?.dispatch_snf_pct != null
+      ? Number(rowStageData.dispatch_snf_pct)
+      : fbMeta?.dispatch_snf_pct != null
+      ? Number(fbMeta.dispatch_snf_pct)
+      : null;
+
+  const grossWeightKg =
+    row.gross_weight_kg != null
+      ? Number(row.gross_weight_kg)
+      : fbMeta?.gross_weight_kg != null
+      ? Number(fbMeta.gross_weight_kg)
+      : null;
+
+  const tareWeightKg =
+    row.tare_weight_kg != null
+      ? Number(row.tare_weight_kg)
+      : fbMeta?.tare_weight_kg != null
+      ? Number(fbMeta.tare_weight_kg)
+      : null;
+
+  const netWeightKg =
+    row.net_weight_kg != null
+      ? Number(row.net_weight_kg)
+      : fbMeta?.net_weight_kg != null
+      ? Number(fbMeta.net_weight_kg)
+      : null;
+
+  const receivedQty =
+    row.received_qty != null
+      ? Number(row.received_qty)
+      : fbMeta?.received_qty != null
+      ? Number(fbMeta.received_qty)
+      : null;
 
   const tripInput: TankerTripInput = {
     id: String(row.id),
@@ -191,16 +300,24 @@ function enrichTankerRow(row: Record<string, unknown>, stages?: StageRecordItem[
     destination,
     dispatch_fat_pct: dispatchFat,
     dispatch_snf_pct: dispatchSnf,
-    received_qty: row.received_qty != null ? Number(row.received_qty) : null,
+    received_qty: receivedQty,
     receipt_time: (row.receipt_time as string) || null,
     received_fat_pct: row.received_fat_pct != null ? Number(row.received_fat_pct) : null,
     received_snf_pct: row.received_snf_pct != null ? Number(row.received_snf_pct) : null,
-    gross_weight_kg: row.gross_weight_kg != null ? Number(row.gross_weight_kg) : null,
-    tare_weight_kg: row.tare_weight_kg != null ? Number(row.tare_weight_kg) : null,
-    net_weight_kg: row.net_weight_kg != null ? Number(row.net_weight_kg) : null,
-    qc_status: (row.qc_status as string) || null,
-    trip_status: (row.trip_status as TripStatus) || undefined,
-    stage_data: (row.stage_data as Record<string, unknown>) || {},
+    gross_weight_kg: grossWeightKg,
+    tare_weight_kg: tareWeightKg,
+    net_weight_kg: netWeightKg,
+    qc_status: (row.qc_status as string) || fbMeta?.qc_status || null,
+    trip_status: (row.trip_status as TripStatus) || (fbMeta?.trip_status as TripStatus) || undefined,
+    stage_data: {
+      ...rowStageData,
+      ...(fbMeta?.stage_data || {}),
+      ...(driverName ? { driver_name: driverName } : {}),
+      ...(sealNumber ? { seal_number: sealNumber } : {}),
+      ...(dcNumber ? { dc_number: dcNumber } : {}),
+      ...(dispatchTime ? { dispatch_time: dispatchTime } : {}),
+      ...(compartments.length > 0 ? { compartments } : {}),
+    },
     stages: stages || [],
     created_at: (row.created_at as string) || undefined,
     dc_number: dcNumber,
@@ -226,11 +343,17 @@ function enrichTankerRow(row: Record<string, unknown>, stages?: StageRecordItem[
     driver_phone: driverPhone,
     seal_number: sealNumber,
     dispatch_time: dispatchTime,
+    dispatch_ampm: dispatchAmPm,
     destination,
     dispatch_fat_pct: dispatchFat,
     dispatch_snf_pct: dispatchSnf,
     dc_number: dcNumber,
     compartments,
+    gross_weight_kg: grossWeightKg,
+    tare_weight_kg: tareWeightKg,
+    net_weight_kg: netWeightKg,
+    received_qty: receivedQty,
+    stage_data: tripInput.stage_data,
     stages: journey.timelineSteps,
     journey,
     transit_loss_qty: transitLoss,
@@ -604,7 +727,16 @@ router.get('/:id', async (req, res) => {
   try {
     let data: any = null;
     let error: any = null;
-    const tiers = [EXTENDED_TANKER_SELECT, V2_TANKER_SELECT, MINIMAL_TANKER_SELECT, BARE_TANKER_SELECT];
+    const tiers = [
+      DYNAMIC_JOIN_TANKER_SELECT,
+      DYNAMIC_BARE_TANKER_SELECT,
+      FULL_TANKER_SELECT,
+      EXTENDED_TANKER_SELECT,
+      OPERATIONAL_TANKER_SELECT,
+      V2_TANKER_SELECT,
+      MINIMAL_TANKER_SELECT,
+      BARE_TANKER_SELECT,
+    ];
 
     for (const selectStr of tiers) {
       let query = supabase.from('tanker_dispatches').select(selectStr).eq('id', id);
@@ -851,6 +983,56 @@ router.post('/', async (req, res) => {
     if (!data.dispatch_time && dispatch_time) data.dispatch_time = dispatch_time;
     if (!data.stage_data) data.stage_data = stageData;
     if (!data.destination) data.destination = destination?.trim() || 'Namakkal Dairy';
+    if (!data.compartments && compartments.length > 0) data.compartments = compartments;
+
+    // Immediately persist full metadata in fallback store (guaranteed reflection across Gate, QC, Unloading, Admin)
+    saveTankerDispatchMetadata({
+      id: data.id,
+      tanker_number: data.tanker_number || tanker_number.trim().toUpperCase(),
+      unit_id,
+      zone_id: req.profile.zone_id,
+      date,
+      driver_name: data.driver_name || driver_name?.trim() || null,
+      driver_phone: (req.body as any).driver_phone ? String((req.body as any).driver_phone).trim() : null,
+      dc_number: data.dc_number || dcNo,
+      seal_number: data.seal_number || seal_number?.trim() || null,
+      dispatch_time: data.dispatch_time || dispatch_time || null,
+      dispatch_ampm: (req.body as any).dispatch_ampm || null,
+      dispatch_fat_pct: computedFat != null && String(computedFat) !== '' ? +Number(computedFat).toFixed(2) : null,
+      dispatch_snf_pct: computedSnf != null && String(computedSnf) !== '' ? +Number(computedSnf).toFixed(2) : null,
+      quantity_dispatched: +Number(computedQty).toFixed(2),
+      destination: data.destination || destination?.trim() || 'Namakkal Dairy',
+      compartments,
+      stage_data: stageData,
+      created_at: data.created_at || new Date().toISOString(),
+    });
+
+    // Record initial stage for immediate reflection across all plant views
+    try {
+      await recordTankerStageInDb({
+        trip_id: data.id,
+        stage_name: 'dispatched',
+        team: 'bmc',
+        status: 'done',
+        stage_data: {
+          tanker_number: data.tanker_number,
+          driver_name: data.driver_name,
+          driver_phone: (req.body as any).driver_phone ? String((req.body as any).driver_phone).trim() : null,
+          seal_number: data.seal_number,
+          dc_number: data.dc_number || dcNo,
+          dispatch_date: date,
+          dispatch_time: data.dispatch_time || dispatch_time,
+          destination: data.destination,
+          quantity_dispatched: data.quantity_dispatched,
+          compartments,
+        },
+        done_by: req.user.id,
+        done_by_name: req.profile.full_name ?? req.user.email ?? 'BMC Operator',
+        done_at: new Date().toISOString(),
+      });
+    } catch {
+      // non-fatal
+    }
   }
 
   if (error) {
@@ -1221,6 +1403,14 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
   } else {
     updatedTrip = initialUpdate.data;
   }
+
+  // Persist updated stage details in fallback store
+  saveTankerDispatchMetadata({
+    id,
+    tanker_number: trip.tanker_number,
+    ...updateTripFields,
+    stage_data: mergedStageData,
+  });
 
   // 8. Audit log
   await writeAuditLog({

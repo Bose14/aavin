@@ -150,27 +150,57 @@ export default function GateOperations() {
   useEffect(() => {
     if (activeTanker) {
       setVehicleNo(activeTanker.tanker_number || '');
-      setDriverName(activeTanker.driver_name || '');
-      setOutletSealNo(activeTanker.seal_number || '');
+
+      const resolvedDriverName =
+        activeTanker.driver_name ||
+        activeTanker.stage_data?.driver_name ||
+        activeTanker.stage_data?.vehicle_entered?.driver_name ||
+        activeTanker.journey?.driver_name ||
+        '';
+      setDriverName(resolvedDriverName);
+
+      const resolvedSealNo =
+        activeTanker.seal_number ||
+        activeTanker.stage_data?.seal_number ||
+        activeTanker.stage_data?.outlet_seal_no ||
+        activeTanker.stage_data?.vehicle_entered?.seal_number ||
+        '';
+      setOutletSealNo(resolvedSealNo);
+
       const existingDc =
         activeTanker.dc_number ||
         activeTanker.stage_data?.dc_number ||
+        activeTanker.stage_data?.dc_no ||
         activeTanker.stage_data?.vehicle_entered?.dc_number ||
+        activeTanker.journey?.dc_number ||
         '';
-      setDcNumber(existingDc || (activeTanker.seal_number ? `DC-${activeTanker.seal_number.replace(/\D/g, '') || '101'}` : ''));
+      setDcNumber(existingDc || (resolvedSealNo ? `DC-${resolvedSealNo.replace(/\D/g, '') || '101'}` : ''));
       setDispatchDate(activeTanker.date || getLocalTodayIso());
 
       // Parse dispatch time if available
-      if (activeTanker.dispatch_time) {
-        const parts = activeTanker.dispatch_time.split(':');
+      const rawDispatchTime = activeTanker.dispatch_time || activeTanker.stage_data?.dispatch_time || '';
+      if (rawDispatchTime) {
+        const isPm = rawDispatchTime.toUpperCase().includes('PM');
+        const isAm = rawDispatchTime.toUpperCase().includes('AM');
+        const cleanTime = rawDispatchTime.replace(/(AM|PM)/gi, '').trim();
+        const parts = cleanTime.split(':');
         let h = parseInt(parts[0], 10) || 9;
         const m = parts[1] || '00';
-        if (h >= 12) {
+        if (isPm) {
           setDispatchAmPm('PM');
           if (h > 12) h -= 12;
-        } else {
+        } else if (isAm) {
           setDispatchAmPm('AM');
           if (h === 0) h = 12;
+          if (h > 12) h -= 12;
+        } else {
+          if (h >= 12) {
+            setDispatchAmPm('PM');
+            if (h > 12) h -= 12;
+          } else {
+            setDispatchAmPm('AM');
+            if (h === 0) h = 12;
+          }
         }
         setDispatchTime(`${String(h).padStart(2, '0')}:${m}`);
       }
@@ -179,7 +209,16 @@ export default function GateOperations() {
       setGrossWeightKg(activeTanker.gross_weight_kg ? String(activeTanker.gross_weight_kg) : '');
       setTareWeightKg(activeTanker.tare_weight_kg ? String(activeTanker.tare_weight_kg) : '');
     }
-  }, [activeTanker]);
+  }, [
+    activeTanker?.id,
+    activeTanker?.tanker_number,
+    activeTanker?.driver_name,
+    activeTanker?.seal_number,
+    activeTanker?.dc_number,
+    activeTanker?.dispatch_time,
+    activeTanker?.stage_data,
+    activeTanker,
+  ]);
 
   // Live auto-calculated time difference between dispatch and entry
   const calculatedTimeDiff = useMemo(() => {
