@@ -376,8 +376,8 @@ router.get('/tanker', async (req, res) => {
     const rec = r.journey.calculated.received_litres;
     return {
       Date: formatDateDDMMYYYY(String(r.date)),
-      Unit: u?.name ?? '',
-      'Unit Code': u?.unit_code ?? '',
+      BMC: u?.name ?? '',
+      'BMC Code': u?.unit_code ?? '',
       'Tanker Number': r.tanker_number ?? '',
       Driver: r.driver_name ?? '',
       'Seal Number': r.seal_number ?? '',
@@ -416,6 +416,360 @@ router.get('/tanker', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${baseName}.xlsx"`);
     res.send(buf);
   }
+});
+
+// GET /export/tanker/daily-report — Official Aavin IDMS Daily Milk & Tanker Reconciliation Report
+router.get('/tanker/daily-report', async (req, res) => {
+  const { date, from, to, format = 'xlsx', unit_id } = req.query as Record<string, string>;
+  const zoneId = req.profile.zone_id;
+  const effectiveUnitId = req.profile.role === 'unit' ? req.profile.unit_id : unit_id;
+  const settings = await getZoneSettings(zoneId);
+
+  const targetDate = date || (from === to && from ? from : undefined);
+
+  const runT = (sel: string) => {
+    let q = supabase
+      .from('tanker_dispatches')
+      .select(sel)
+      .eq('zone_id', zoneId)
+      .order('date', { ascending: true })
+      .order('created_at', { ascending: true });
+    if (effectiveUnitId) q = q.eq('unit_id', effectiveUnitId);
+    if (targetDate) {
+      q = q.eq('date', targetDate);
+    } else {
+      if (from) q = q.gte('date', from);
+      if (to) q = q.lte('date', to);
+    }
+    return q;
+  };
+
+  let resT = await runT('id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct, received_qty, receipt_time, received_fat_pct, received_snf_pct, gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data, units(name, unit_code)');
+  if (resT.error && isMissingSchemaError(resT.error)) {
+    resT = await runT('id, date, tanker_number, quantity_dispatched, destination, units(name, unit_code)');
+  }
+  if (resT.error) { res.status(500).json({ error: resT.error.message }); return; }
+
+  const rawRows = (resT.data ?? []) as unknown as Array<Record<string, unknown>>;
+  const tripIds = rawRows.map((r) => String(r.id));
+  const { getTankerStagesForTrips } = await import('../lib/settingsStore');
+  const { deriveTankerJourneyState } = await import('../lib/tankerJourney');
+  const stageMap = await getTankerStagesForTrips(tripIds);
+
+  let totalDispatchedL = 0;
+  let totalReceivedL = 0;
+  let totalGrossKg = 0;
+  let totalTareKg = 0;
+  let totalNetKg = 0;
+  let totalLossL = 0;
+  let qcAcceptedCount = 0;
+  let qcRejectedCount = 0;
+
+  const tableRows = rawRows.map((r, idx) => {
+    const id = String(r.id);
+    const stages = stageMap[id] ?? [];
+    const stageData = (r.stage_data as Record<string, any>) || {};
+    const journey = deriveTankerJourneyState({
+      id,
+      date: String(r.date),
+      tanker_number: String(r.tanker_number ?? ''),
+      driver_name: (r.driver_name as string) || null,
+      seal_number: (r.seal_number as string) || null,
+      dispatch_time: (r.dispatch_time as string) || null,
+      quantity_dispatched: Number(r.quantity_dispatched ?? 0),
+      destination: (r.destination as string) || null,
+      dispatch_fat_pct: r.dispatch_fat_pct != null ? Number(r.dispatch_fat_pct) : null,
+      dispatch_snf_pct: r.dispatch_snf_pct != null ? Number(r.dispatch_snf_pct) : null,
+      received_qty: r.received_qty != null ? Number(r.received_qty) : null,
+      receipt_time: (r.receipt_time as string) || null,
+      received_fat_pct: r.received_fat_pct != null ? Number(r.received_fat_pct) : null,
+      received_snf_pct: r.received_snf_pct != null ? Number(r.received_snf_pct) : null,
+      gross_weight_kg: r.gross_weight_kg != null ? Number(r.gross_weight_kg) : null,
+      tare_weight_kg: r.tare_weight_kg != null ? Number(r.tare_weight_kg) : null,
+      net_weight_kg: r.net_weight_kg != null ? Number(r.net_weight_kg) : null,
+      qc_status: (r.qc_status as string) || null,
+      trip_status: (r.trip_status as any) || undefined,
+      stage_data: stageData,
+      stages,
+    } as any, settings);
+
+    const u = r.units as { name: string; unit_code: string } | null;
+    const disp = Number(r.quantity_dispatched ?? 0);
+    const rec = journey.calculated.received_litres ?? (r.received_qty != null ? Number(r.received_qty) : null);
+    const gross = journey.calculated.gross_weight_kg ?? (r.gross_weight_kg != null ? Number(r.gross_weight_kg) : null);
+    const tare = journey.calculated.tare_weight_kg ?? (r.tare_weight_kg != null ? Number(r.tare_weight_kg) : null);
+    const net = journey.calculated.net_weight_kg ?? (r.net_weight_kg != null ? Number(r.net_weight_kg) : null);
+    const loss = journey.calculated.transit_loss_litres ?? null;
+
+    totalDispatchedL += disp;
+    if (rec != null) totalReceivedL += rec;
+    if (gross != null) totalGrossKg += gross;
+    if (tare != null) totalTareKg += tare;
+    if (net != null) totalNetKg += net;
+    if (loss != null) totalLossL += loss;
+
+    const isRejected = journey.isQcRejected || r.qc_status === 'rejected';
+    if (isRejected) qcRejectedCount += 1;
+    else if (journey.currentStageKey === 'unloaded' || journey.currentStageKey === 'tare_weight' || journey.currentStageKey === 'cip_completed' || journey.currentStageKey === 'vehicle_exit' || journey.tripStatus === 'exited') {
+      qcAcceptedCount += 1;
+    }
+
+    const vehicleEntryData = stageData.vehicle_entered || {};
+    const qcData = stageData.qc_completed || {};
+    const unloadedData = stageData.unloaded || {};
+    const cipData = stageData.cip_completed || {};
+    const exitData = stageData.vehicle_exit || {};
+
+    const dcNo = r.dc_number || stageData.dc_number || vehicleEntryData.dc_number || '—';
+    const entryTime = vehicleEntryData.entry_time || '—';
+    const timeDiff = vehicleEntryData.time_difference || '—';
+    const silo = unloadedData.silo_or_bay || '—';
+    const testedFat = qcData.received_fat_pct != null ? Number(qcData.received_fat_pct).toFixed(2) : (r.received_fat_pct != null ? Number(r.received_fat_pct).toFixed(2) : '—');
+    const testedSnf = qcData.received_snf_pct != null ? Number(qcData.received_snf_pct).toFixed(2) : (r.received_snf_pct != null ? Number(r.received_snf_pct).toFixed(2) : '—');
+    const cipStatus = cipData.cip_status ? (cipData.cip_status === 'pass' ? 'PASSED' : 'FAILED') : '—';
+    const exitPassNo = exitData.gate_pass_no || '—';
+    const compCount = Array.isArray(journey.compartments) && journey.compartments.length > 0 ? journey.compartments.length : 1;
+
+    return {
+      'S.No': idx + 1,
+      'Date': formatDateDDMMYYYY(String(r.date)),
+      'Tanker / Vehicle No': r.tanker_number ?? '',
+      'DC No (BMC Invoice)': dcNo !== '—' ? dcNo : '',
+      'Source BMC': u?.name ?? '',
+      'BMC Code': u?.unit_code ?? '',
+      'Driver Name': r.driver_name ?? '',
+      'Dispatch Time': r.dispatch_time ?? '',
+      'Gate Entry Time': entryTime !== '—' ? entryTime : '',
+      'Transit Time (HH.MM)': timeDiff !== '—' ? timeDiff : '',
+      'Dispatched Qty (L)': disp,
+      'Dispatched Fat (%)': r.dispatch_fat_pct != null ? Number(r.dispatch_fat_pct).toFixed(2) : '',
+      'Dispatched SNF (%)': r.dispatch_snf_pct != null ? Number(r.dispatch_snf_pct).toFixed(2) : '',
+      'No. of Compartments': compCount,
+      'Gross Weight (kg)': gross ?? '',
+      'Tare Weight (kg)': tare ?? '',
+      'Net Milk Weight (kg)': net ?? '',
+      'Received Qty (L)': rec ?? '',
+      'Receiving Silo / Bay': silo !== '—' ? silo : '',
+      'Tested Fat (%)': testedFat !== '—' ? testedFat : '',
+      'Tested SNF (%)': testedSnf !== '—' ? testedSnf : '',
+      'QC Status': isRejected ? 'REJECTED' : (qcData.qc_status === 'accepted' ? 'ACCEPTED' : (journey.waitingTeam === 'qc' ? 'WAITING QC' : 'PENDING')),
+      'Rejection Reason': journey.qcRejectionReason || '',
+      'Transit Loss (L)': loss != null ? loss : '',
+      'Transit Loss (%)': journey.calculated.transit_loss_pct != null ? `${journey.calculated.transit_loss_pct}%` : '',
+      'CIP Status': cipStatus !== '—' ? cipStatus : '',
+      'Exit Pass No': exitPassNo !== '—' ? exitPassNo : '',
+      'Turnaround (min)': journey.calculated.total_turnaround_min ?? '',
+      'Current Pipeline Stage': journey.tripStatusLabel,
+    };
+  });
+
+  // Summary Totals row
+  const overallLossPct = totalDispatchedL > 0 && totalLossL > 0 ? +((totalLossL / totalDispatchedL) * 100).toFixed(2) : 0;
+  const summaryRow: Record<string, any> = {
+    'S.No': 'TOTAL',
+    'Date': `${tableRows.length} Tankers`,
+    'Tanker / Vehicle No': '',
+    'DC No (BMC Invoice)': '',
+    'Source BMC': '',
+    'BMC Code': '',
+    'Driver Name': '',
+    'Dispatch Time': '',
+    'Gate Entry Time': '',
+    'Transit Time (HH.MM)': '',
+    'Dispatched Qty (L)': totalDispatchedL,
+    'Dispatched Fat (%)': '',
+    'Dispatched SNF (%)': '',
+    'No. of Compartments': '',
+    'Gross Weight (kg)': totalGrossKg || '',
+    'Tare Weight (kg)': totalTareKg || '',
+    'Net Milk Weight (kg)': totalNetKg || '',
+    'Received Qty (L)': totalReceivedL || '',
+    'Receiving Silo / Bay': '',
+    'Tested Fat (%)': '',
+    'Tested SNF (%)': '',
+    'QC Status': `Acc: ${qcAcceptedCount} | Rej: ${qcRejectedCount}`,
+    'Rejection Reason': '',
+    'Transit Loss (L)': totalLossL || 0,
+    'Transit Loss (%)': `${overallLossPct}%`,
+    'CIP Status': '',
+    'Exit Pass No': '',
+    'Turnaround (min)': '',
+    'Current Pipeline Stage': '',
+  };
+
+  const wb = XLSX.utils.book_new();
+
+  // Overview Sheet
+  const overviewRows = [
+    { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': 'TAMIL NADU CO-OPERATIVE MILK PRODUCERS FEDERATION (AAVIN)' },
+    { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': `Receiving Dairy: SALEM DAIRY PLANT | Report Date: ${targetDate ? formatDateDDMMYYYY(targetDate) : buildRangeTag(from, to).replace(/_/g, ' ')}` },
+    { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': `Generated At: ${formatDateDDMMYYYY(new Date().toISOString().slice(0, 10))} ${new Date().toLocaleTimeString('en-IN')}` },
+    { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': '------------------------------------------------------------------------------------------------------------------------' },
+    { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': `Total Tankers: ${tableRows.length} | Dispatched Volume: ${totalDispatchedL.toLocaleString('en-IN')} L | Unloaded Volume: ${totalReceivedL.toLocaleString('en-IN')} L` },
+    { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': `Net Transit Loss: ${totalLossL.toFixed(1)} L (${overallLossPct}%) | QC Accepted: ${qcAcceptedCount} | QC Rejected: ${qcRejectedCount}` },
+  ];
+  const wsOverview = XLSX.utils.json_to_sheet(overviewRows);
+  XLSX.utils.book_append_sheet(wb, wsOverview, 'Summary Header');
+
+  // Main Reconciliation Sheet
+  const wsData = XLSX.utils.json_to_sheet([...tableRows, summaryRow]);
+  XLSX.utils.book_append_sheet(wb, wsData, 'Daily Tanker Reception');
+
+  const reportDateTag = targetDate ? formatDateDDMMYYYY(targetDate) : buildRangeTag(from, to);
+  const baseName = `Aavin_Daily_Tanker_Report_${reportDateTag}`;
+
+  if (format === 'csv') {
+    const csv = XLSX.utils.sheet_to_csv(wsData);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${baseName}.csv"`);
+    res.send(csv);
+  } else {
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${baseName}.xlsx"`);
+    res.send(buf);
+  }
+});
+
+// GET /export/tanker/:id — Export complete single tanker dossier & compartment log
+router.get('/tanker/:id', async (req, res) => {
+  const { id } = req.params;
+  const zoneId = req.profile.zone_id;
+  const settings = await getZoneSettings(zoneId);
+
+  let resT = await supabase
+    .from('tanker_dispatches')
+    .select('id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct, received_qty, receipt_time, received_fat_pct, received_snf_pct, gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data, units(name, unit_code)')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (resT.error && isMissingSchemaError(resT.error)) {
+    resT = await supabase
+      .from('tanker_dispatches')
+      .select('id, date, tanker_number, quantity_dispatched, destination, units(name, unit_code)')
+      .eq('id', id)
+      .maybeSingle();
+  }
+
+  if (resT.error || !resT.data) {
+    res.status(404).json({ error: 'Tanker record not found' });
+    return;
+  }
+
+  const r = resT.data as Record<string, unknown>;
+  const { getTankerStagesForTrips } = await import('../lib/settingsStore');
+  const { deriveTankerJourneyState } = await import('../lib/tankerJourney');
+  const stageMap = await getTankerStagesForTrips([id]);
+  const stages = stageMap[id] ?? [];
+  const stageData = (r.stage_data as Record<string, any>) || {};
+
+  const journey = deriveTankerJourneyState({
+    id,
+    date: String(r.date),
+    tanker_number: String(r.tanker_number ?? ''),
+    driver_name: (r.driver_name as string) || null,
+    seal_number: (r.seal_number as string) || null,
+    dispatch_time: (r.dispatch_time as string) || null,
+    quantity_dispatched: Number(r.quantity_dispatched ?? 0),
+    destination: (r.destination as string) || null,
+    dispatch_fat_pct: r.dispatch_fat_pct != null ? Number(r.dispatch_fat_pct) : null,
+    dispatch_snf_pct: r.dispatch_snf_pct != null ? Number(r.dispatch_snf_pct) : null,
+    received_qty: r.received_qty != null ? Number(r.received_qty) : null,
+    receipt_time: (r.receipt_time as string) || null,
+    received_fat_pct: r.received_fat_pct != null ? Number(r.received_fat_pct) : null,
+    received_snf_pct: r.received_snf_pct != null ? Number(r.received_snf_pct) : null,
+    gross_weight_kg: r.gross_weight_kg != null ? Number(r.gross_weight_kg) : null,
+    tare_weight_kg: r.tare_weight_kg != null ? Number(r.tare_weight_kg) : null,
+    net_weight_kg: r.net_weight_kg != null ? Number(r.net_weight_kg) : null,
+    qc_status: (r.qc_status as string) || null,
+    trip_status: (r.trip_status as any) || undefined,
+    stage_data: stageData,
+    stages,
+  } as any, settings);
+
+  const u = r.units as { name: string; unit_code: string } | null;
+  const vehicleEntryData = stageData.vehicle_entered || {};
+  const qcData = stageData.qc_completed || {};
+  const unloadedData = stageData.unloaded || {};
+  const cipData = stageData.cip_completed || {};
+  const tareData = stageData.tare_weight || {};
+  const grossData = stageData.gross_weight || {};
+  const exitData = stageData.vehicle_exit || {};
+
+  const dcNo = r.dc_number || stageData.dc_number || vehicleEntryData.dc_number || '—';
+  const compartments = journey.compartments || stageData.compartments || [];
+
+  // Sheet 1: Dossier Summary (Key-Value)
+  const dossierRows = [
+    { 'Field': 'Aavin Tanker Dossier', 'Value': 'CONFIDENTIAL LOGISTICS RECORD' },
+    { 'Field': 'Tanker / Vehicle Number', 'Value': r.tanker_number || '' },
+    { 'Field': 'Delivery Challan No (DC No)', 'Value': dcNo },
+    { 'Field': 'Source BMC Unit', 'Value': `${u?.name || 'BMC'} (${u?.unit_code || '—'})` },
+    { 'Field': 'Destination Dairy', 'Value': r.destination || 'Salem Dairy' },
+    { 'Field': 'Driver Name', 'Value': r.driver_name || '—' },
+    { 'Field': 'Outlet Valve Seal Number', 'Value': r.seal_number || '—' },
+    { 'Field': 'Dispatch Date & Time', 'Value': `${formatDateDDMMYYYY(String(r.date))} ${r.dispatch_time || ''}` },
+    { 'Field': 'Plant Gate Entry Time', 'Value': vehicleEntryData.entry_time || '—' },
+    { 'Field': 'Transit Time Difference', 'Value': vehicleEntryData.time_difference ? `${vehicleEntryData.time_difference} hours` : '—' },
+    { 'Field': 'Dispatched Milk Volume', 'Value': `${Number(r.quantity_dispatched || 0).toLocaleString('en-IN')} Litres` },
+    { 'Field': 'Dispatched Quality', 'Value': `Fat: ${r.dispatch_fat_pct != null ? r.dispatch_fat_pct : '—'}% | SNF: ${r.dispatch_snf_pct != null ? r.dispatch_snf_pct : '—'}%` },
+    { 'Field': 'Weighbridge Gross Weight', 'Value': grossData.gross_weight_kg ? `${Number(grossData.gross_weight_kg).toLocaleString('en-IN')} kg (Slip #${grossData.weighbridge_slip_no || '—'})` : '—' },
+    { 'Field': 'Weighbridge Tare Weight', 'Value': tareData.tare_weight_kg ? `${Number(tareData.tare_weight_kg).toLocaleString('en-IN')} kg (Slip #${tareData.weighbridge_slip_no || '—'})` : '—' },
+    { 'Field': 'Calculated Net Milk Weight', 'Value': journey.calculated.net_weight_kg ? `${journey.calculated.net_weight_kg.toLocaleString('en-IN')} kg` : '—' },
+    { 'Field': 'QC Decision', 'Value': journey.isQcRejected ? `REJECTED (${journey.qcRejectionReason || 'Quality failure'})` : (qcData.qc_status === 'accepted' ? 'ACCEPTED (Passed all tests)' : 'PENDING') },
+    { 'Field': 'QC Lab Analysis', 'Value': `Fat: ${qcData.received_fat_pct ?? '—'}% | SNF: ${qcData.received_snf_pct ?? '—'}% | Temp: ${qcData.temperature ?? '—'}°C | MBRT: ${qcData.mbrt_minutes ?? '—'} min` },
+    { 'Field': 'Receiving Silo / Bay', 'Value': unloadedData.silo_or_bay || '—' },
+    { 'Field': 'Unloaded Volume', 'Value': unloadedData.unloaded_litres ? `${Number(unloadedData.unloaded_litres).toLocaleString('en-IN')} Litres` : '—' },
+    { 'Field': 'Transit Loss / Gain', 'Value': journey.calculated.transit_loss_litres != null ? `${journey.calculated.transit_loss_litres} Litres (${journey.calculated.transit_loss_pct}%)` : '—' },
+    { 'Field': 'CIP Sanitization Status', 'Value': cipData.cip_status ? `${cipData.cip_status.toUpperCase()} (${cipData.chemical_used || 'Standard CIP'})` : '—' },
+    { 'Field': 'Exit Gate Pass No', 'Value': exitData.gate_pass_no || '—' },
+    { 'Field': 'Total Plant Turnaround Time', 'Value': journey.calculated.total_turnaround_min != null ? `${journey.calculated.total_turnaround_min} minutes` : '—' },
+    { 'Field': 'Final Journey Status', 'Value': journey.tripStatusLabel },
+  ];
+
+  // Sheet 2: Compartment Breakdown
+  const compRows = (compartments || []).map((c: any, i: number) => ({
+    'Comp #': c.compartment_no ?? (i + 1),
+    'Compartment Name': c.compartment_name || `Compartment ${i + 1}`,
+    'Milk Volume (L)': Number(c.quantity_litres || 0),
+    'Dipstick Level (cm)': c.dipstick_cm ?? '—',
+    'Fat (%)': c.fat_pct ?? '—',
+    'SNF (%)': c.snf_pct ?? '—',
+    'Top Seal Number': c.seal_number || '—',
+    'Milk Type': c.milk_type || 'Mixed',
+  }));
+
+  // Sheet 3: 7-Stage Progression Timeline
+  const stageRows = (journey.timelineSteps || []).map((st: any) => ({
+    'Step': st.key,
+    'Stage Name': st.title,
+    'Responsible Team': st.team?.toUpperCase() || '',
+    'Status': st.status.toUpperCase(),
+    'Recorded At': st.completedAt ? new Date(st.completedAt).toLocaleString('en-IN') : '—',
+    'Operator / Slip Details': st.summary || '—',
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const wsDossier = XLSX.utils.json_to_sheet(dossierRows);
+  XLSX.utils.book_append_sheet(wb, wsDossier, 'Tanker Dossier');
+
+  if (compRows.length > 0) {
+    const wsComp = XLSX.utils.json_to_sheet(compRows);
+    XLSX.utils.book_append_sheet(wb, wsComp, 'Compartments');
+  }
+
+  if (stageRows.length > 0) {
+    const wsStages = XLSX.utils.json_to_sheet(stageRows);
+    XLSX.utils.book_append_sheet(wb, wsStages, 'Stage Progression');
+  }
+
+  const cleanNo = String(r.tanker_number || 'Tanker').replace(/[^A-Za-z0-9]/g, '_');
+  const fileName = `Tanker_${cleanNo}_Dossier.xlsx`;
+
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  res.send(buf);
 });
 
 export default router;

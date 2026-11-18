@@ -10,7 +10,7 @@ interface Props {
 export function roleHome(role: string) {
   const r = (role || '').toLowerCase();
   if (r === 'superadmin') return '/superadmin';
-  if (r === 'admin') return '/admin';
+  if (r === 'admin') return '/admin/tanker';
   if (r === 'gate') return '/gate';
   if (r === 'qc') return '/qc';
   if (r === 'unloading') return '/unloading';

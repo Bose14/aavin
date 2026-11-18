@@ -270,7 +270,7 @@ export default function AdminDashboard() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>{profile?.zones?.name ?? 'Zone'} Dashboard</h1>
+          <h1>{profile?.zones?.name ?? 'Zone'} {t('navAnalytics')}</h1>
           <p className="page-subtitle">
             Zone-wide collection, quality &amp; financial overview
             {rangeFrom && rangeTo && (

@@ -48,12 +48,13 @@ export default function App() {
             <Route path="/superadmin" element={<ProtectedRoute role="superadmin"><Layout><SuperAdminDashboard /></Layout></ProtectedRoute>} />
 
             {/* Admin portal */}
-            <Route path="/admin" element={<ProtectedRoute role="admin"><Layout><AdminDashboard /></Layout></ProtectedRoute>} />
+            <Route path="/admin" element={<Navigate to="/admin/tanker" replace />} />
+            <Route path="/admin/tanker" element={<ProtectedRoute role="admin"><Layout><AdminTankerRecords /></Layout></ProtectedRoute>} />
             <Route path="/admin/units" element={<ProtectedRoute role="admin"><Layout><AdminUnits /></Layout></ProtectedRoute>} />
             <Route path="/admin/teams" element={<ProtectedRoute role="admin"><Layout><AdminTeams /></Layout></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute role="admin"><Layout><AdminUsers /></Layout></ProtectedRoute>} />
+            <Route path="/admin/analytics" element={<ProtectedRoute role="admin"><Layout><AdminDashboard /></Layout></ProtectedRoute>} />
             <Route path="/admin/milk" element={<ProtectedRoute role="admin"><Layout><AdminMilkRecords /></Layout></ProtectedRoute>} />
-            <Route path="/admin/tanker" element={<ProtectedRoute role="admin"><Layout><AdminTankerRecords /></Layout></ProtectedRoute>} />
             <Route path="/admin/settings" element={<ProtectedRoute role="admin"><Layout><AdminSettings /></Layout></ProtectedRoute>} />
 
             {/* Unit portal */}

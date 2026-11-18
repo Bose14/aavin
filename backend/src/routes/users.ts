@@ -5,7 +5,15 @@ import { supabase, formatAdminAuthError, serviceKeyIssue, buildServiceKeyError }
 import { authMiddleware } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
 import { normalizeIndianPhone } from '../lib/calculations';
-import { isMissingSchemaError, writeAuditLog, getTeamByCode, getTeamsFromDb } from '../lib/settingsStore';
+import {
+  isMissingSchemaError,
+  isCheckConstraintError,
+  insertProfileResiliently,
+  writeAuditLog,
+  getTeamByCode,
+  getTeamsFromDb,
+} from '../lib/settingsStore';
+import { generateNextTeamUserId } from './teams';
 
 const router = Router();
 router.use(authMiddleware);
@@ -134,12 +142,18 @@ router.get('/', requireRole('admin', 'superadmin'), async (req, res) => {
     const meta = authById.get(p.id);
     const roleUpper = (p.role || '').toUpperCase();
     let teamObj = p.team_id ? teamById.get(p.team_id) : undefined;
+    if (!teamObj && meta?.team) {
+      teamObj = teamByCode.get(String(meta.team).toUpperCase());
+    }
     if (!teamObj && ['GATE', 'QC', 'UNLOADING'].includes(roleUpper)) {
       teamObj = teamByCode.get(roleUpper);
     }
 
+    const effectiveRole = teamObj ? teamObj.code.toLowerCase() : (p.role || '').toLowerCase();
+
     return {
       ...p,
+      role: effectiveRole,
       email: meta?.email ?? p.email ?? null,
       sub_role: meta?.sub_role ?? p.sub_role ?? 'operator',
       is_active: meta?.is_active ?? p.is_active ?? true,
@@ -223,7 +237,7 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
 
   const email = (rawEmail ?? '').trim().toLowerCase();
   const full_name = (rawName ?? '').trim();
-  const username = rawUsername ? rawUsername.trim() : null;
+  let username = rawUsername ? rawUsername.trim().toUpperCase() : null;
   const shift = ['Morning', 'Evening', 'General'].includes(rawShift) ? rawShift : 'General';
   const zone_id = rawZoneId || req.profile.zone_id;
 
@@ -242,6 +256,9 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
     targetRole = targetTeamCode.toLowerCase();
     const teamObj = await getTeamByCode(targetTeamCode);
     targetTeamId = teamObj?.id ?? null;
+    if (!username) {
+      username = await generateNextTeamUserId(zone_id, targetTeamCode);
+    }
   } else {
     targetRole = (rawRole || 'unit').toLowerCase();
   }
@@ -303,10 +320,10 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
       .from('profiles')
       .select('id, full_name')
       .eq('zone_id', zone_id)
-      .eq('username', username)
+      .ilike('username', username)
       .limit(1);
     if (dupUser && dupUser.length > 0) {
-      res.status(409).json({ error: `Username "${username}" is already taken in this zone` });
+      res.status(409).json({ error: `Unique User ID "${username}" is already taken in this zone` });
       return;
     }
   }
@@ -342,9 +359,8 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
 
   const userId = authData.user.id;
 
-  // Insert into profiles with resilient schema fallback
-  let profileError: any = null;
-  const extendedInsert = {
+  // Insert into profiles with resilient schema and check constraint fallback
+  const { error: profileError } = await insertProfileResiliently({
     id: userId,
     role: targetRole,
     zone_id,
@@ -358,22 +374,7 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
     sub_role: normalizedSubRole,
     is_active: true,
     must_change_password: force_password_change,
-  };
-
-  const res1 = await supabase.from('profiles').insert(extendedInsert);
-  profileError = res1.error;
-
-  if (profileError && isMissingSchemaError(profileError)) {
-    const res2 = await supabase.from('profiles').insert({
-      id: userId,
-      role: targetRole,
-      zone_id,
-      unit_id: targetRole === 'unit' ? unit_id : null,
-      full_name,
-      phone: normalizedPhone,
-    });
-    profileError = res2.error;
-  }
+  });
 
   if (profileError) {
     await supabase.auth.admin.deleteUser(userId);
@@ -466,6 +467,15 @@ router.post('/:id/move-team', requireRole('admin', 'superadmin'), async (req, re
   if (updateErr && isMissingSchemaError(updateErr)) {
     const fb = await supabase.from('profiles').update({ role: nextRole }).eq('id', id);
     updateErr = fb.error;
+  }
+
+  // If check constraint rejected the new plant role, keep role as-is or set team_id
+  if (updateErr && isCheckConstraintError(updateErr)) {
+    console.warn('[move-team] Database check constraint rejected role update, updating team_id only:', updateErr.message);
+    const fbConstraint = await supabase.from('profiles').update({ team_id: nextTeamId }).eq('id', id);
+    if (!fbConstraint.error || isMissingSchemaError(fbConstraint.error)) {
+      updateErr = null;
+    }
   }
 
   if (updateErr) {
@@ -585,17 +595,17 @@ router.patch('/:id', requireRole('admin', 'superadmin'), async (req, res) => {
   }
 
   if (body.username !== undefined) {
-    const uClean = body.username ? body.username.trim() : null;
+    const uClean = body.username ? body.username.trim().toUpperCase() : null;
     if (uClean) {
       const { data: dupUser } = await supabase
         .from('profiles')
         .select('id, full_name')
         .eq('zone_id', target.zone_id)
-        .eq('username', uClean)
+        .ilike('username', uClean)
         .neq('id', id)
         .limit(1);
       if (dupUser && dupUser.length > 0) {
-        res.status(409).json({ error: `Username "${uClean}" is already taken` });
+        res.status(409).json({ error: `Unique User ID "${uClean}" is already taken` });
         return;
       }
     }

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { roleHome } from '../components/ProtectedRoute';
 
 export default function ChangePassword() {
   const { profile, refreshProfile, signOut } = useAuth();
@@ -38,7 +39,7 @@ export default function ChangePassword() {
       await api.post('/users/complete-password-change').catch(() => {});
       await refreshProfile();
 
-      const home = profile?.role === 'superadmin' ? '/superadmin' : profile?.role === 'admin' ? '/admin' : '/unit';
+      const home = roleHome(profile?.role || '');
       navigate(home, { replace: true });
     } catch (err: unknown) {
       setError((err as Error)?.message || 'Failed to update password');

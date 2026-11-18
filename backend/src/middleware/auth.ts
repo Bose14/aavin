@@ -96,6 +96,15 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     return;
   }
 
+  // Resilient role resolution: if legacy database constraint forced profile.role to 'unit',
+  // resolve true plant team role from user_metadata.team
+  const teamInMeta = typeof user.user_metadata?.team === 'string'
+    ? user.user_metadata.team.trim().toLowerCase()
+    : undefined;
+  if (teamInMeta && ['gate', 'qc', 'unloading'].includes(teamInMeta)) {
+    profile.role = teamInMeta;
+  }
+
   // Block unit users belonging to a deactivated unit
   if (profile.role === 'unit' && profile.unit_id) {
     const { data: unitRow } = await supabase

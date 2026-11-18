@@ -24,6 +24,7 @@ export interface DataTableProps<T> {
   emptyActionLabel?: string;
   onEmptyAction?: () => void;
   showTotalsRow?: boolean;
+  onRowClick?: (row: T) => void;
 }
 
 export function DataTable<T>({
@@ -38,6 +39,7 @@ export function DataTable<T>({
   emptyActionLabel,
   onEmptyAction,
   showTotalsRow = false,
+  onRowClick,
 }: DataTableProps<T>) {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
@@ -157,7 +159,12 @@ export function DataTable<T>({
               </tr>
             ) : (
               pageRows.map(row => (
-                <tr key={getRowKey(row)} className={getRowClassName ? getRowClassName(row) : undefined}>
+                <tr
+                  key={getRowKey(row)}
+                  className={getRowClassName ? getRowClassName(row) : undefined}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  style={{ cursor: onRowClick ? 'pointer' : undefined }}
+                >
                   {columns.map(col => (
                     <td key={col.key} style={{ textAlign: col.align ?? 'left' }}>
                       {col.render(row)}
@@ -204,7 +211,12 @@ export function DataTable<T>({
               const detailCols = columns.filter(c => c.key !== 'actions');
               const actionCol = columns.find(c => c.key === 'actions');
               return (
-                <div key={getRowKey(row)} className={`mobile-record-card ${rowClass}`.trim()}>
+                <div
+                  key={getRowKey(row)}
+                  className={`mobile-record-card ${rowClass}`.trim()}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  style={{ cursor: onRowClick ? 'pointer' : undefined }}
+                >
                   <div className="mobile-record-grid">
                     {detailCols.map(col => (
                       <div key={col.key} className="mobile-record-field">

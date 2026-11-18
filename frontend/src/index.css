@@ -48,13 +48,86 @@ input[type="checkbox"], input[type="radio"] {
 }
 
 /* ── Buttons ── */
-.btn-primary { background: var(--primary); color: #fff; border: none; border-radius: 8px; padding: 0.75rem 1.25rem; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.15s; width: 100%; }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-family: inherit;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  vertical-align: middle;
+  line-height: 1.25;
+  transition: all 0.15s ease-in-out;
+  min-height: 38px;
+  width: auto;
+}
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 1.15rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+  vertical-align: middle;
+  min-height: 38px;
+  width: auto;
+}
 .btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-secondary { background: var(--white); color: var(--primary); border: 1.5px solid var(--primary); border-radius: 8px; padding: 0.4rem 0.875rem; font-size: 0.875rem; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background 0.15s; }
+
+.entry-form > .btn-primary,
+.auth-form > .btn-primary,
+.btn-block {
+  width: 100%;
+}
+
+.header-actions .btn-primary,
+.page-header .btn-primary,
+.action-row .btn-primary,
+.modal-actions .btn-primary,
+.filter-bar .btn-primary,
+.toolbar .btn-primary {
+  width: auto;
+}
+
+.btn-secondary {
+  background: var(--white);
+  color: var(--primary);
+  border: 1.5px solid var(--primary);
+  border-radius: 8px;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease-in-out;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  vertical-align: middle;
+  min-height: 38px;
+  width: auto;
+}
 .btn-secondary:hover:not(:disabled) { background: var(--primary-light); }
 .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-sm { padding: 0.3rem 0.65rem; font-size: 0.78rem; }
+.btn-sm {
+  min-height: 32px !important;
+  padding: 0.25rem 0.65rem !important;
+  font-size: 0.8rem !important;
+  border-radius: 6px !important;
+  line-height: 1.2 !important;
+}
 .btn-signout { background: transparent; color: var(--text-muted); border: 1px solid var(--border); border-radius: 6px; padding: 0.35rem 0.75rem; font-size: 0.8rem; cursor: pointer; width: 100%; margin-top: 0.5rem; }
 .btn-signout:hover { background: var(--bg); }
 
@@ -190,10 +263,12 @@ input[type="checkbox"], input[type="radio"] {
 .form-group .hint { display: block; color: var(--text-muted); font-size: 0.78rem; margin-top: 0.2rem; }
 
 /* ── Global UX v2 Enhancements (preserving indigo + rounded white cards) ── */
-.btn-primary, .btn-secondary, .btn-danger, .tab, .form-group input:not([type="checkbox"]):not([type="radio"]), .form-group select {
+.tab, .form-group input:not([type="checkbox"]):not([type="radio"]), .form-group select {
+  min-height: 40px;
+}
+.entry-form .btn-primary, .auth-form .btn-primary {
   min-height: 44px;
 }
-.btn-sm { min-height: 36px; padding: 0.35rem 0.75rem; font-size: 0.8rem; }
 .btn-danger {
   background: var(--danger); color: #fff; border: none; border-radius: 8px;
   padding: 0.75rem 1.25rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s;

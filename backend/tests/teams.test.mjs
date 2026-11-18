@@ -224,7 +224,7 @@ test('8. Role-based redirect routing for all roles', () => {
   function roleHome(role) {
     const r = (role || '').toLowerCase();
     if (r === 'superadmin') return '/superadmin';
-    if (r === 'admin') return '/admin';
+    if (r === 'admin') return '/admin/tanker';
     if (r === 'gate') return '/gate';
     if (r === 'qc') return '/qc';
     if (r === 'unloading') return '/unloading';
@@ -232,7 +232,7 @@ test('8. Role-based redirect routing for all roles', () => {
   }
 
   assert.equal(roleHome('superadmin'), '/superadmin');
-  assert.equal(roleHome('admin'), '/admin');
+  assert.equal(roleHome('admin'), '/admin/tanker');
   assert.equal(roleHome('gate'), '/gate');
   assert.equal(roleHome('GATE'), '/gate');
   assert.equal(roleHome('qc'), '/qc');
@@ -241,3 +241,77 @@ test('8. Role-based redirect routing for all roles', () => {
   assert.equal(roleHome('UNLOADING'), '/unloading');
   assert.equal(roleHome('unit'), '/unit');
 });
+
+test('9. Unique User ID generation and prefix mapping for plant team operators (AV_IT_001 format)', async () => {
+  const { getTeamPrefix, generateNextTeamUserId } = await import('../dist/routes/teams.js');
+
+  assert.equal(getTeamPrefix('GATE'), 'GT');
+  assert.equal(getTeamPrefix('QC'), 'QC');
+  assert.equal(getTeamPrefix('UNLOADING'), 'UL');
+  assert.equal(getTeamPrefix('IT'), 'IT');
+  assert.equal(getTeamPrefix(''), 'IT');
+
+  const idGate = await generateNextTeamUserId('00000000-0000-0000-0000-000000000001', 'GATE');
+  assert.match(idGate, /^AV_GT_\d{3}$/);
+
+  const idQC = await generateNextTeamUserId('00000000-0000-0000-0000-000000000001', 'QC');
+  assert.match(idQC, /^AV_QC_\d{3}$/);
+
+  const idIT = await generateNextTeamUserId('00000000-0000-0000-0000-000000000001', 'IT');
+  assert.match(idIT, /^AV_IT_\d{3}$/);
+});
+
+test('10. Resilient schema fallback detects missing shift/team_id column in schema cache', async () => {
+  const { isMissingSchemaError } = await import('../dist/lib/settingsStore.js');
+
+  // Exact PostgREST schema cache error from user screenshot
+  const exactUserError = {
+    message: "Could not find the 'shift' column of 'profiles' in the schema cache",
+    code: 'PGRST204',
+  };
+  assert.equal(isMissingSchemaError(exactUserError), true);
+
+  const teamIdError = {
+    message: "Could not find the 'team_id' column of 'profiles' in the schema cache",
+  };
+  assert.equal(isMissingSchemaError(teamIdError), true);
+
+  const usernameError = {
+    message: "column profiles.username does not exist",
+    code: '42703',
+  };
+  assert.equal(isMissingSchemaError(usernameError), true);
+
+  // Normal business errors should NOT be treated as missing schema
+  const dupEmailError = { message: 'An account with email already exists' };
+  assert.equal(isMissingSchemaError(dupEmailError), false);
+
+  const requiredError = { message: 'Full name and email are required' };
+  assert.equal(isMissingSchemaError(requiredError), false);
+});
+
+test('11. Resilient check constraint fallback detects profiles_role_check violation from user screenshot', async () => {
+  const { isCheckConstraintError } = await import('../dist/lib/settingsStore.js');
+
+  // Exact PostgreSQL error from user screenshot
+  const exactUserError = {
+    message: 'new row for relation "profiles" violates check constraint "profiles_role_check"',
+    code: '23514',
+  };
+  assert.equal(isCheckConstraintError(exactUserError), true);
+
+  const genericCheckViolation = {
+    message: 'violates check constraint "profiles_shift_check"',
+    code: '23514',
+  };
+  assert.equal(isCheckConstraintError(genericCheckViolation), true);
+
+  // Missing schema errors or business validation errors should NOT match check constraint
+  const schemaError = { message: "Could not find the 'shift' column of 'profiles' in the schema cache" };
+  assert.equal(isCheckConstraintError(schemaError), false);
+
+  const duplicateError = { message: 'Unique User ID "AV_GT_001" is already taken' };
+  assert.equal(isCheckConstraintError(duplicateError), false);
+});
+
+

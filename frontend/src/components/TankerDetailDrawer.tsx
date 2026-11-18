@@ -1,16 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DerivedTankerJourney, TankerStageKey } from '../lib/tankerJourney';
 import { TankerTimeline } from './TankerTimeline';
-import { formatDateDDMMYYYY, formatLitres, formatFatSnf } from '../lib/format';
+import { formatDateDDMMYYYY, formatLitres } from '../lib/format';
 import api from '../lib/api';
-
-export interface AuditLogItem {
-  id: string;
-  action: string;
-  changes: Record<string, unknown>;
-  actor_name?: string | null;
-  created_at: string;
-}
 
 export interface TankerDetailDrawerProps {
   isOpen: boolean;
@@ -28,7 +20,6 @@ export function TankerDetailDrawer({
   isAdmin = true,
 }: TankerDetailDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
-  const [activeTab, setActiveTab] = useState<'timeline' | 'all_data' | 'audit'>('timeline');
 
   // Correction modal state
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
@@ -43,10 +34,32 @@ export function TankerDetailDrawer({
   const [remarkText, setRemarkText] = useState('');
   const [isException, setIsException] = useState(false);
   const [savingRemark, setSavingRemark] = useState(false);
+  const [exportingDossier, setExportingDossier] = useState(false);
 
-  // Full trip audit log state
-  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
-  const [loadingAudit, setLoadingAudit] = useState(false);
+  const handleExportDossier = async () => {
+    if (!trip?.id) return;
+    setExportingDossier(true);
+    try {
+      const res = await api.get(`/export/tanker/${trip.id}`, { responseType: 'blob' });
+      const blobUrl = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      const cleanNo = String(trip.tanker_number || 'Tanker').replace(/[^A-Za-z0-9]/g, '_');
+      link.setAttribute('download', `Tanker_${cleanNo}_Dossier.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
+      alert('Failed to export tanker dossier: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setExportingDossier(false);
+    }
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   // Close on Escape & handle Focus trap
   useEffect(() => {
@@ -59,22 +72,6 @@ export function TankerDetailDrawer({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
-
-  // Fetch audit logs when tab changes or drawer opens
-  useEffect(() => {
-    if (isOpen && trip?.id) {
-      setLoadingAudit(true);
-      api
-        .get(`/tanker/${trip.id}`)
-        .then((res) => {
-          if (res.data?.audit_logs) {
-            setAuditLogs(res.data.audit_logs);
-          }
-        })
-        .catch(() => {})
-        .finally(() => setLoadingAudit(false));
-    }
-  }, [isOpen, trip?.id, activeTab]);
 
   if (!isOpen || !trip) return null;
 
@@ -245,24 +242,81 @@ export function TankerDetailDrawer({
               )}
             </div>
             <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-              Unit: <strong>{trip.units?.name || 'Village Unit'}</strong> ({trip.units?.unit_code || '—'}) · Dispatched: {formatLitres(trip.quantity_dispatched)} on {formatDateDDMMYYYY(trip.date)}
+              BMC: <strong>{trip.units?.name || 'BMC'}</strong> ({trip.units?.unit_code || '—'}) · DC No:{' '}
+              <strong style={{ color: '#0284c7' }}>
+                #{trip.dc_number || trip.stage_data?.dc_number || trip.stage_data?.vehicle_entered?.dc_number || '—'}
+              </strong>{' '}
+              · Dispatched: {formatLitres(trip.quantity_dispatched)} on {formatDateDDMMYYYY(trip.date)}
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            aria-label="Close details drawer"
-            style={{
-              border: 'none',
-              background: 'transparent',
-              fontSize: '20px',
-              cursor: 'pointer',
-              color: '#64748b',
-              padding: '4px 8px',
-            }}
-          >
-            ✕
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={handleExportDossier}
+              disabled={exportingDossier}
+              className="btn btn-secondary btn-sm"
+              style={{
+                fontSize: '11px',
+                height: '32px',
+                padding: '0 10px',
+                borderRadius: '6px',
+                border: '1px solid #86efac',
+                backgroundColor: '#f0fdf4',
+                color: '#166534',
+                fontWeight: 700,
+                cursor: exportingDossier ? 'wait' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                width: 'auto',
+              }}
+              title="Export complete tanker particulars, weights, QC, and compartment breakdown as Excel"
+            >
+              {exportingDossier ? 'Exporting…' : '📥 Export Dossier (.xlsx)'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="btn btn-secondary btn-sm"
+              style={{
+                fontSize: '11px',
+                height: '32px',
+                padding: '0 10px',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#ffffff',
+                color: '#334155',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                width: 'auto',
+              }}
+              title="Print official gate pass & tanker dossier"
+            >
+              🖨️ Print
+            </button>
+
+            <button
+              onClick={onClose}
+              aria-label="Close details drawer"
+              style={{
+                border: 'none',
+                background: 'transparent',
+                fontSize: '20px',
+                cursor: 'pointer',
+                color: '#64748b',
+                padding: '4px 8px',
+                marginLeft: '4px',
+                lineHeight: 1,
+              }}
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Auto Flags Notification Banner */}
@@ -288,186 +342,90 @@ export function TankerDetailDrawer({
           </div>
         )}
 
-        {/* Tab Navigation */}
-        <div
-          style={{
-            display: 'flex',
-            borderBottom: '1px solid #e2e8f0',
-            backgroundColor: '#ffffff',
-            padding: '0 16px',
-          }}
-        >
-          <button
-            onClick={() => setActiveTab('timeline')}
-            style={{
-              padding: '10px 14px',
-              border: 'none',
-              background: 'none',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              color: activeTab === 'timeline' ? '#2563eb' : '#64748b',
-              borderBottom: activeTab === 'timeline' ? '2px solid #2563eb' : '2px solid transparent',
-            }}
-          >
-            Stage Timeline
-          </button>
-          <button
-            onClick={() => setActiveTab('all_data')}
-            style={{
-              padding: '10px 14px',
-              border: 'none',
-              background: 'none',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              color: activeTab === 'all_data' ? '#2563eb' : '#64748b',
-              borderBottom: activeTab === 'all_data' ? '2px solid #2563eb' : '2px solid transparent',
-            }}
-          >
-            All Stage Records
-          </button>
-          <button
-            onClick={() => setActiveTab('audit')}
-            style={{
-              padding: '10px 14px',
-              border: 'none',
-              background: 'none',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              color: activeTab === 'audit' ? '#2563eb' : '#64748b',
-              borderBottom: activeTab === 'audit' ? '2px solid #2563eb' : '2px solid transparent',
-            }}
-          >
-            Audit Log ({auditLogs.length})
-          </button>
-        </div>
-
-        {/* Body Content */}
+        {/* Body Content - Stage Timeline with calculations */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
-          {activeTab === 'timeline' && (
-            <div>
-              <TankerTimeline journey={journey} variant="full" />
-            </div>
-          )}
+          {/* Compartment Details Section if present */}
+          {(() => {
+            const compartments =
+              (trip.compartments as any[]) ||
+              journey.compartments ||
+              (trip.stage_data as any)?.compartments ||
+              (trip.stage_data as any)?.vehicle_entered?.compartments ||
+              [];
 
-          {activeTab === 'all_data' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* Trip General Info */}
-              <div style={{ padding: '12px', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
-                <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#1e293b' }}>Trip Information</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px' }}>
-                  <div>Driver: <strong>{trip.driver_name || '—'}</strong></div>
-                  <div>Seal No: <strong>{trip.seal_number || '—'}</strong></div>
-                  <div>Dispatch Fat: <strong>{formatFatSnf(trip.dispatch_fat_pct)}</strong></div>
-                  <div>Dispatch SNF: <strong>{formatFatSnf(trip.dispatch_snf_pct)}</strong></div>
-                  <div>Destination: <strong>{trip.destination || 'Main Dairy Plant'}</strong></div>
-                  <div>Dispatch Time: <strong>{trip.dispatch_time || '—'}</strong></div>
-                </div>
-              </div>
+            if (!compartments || compartments.length === 0) return null;
 
-              {/* Each Stage Data in order */}
-              {journey.timelineSteps.map((step) => (
-                <div
-                  key={step.key}
-                  style={{
-                    padding: '12px',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    backgroundColor: step.status === 'done' ? '#f8fafc' : '#ffffff',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <strong style={{ fontSize: '13px', color: '#0f172a' }}>
-                      {step.stepNumber}. {step.title}
-                    </strong>
-                    <span
-                      style={{
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        textTransform: 'uppercase',
-                        color: step.status === 'done' ? '#166534' : step.status === 'rejected' ? '#991b1b' : '#64748b',
-                      }}
-                    >
-                      {step.status}
-                    </span>
+            return (
+              <div
+                style={{
+                  marginBottom: '16px',
+                  padding: '12px 14px',
+                  borderRadius: '8px',
+                  backgroundColor: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#166534', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>🥛</span>
+                    <span>Lorry Compartment Details ({compartments.length} Compartments)</span>
                   </div>
-
-                  <div style={{ fontSize: '12px', color: '#475569' }}>
-                    {step.done_at && <div>Completed at: {step.done_at} by {step.done_by_name || 'Staff'}</div>}
-                    {Object.keys(step.data).length > 0 ? (
-                      <pre
-                        style={{
-                          margin: '6px 0 0 0',
-                          padding: '6px 8px',
-                          background: '#f1f5f9',
-                          borderRadius: '4px',
-                          fontSize: '11px',
-                          overflowX: 'auto',
-                        }}
-                      >
-                        {JSON.stringify(step.data, null, 2)}
-                      </pre>
-                    ) : (
-                      <div style={{ color: '#94a3b8', fontStyle: 'italic' }}>No stage data recorded yet.</div>
-                    )}
-                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#15803d' }}>
+                    Total: {formatLitres(trip.quantity_dispatched)}
+                  </span>
                 </div>
-              ))}
-            </div>
-          )}
 
-          {activeTab === 'audit' && (
-            <div>
-              {loadingAudit ? (
-                <div style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>Loading audit history…</div>
-              ) : auditLogs.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '24px', color: '#94a3b8' }}>
-                  No audit entries found for this trip.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {auditLogs.map((log) => (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
+                  {compartments.map((comp: any, idx: number) => (
                     <div
-                      key={log.id}
+                      key={idx}
                       style={{
                         padding: '10px 12px',
-                        border: '1px solid #e2e8f0',
                         borderRadius: '6px',
-                        backgroundColor: '#f8fafc',
-                        fontSize: '12px',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #dcfce7',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, color: '#1e293b' }}>
-                        <span>{log.action}</span>
-                        <span style={{ fontSize: '11px', color: '#64748b' }}>
-                          {formatDateDDMMYYYY(log.created_at.slice(0, 10))} {log.created_at.slice(11, 16)}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>
+                          {comp.compartment_name || `Compartment ${comp.compartment_no || idx + 1}`}
                         </span>
+                        <strong style={{ fontSize: '13px', color: '#16a34a' }}>
+                          {formatLitres(comp.quantity_litres)}
+                        </strong>
                       </div>
-                      <div style={{ color: '#475569', marginTop: '2px' }}>
-                        Actor: <strong>{log.actor_name || 'System'}</strong>
+
+                      <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        {(comp.fat_pct != null || comp.snf_pct != null) && (
+                          <div>
+                            Quality: <strong>Fat {comp.fat_pct ?? '—'}% · SNF {comp.snf_pct ?? '—'}%</strong>
+                          </div>
+                        )}
+                        {comp.dipstick_cm != null && (
+                          <div>
+                            Dipstick Level: <strong>{comp.dipstick_cm} cm</strong>
+                          </div>
+                        )}
+                        {comp.seal_number && (
+                          <div style={{ color: '#15803d' }}>
+                            Top Seal: <strong>{comp.seal_number}</strong> ✓
+                          </div>
+                        )}
+                        {comp.milk_type && (
+                          <div style={{ color: '#475569' }}>
+                            Milk Type: {comp.milk_type}
+                          </div>
+                        )}
                       </div>
-                      {log.changes && (
-                        <pre
-                          style={{
-                            margin: '4px 0 0 0',
-                            padding: '4px 6px',
-                            background: '#ffffff',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                          }}
-                        >
-                          {JSON.stringify(log.changes, null, 2)}
-                        </pre>
-                      )}
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            );
+          })()}
+
+          <TankerTimeline journey={journey} variant="full" />
         </div>
 
         {/* Footer Admin Actions */}

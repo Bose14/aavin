@@ -45,7 +45,7 @@ const LOCAL_STORAGE_KEY_COLUMNS = 'aavin_admin_tanker_columns_v2';
 
 const ALL_COLUMNS = [
   { id: 'date', label: 'Date / Entry' },
-  { id: 'unit', label: 'Unit' },
+  { id: 'unit', label: 'BMC' },
   { id: 'tanker', label: 'Tanker / Seal' },
   { id: 'driver', label: 'Driver' },
   { id: 'dispatched', label: 'Dispatched (L)' },
@@ -71,13 +71,13 @@ export default function AdminTankerRecords() {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [autoRefreshIntervalSec] = useState<number>(30);
 
-  // Filters (initialized from localStorage if available)
-  const [activeTab, setActiveTab] = useState<'waiting' | 'processed' | 'rejected' | 'all'>(() => {
+  // Filters (initialized from localStorage if available - default to 'all')
+  const [activeTab, setActiveTab] = useState<'all' | 'waiting' | 'processed' | 'rejected'>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS);
-      return saved ? JSON.parse(saved).tab || 'waiting' : 'waiting';
+      return saved ? JSON.parse(saved).tab || 'all' : 'all';
     } catch {
-      return 'waiting';
+      return 'all';
     }
   });
 
@@ -379,6 +379,11 @@ export default function AdminTankerRecords() {
     void triggerBlobDownload('/tanker/export/stage-wise', exportParams, `Tanker_Stage_Progression_${Date.now()}.csv`);
   };
 
+  const handleExportDailyReport = () => {
+    const todayDDMM = formatDateDDMMYYYY(new Date().toISOString().slice(0, 10));
+    void triggerBlobDownload('/export/tanker/daily-report', exportParams, `Aavin_Daily_Tanker_Report_${todayDDMM}.xlsx`);
+  };
+
   // Table Columns Definition
   const columns: DataColumn<any>[] = useMemo(() => {
     const cols: DataColumn<any>[] = [];
@@ -411,12 +416,12 @@ export default function AdminTankerRecords() {
     if (visibleColumns.unit) {
       cols.push({
         key: 'unit',
-        header: 'Unit',
+        header: 'BMC',
         sortValue: (r) => r.units?.name || '',
         searchValue: (r) => `${r.units?.name} ${r.units?.unit_code}`,
         render: (r) => (
           <div>
-            <div style={{ fontWeight: 600 }}>{r.units?.name || 'Village Unit'}</div>
+            <div style={{ fontWeight: 600 }}>{r.units?.name || 'BMC'}</div>
             <div style={{ fontSize: '11px', color: '#64748b' }}>{r.units?.unit_code || '—'}</div>
           </div>
         ),
@@ -428,16 +433,43 @@ export default function AdminTankerRecords() {
         key: 'tanker',
         header: 'Tanker / Seal',
         sortValue: (r) => r.tanker_number,
-        searchValue: (r) => `${r.tanker_number} ${r.seal_number}`,
-        render: (r) => (
-          <div>
-            <div style={{ fontWeight: 700, color: '#0f172a' }}>{r.tanker_number}</div>
-            <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span>Seal: {r.seal_number || '—'}</span>
-              {r.seal_number && <span title="Seal verified OK" style={{ color: '#16a34a' }}>✓</span>}
+        searchValue: (r) => `${r.tanker_number} ${r.driver_name || ''} ${r.seal_number || ''} ${r.dc_number || r.stage_data?.dc_number || ''}`,
+        render: (r) => {
+          const dcNo = r.dc_number || r.stage_data?.dc_number || r.stage_data?.vehicle_entered?.dc_number;
+          const comps = r.compartments || r.journey?.compartments || r.stage_data?.compartments;
+          return (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontWeight: 700, color: '#0f172a' }}>{r.tanker_number}</span>
+                {comps && comps.length > 0 && (
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      backgroundColor: '#dcfce7',
+                      color: '#15803d',
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      border: '1px solid #bbf7d0',
+                    }}
+                    title={comps.map((c: any) => `${c.compartment_name || 'Comp'}: ${c.quantity_litres}L`).join(', ')}
+                  >
+                    {comps.length} Comp
+                  </span>
+                )}
+              </div>
+              {dcNo && (
+                <div style={{ fontSize: '11px', color: '#0284c7', fontWeight: 600 }}>
+                  DC #{dcNo}
+                </div>
+              )}
+              <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span>Seal: {r.seal_number || '—'}</span>
+                {r.seal_number && <span title="Seal verified OK" style={{ color: '#16a34a' }}>✓</span>}
+              </div>
             </div>
-          </div>
-        ),
+          );
+        },
       });
     }
 
@@ -735,103 +767,6 @@ export default function AdminTankerRecords() {
         teamUserCounts={teamUserCounts}
       />
 
-      {/* 2. KPI CARDS */}
-      <div
-        className="kpi-grid"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-          gap: '12px',
-          marginBottom: '20px',
-        }}
-      >
-        <div className="card" style={{ padding: '12px', borderLeft: '4px solid #3b82f6' }}>
-          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Total Dispatched</div>
-          <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b', marginTop: '2px' }}>
-            {stats?.kpis.total_dispatched_count ?? 0}
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>
-            {formatLitres(stats?.kpis.total_dispatched_litres ?? 0)}
-          </div>
-        </div>
-
-        <div className="card" style={{ padding: '12px', borderLeft: '4px solid #10b981' }}>
-          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Received at Dairy</div>
-          <div style={{ fontSize: '16px', fontWeight: 700, color: '#10b981', marginTop: '2px' }}>
-            {stats?.kpis.received_at_dairy_label ?? '0 of 0'}
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>Entered plant gates</div>
-        </div>
-
-        <div
-          className="card"
-          style={{
-            padding: '12px',
-            borderLeft: `4px solid ${
-              stats?.kpis.transit_loss_tone === 'red'
-                ? '#ef4444'
-                : stats?.kpis.transit_loss_tone === 'amber'
-                ? '#f59e0b'
-                : '#10b981'
-            }`,
-          }}
-        >
-          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Transit Loss</div>
-          <div
-            style={{
-              fontSize: '18px',
-              fontWeight: 700,
-              color:
-                stats?.kpis.transit_loss_tone === 'red'
-                  ? '#ef4444'
-                  : stats?.kpis.transit_loss_tone === 'amber'
-                  ? '#d97706'
-                  : '#10b981',
-              marginTop: '2px',
-            }}
-          >
-            {formatLitres(stats?.kpis.transit_loss_litres ?? 0)}
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>
-            {stats?.kpis.transit_loss_pct ?? 0}% overall loss
-          </div>
-        </div>
-
-        <div className="card" style={{ padding: '12px', borderLeft: '4px solid #6366f1' }}>
-          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>In Plant Now</div>
-          <div style={{ fontSize: '18px', fontWeight: 700, color: '#4f46e5', marginTop: '2px' }}>
-            {stats?.kpis.in_plant_count ?? 0} tankers
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>Inside gate boundaries</div>
-        </div>
-
-        <div className="card" style={{ padding: '12px', borderLeft: '4px solid #ef4444' }}>
-          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Waiting Too Long</div>
-          <div style={{ fontSize: '18px', fontWeight: 700, color: '#dc2626', marginTop: '2px' }}>
-            {stats?.kpis.waiting_too_long_count ?? 0}
-          </div>
-          <div style={{ fontSize: '11px', color: '#dc2626' }}>Exceeded time limits</div>
-        </div>
-
-        <div className="card" style={{ padding: '12px', borderLeft: '4px solid #dc2626' }}>
-          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>QC Rejected</div>
-          <div style={{ fontSize: '18px', fontWeight: 700, color: '#dc2626', marginTop: '2px' }}>
-            {stats?.kpis.qc_rejected_count ?? 0}
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>
-            {formatLitres(stats?.kpis.qc_rejected_litres ?? 0)} rejected
-          </div>
-        </div>
-
-        <div className="card" style={{ padding: '12px', borderLeft: '4px solid #06b6d4' }}>
-          <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Avg Turnaround</div>
-          <div style={{ fontSize: '18px', fontWeight: 700, color: '#0891b2', marginTop: '2px' }}>
-            {stats?.kpis.avg_turnaround_min != null ? `${stats.kpis.avg_turnaround_min} min` : '—'}
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>Entry to Exit average</div>
-        </div>
-      </div>
-
       {/* 3. TABS WITH COUNTS */}
       <div
         className="tabs-header"
@@ -842,6 +777,22 @@ export default function AdminTankerRecords() {
           gap: '8px',
         }}
       >
+        <button
+          onClick={() => setActiveTab('all')}
+          style={{
+            padding: '10px 18px',
+            border: 'none',
+            background: 'none',
+            fontSize: '14px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            color: activeTab === 'all' ? '#2563eb' : '#64748b',
+            borderBottom: activeTab === 'all' ? '3px solid #2563eb' : '3px solid transparent',
+          }}
+        >
+          All ({stats?.tabs.all ?? 0})
+        </button>
+
         <button
           onClick={() => setActiveTab('waiting')}
           style={{
@@ -889,22 +840,6 @@ export default function AdminTankerRecords() {
         >
           QC Rejected ({stats?.tabs.rejected ?? 0})
         </button>
-
-        <button
-          onClick={() => setActiveTab('all')}
-          style={{
-            padding: '10px 18px',
-            border: 'none',
-            background: 'none',
-            fontSize: '14px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            color: activeTab === 'all' ? '#2563eb' : '#64748b',
-            borderBottom: activeTab === 'all' ? '3px solid #2563eb' : '3px solid transparent',
-          }}
-        >
-          All ({stats?.tabs.all ?? 0})
-        </button>
       </div>
 
       {/* 5. FILTERS & SEARCH TOOLBAR */}
@@ -914,47 +849,45 @@ export default function AdminTankerRecords() {
           padding: '12px 16px',
           marginBottom: '16px',
           display: 'flex',
-          flexWrap: 'wrap',
+          flexDirection: 'column',
           gap: '12px',
-          alignItems: 'center',
           backgroundColor: '#ffffff',
           borderRadius: '8px',
           border: '1px solid #e2e8f0',
         }}
       >
-        {/* Search */}
-        <div style={{ flex: '1 1 200px' }}>
-          <input
-            type="search"
-            placeholder="Search tanker, seal, driver, gate pass..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-          />
-        </div>
+        {/* Top Controls Row */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+          {/* Search */}
+          <div style={{ flex: '1 1 240px', minWidth: '200px' }}>
+            <input
+              type="search"
+              placeholder="🔍 Search tanker, seal, driver, gate pass..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ width: '100%', height: '36px', padding: '0 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+            />
+          </div>
 
-        {/* Unit Filter */}
-        <div>
+          {/* BMC Filter */}
           <select
             value={selectedUnitId}
             onChange={(e) => setSelectedUnitId(e.target.value)}
-            style={{ padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+            style={{ height: '36px', padding: '0 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff' }}
           >
-            <option value="">All Units</option>
+            <option value="">All BMCs</option>
             {units.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name} ({u.unit_code})
               </option>
             ))}
           </select>
-        </div>
 
-        {/* Waiting Team Filter */}
-        <div>
+          {/* Waiting Team Filter */}
           <select
             value={waitingTeamFilter}
             onChange={(e) => setWaitingTeamFilter(e.target.value)}
-            style={{ padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+            style={{ height: '36px', padding: '0 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff' }}
           >
             <option value="">All Teams</option>
             <option value="gate">Gate</option>
@@ -962,68 +895,88 @@ export default function AdminTankerRecords() {
             <option value="unloading">Unloading</option>
             <option value="transit">Transit</option>
           </select>
+
+          {/* Delayed Only Checkbox */}
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', height: '36px', padding: '0 10px', borderRadius: '6px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
+            <input
+              type="checkbox"
+              checked={delayedOnly}
+              onChange={(e) => setDelayedOnly(e.target.checked)}
+            />
+            <span style={{ color: delayedOnly ? '#dc2626' : '#334155', fontWeight: delayedOnly ? 700 : 500 }}>
+              Delayed Only
+            </span>
+          </label>
+
+          {/* Date Range */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', height: '36px' }}>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              style={{ height: '36px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+            />
+            <span style={{ color: '#64748b', fontSize: '12px' }}>to</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              style={{ height: '36px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+            />
+          </div>
         </div>
 
-        {/* Delayed Only Checkbox */}
-        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={delayedOnly}
-            onChange={(e) => setDelayedOnly(e.target.checked)}
-          />
-          <span style={{ color: delayedOnly ? '#dc2626' : '#334155', fontWeight: delayedOnly ? 700 : 500 }}>
-            Delayed Only
-          </span>
-        </label>
-
-        {/* Date Range */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            style={{ padding: '5px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-          />
-          <span style={{ color: '#64748b' }}>to</span>
-          <input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            style={{ padding: '5px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-          />
-        </div>
-
-        {/* Action Buttons: Column Chooser, Exports */}
-        <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
+        {/* Action Buttons Toolbar Row */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+          <button
+            type="button"
+            onClick={handleExportDailyReport}
+            className="btn btn-primary btn-sm"
+            style={{
+              height: '34px',
+              fontSize: '12px',
+              padding: '0 12px',
+              backgroundColor: '#0284c7',
+              borderColor: '#0369a1',
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              width: 'auto',
+            }}
+            title="Download official Aavin IDMS Daily Milk & Tanker Reception Excel Report"
+          >
+            📊 Daily Reception Report (.xlsx)
+          </button>
           <button
             type="button"
             onClick={() => setShowColumnChooser(!showColumnChooser)}
-            className="btn btn-secondary"
-            style={{ fontSize: '12px', padding: '6px 10px' }}
+            className="btn btn-secondary btn-sm"
+            style={{ height: '34px', fontSize: '12px', padding: '0 10px', width: 'auto' }}
           >
             ⚙️ Columns
           </button>
           <button
             type="button"
             onClick={() => handleExport('xlsx')}
-            className="btn btn-secondary"
-            style={{ fontSize: '12px', padding: '6px 10px' }}
+            className="btn btn-secondary btn-sm"
+            style={{ height: '34px', fontSize: '12px', padding: '0 10px', width: 'auto' }}
           >
             Excel
           </button>
           <button
             type="button"
             onClick={() => handleExport('csv')}
-            className="btn btn-secondary"
-            style={{ fontSize: '12px', padding: '6px 10px' }}
+            className="btn btn-secondary btn-sm"
+            style={{ height: '34px', fontSize: '12px', padding: '0 10px', width: 'auto' }}
           >
             CSV
           </button>
           <button
             type="button"
             onClick={handleExportStageWise}
-            className="btn btn-secondary"
-            style={{ fontSize: '12px', padding: '6px 10px' }}
+            className="btn btn-secondary btn-sm"
+            style={{ height: '34px', fontSize: '12px', padding: '0 10px', width: 'auto' }}
             title="Export complete stage-by-stage timestamps and users"
           >
             Stage Report
@@ -1088,6 +1041,7 @@ export default function AdminTankerRecords() {
             getRowKey={(r) => r.id}
             searchable={false}
             pageSize={20}
+            onRowClick={handleOpenDrawer}
           />
         </div>
       )}

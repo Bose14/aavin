@@ -61,7 +61,7 @@ test('1. Role-based redirect routing in frontend ProtectedRoute', () => {
   const { roleHome } = loadTsModule(protectedRoutePath);
 
   assert.equal(roleHome('superadmin'), '/superadmin');
-  assert.equal(roleHome('admin'), '/admin');
+  assert.equal(roleHome('admin'), '/admin/tanker');
   assert.equal(roleHome('gate'), '/gate');
   assert.equal(roleHome('GATE'), '/gate');
   assert.equal(roleHome('qc'), '/qc');
@@ -120,6 +120,9 @@ test('3. English and Tamil translations symmetry for plant teams and navigation'
   assert.equal(TRANSLATIONS.en.navTeams, 'Teams');
   assert.equal(TRANSLATIONS.ta.navTeams, 'குழுக்கள்');
 
+  assert.equal(TRANSLATIONS.en.navUnits, 'BMCs');
+  assert.equal(TRANSLATIONS.ta.navUnits, 'பி.எம்.சி (BMC)');
+
   assert.ok(TRANSLATIONS.en.navGateQueue);
   assert.ok(TRANSLATIONS.ta.navGateQueue);
   assert.ok(TRANSLATIONS.en.navQCQueue);
@@ -133,4 +136,26 @@ test('3. English and Tamil translations symmetry for plant teams and navigation'
   assert.ok(TRANSLATIONS.ta.teamQC);
   assert.ok(TRANSLATIONS.en.teamUnloading);
   assert.ok(TRANSLATIONS.ta.teamUnloading);
+});
+
+test('4. AdminTeams page structure: top Add User button, entire team list table, team dropdown (GATE, QC, UNLOAD), and AV_IT_001 unique ID', () => {
+  const teamsPageSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/admin/AdminTeams.tsx'), 'utf8');
+
+  // 1. Top header has "Add User" button
+  assert.ok(teamsPageSrc.includes('Add User'), 'Top header must have Add User button');
+  assert.ok(teamsPageSrc.includes('openAddUserModal()'), 'Top Add User button must trigger openAddUserModal()');
+
+  // 2. Entire team list section and table
+  assert.ok(teamsPageSrc.includes('Plant Team Members & Operators'), 'Must show plant team operators list');
+  assert.ok(teamsPageSrc.includes('userColumns'), 'Must define userColumns for DataTable');
+  assert.ok(teamsPageSrc.includes('Unique User ID'), 'Table must display Unique User ID column');
+
+  // 3. Add user modal contains team dropdown with GATE, QC, UNLOAD
+  assert.ok(teamsPageSrc.includes('<option value="GATE">GATE'), 'Modal must have GATE team option');
+  assert.ok(teamsPageSrc.includes('<option value="QC">QC'), 'Modal must have QC team option');
+  assert.ok(teamsPageSrc.includes('<option value="UNLOADING">UNLOAD'), 'Modal must have UNLOAD team option');
+
+  // 4. Unique User ID format (AV_IT_001)
+  assert.ok(teamsPageSrc.includes('AV_IT_001'), 'Must include AV_IT_001 example for Unique User ID');
+  assert.ok(teamsPageSrc.includes('fetchNextUserId'), 'Must support fetching/generating next unique user ID');
 });

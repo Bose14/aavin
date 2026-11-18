@@ -225,11 +225,13 @@ test('UI primitives & DataTable render empty state CTA, sticky table & totals ro
       ],
       getRowKey: r => r.id,
       showTotalsRow: true,
+      onRowClick: () => {},
     }),
   );
   assert.ok(populatedTableHtml.includes('mobile-record-card'));
   assert.ok(populatedTableHtml.includes('mobile-totals-card'));
   assert.ok(populatedTableHtml.includes('mobile-record-actions'));
+  assert.ok(populatedTableHtml.includes('cursor:pointer'), 'Row must have pointer cursor when onRowClick is passed');
 
   const tooltipHtml = renderToStaticMarkup(
     React.createElement(InfoTooltip, { text: 'Net Quantity equals Gross minus Rejection', label: 'Net Qty' }),
