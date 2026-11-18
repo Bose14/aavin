@@ -250,15 +250,17 @@ export function TankerDetailDrawer({
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button
               type="button"
               onClick={handleExportDossier}
               disabled={exportingDossier}
+              className="btn btn-secondary btn-sm"
               style={{
                 fontSize: '11px',
-                padding: '4px 10px',
-                borderRadius: '5px',
+                height: '32px',
+                padding: '0 10px',
+                borderRadius: '6px',
                 border: '1px solid #86efac',
                 backgroundColor: '#f0fdf4',
                 color: '#166534',
@@ -267,6 +269,7 @@ export function TankerDetailDrawer({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '4px',
+                width: 'auto',
               }}
               title="Export complete tanker particulars, weights, QC, and compartment breakdown as Excel"
             >
@@ -276,10 +279,12 @@ export function TankerDetailDrawer({
             <button
               type="button"
               onClick={handlePrint}
+              className="btn btn-secondary btn-sm"
               style={{
                 fontSize: '11px',
-                padding: '4px 8px',
-                borderRadius: '5px',
+                height: '32px',
+                padding: '0 10px',
+                borderRadius: '6px',
                 border: '1px solid #cbd5e1',
                 backgroundColor: '#ffffff',
                 color: '#334155',
@@ -287,7 +292,8 @@ export function TankerDetailDrawer({
                 cursor: 'pointer',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '3px',
+                gap: '4px',
+                width: 'auto',
               }}
               title="Print official gate pass & tanker dossier"
             >
@@ -305,6 +311,7 @@ export function TankerDetailDrawer({
                 color: '#64748b',
                 padding: '4px 8px',
                 marginLeft: '4px',
+                lineHeight: 1,
               }}
             >
               ✕

@@ -218,9 +218,9 @@ export default function AdminUnits() {
         </div>
         <button
           type="button"
-          className="btn-primary"
+          className="btn btn-primary"
           onClick={() => setShowAddForm(v => !v)}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', width: 'auto', height: '38px', padding: '0 1rem' }}
         >
           <span>{showAddForm ? '✕ Close Form' : '+ Add New BMC'}</span>
         </button>
@@ -344,47 +344,47 @@ export default function AdminUnits() {
             <span style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginRight: '4px' }}>Filter:</span>
             <button
               type="button"
-              className={statusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}
-              style={{ fontSize: '12px', padding: '4px 10px' }}
+              className={statusFilter === 'all' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+              style={{ fontSize: '12px', height: '32px', padding: '0 10px', width: 'auto' }}
               onClick={() => setStatusFilter('all')}
             >
-              All ({units.length})
+              All ({totalBMCs})
             </button>
             <button
               type="button"
-              className={statusFilter === 'active' ? 'btn-primary' : 'btn-secondary'}
-              style={{ fontSize: '12px', padding: '4px 10px' }}
+              className={statusFilter === 'active' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+              style={{ fontSize: '12px', height: '32px', padding: '0 10px', width: 'auto' }}
               onClick={() => setStatusFilter('active')}
             >
               Active ({activeBMCs})
             </button>
             <button
               type="button"
-              className={statusFilter === 'pending' ? 'btn-primary' : 'btn-secondary'}
-              style={{ fontSize: '12px', padding: '4px 10px' }}
+              className={statusFilter === 'pending' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+              style={{ fontSize: '12px', height: '32px', padding: '0 10px', width: 'auto' }}
               onClick={() => setStatusFilter('pending')}
             >
               Pending Today ({pendingTodayCount})
             </button>
             <button
               type="button"
-              className={statusFilter === 'submitted' ? 'btn-primary' : 'btn-secondary'}
-              style={{ fontSize: '12px', padding: '4px 10px' }}
+              className={statusFilter === 'submitted' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+              style={{ fontSize: '12px', height: '32px', padding: '0 10px', width: 'auto' }}
               onClick={() => setStatusFilter('submitted')}
             >
               Submitted Today ({submittedTodayCount})
             </button>
             <button
               type="button"
-              className={statusFilter === 'inactive' ? 'btn-primary' : 'btn-secondary'}
-              style={{ fontSize: '12px', padding: '4px 10px' }}
+              className={statusFilter === 'inactive' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+              style={{ fontSize: '12px', height: '32px', padding: '0 10px', width: 'auto' }}
               onClick={() => setStatusFilter('inactive')}
             >
-              Inactive ({units.length - activeBMCs})
+              Inactive ({totalBMCs - activeBMCs})
             </button>
           </div>
 
-          <div style={{ minWidth: '220px' }}>
+          <div style={{ minWidth: '240px' }}>
             <input
               type="search"
               placeholder="🔍 Search BMC name, code, village…"
@@ -392,7 +392,8 @@ export default function AdminUnits() {
               onChange={e => setSearchQuery(e.target.value)}
               style={{
                 width: '100%',
-                padding: '6px 10px',
+                height: '32px',
+                padding: '0 10px',
                 fontSize: '12px',
                 borderRadius: '6px',
                 border: '1px solid #cbd5e1',

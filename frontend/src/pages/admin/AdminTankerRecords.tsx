@@ -849,31 +849,31 @@ export default function AdminTankerRecords() {
           padding: '12px 16px',
           marginBottom: '16px',
           display: 'flex',
-          flexWrap: 'wrap',
+          flexDirection: 'column',
           gap: '12px',
-          alignItems: 'center',
           backgroundColor: '#ffffff',
           borderRadius: '8px',
           border: '1px solid #e2e8f0',
         }}
       >
-        {/* Search */}
-        <div style={{ flex: '1 1 200px' }}>
-          <input
-            type="search"
-            placeholder="Search tanker, seal, driver, gate pass..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-          />
-        </div>
+        {/* Top Controls Row */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+          {/* Search */}
+          <div style={{ flex: '1 1 240px', minWidth: '200px' }}>
+            <input
+              type="search"
+              placeholder="🔍 Search tanker, seal, driver, gate pass..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ width: '100%', height: '36px', padding: '0 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+            />
+          </div>
 
-        {/* BMC Filter */}
-        <div>
+          {/* BMC Filter */}
           <select
             value={selectedUnitId}
             onChange={(e) => setSelectedUnitId(e.target.value)}
-            style={{ padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+            style={{ height: '36px', padding: '0 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff' }}
           >
             <option value="">All BMCs</option>
             {units.map((u) => (
@@ -882,14 +882,12 @@ export default function AdminTankerRecords() {
               </option>
             ))}
           </select>
-        </div>
 
-        {/* Waiting Team Filter */}
-        <div>
+          {/* Waiting Team Filter */}
           <select
             value={waitingTeamFilter}
             onChange={(e) => setWaitingTeamFilter(e.target.value)}
-            style={{ padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+            style={{ height: '36px', padding: '0 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff' }}
           >
             <option value="">All Teams</option>
             <option value="gate">Gate</option>
@@ -897,52 +895,54 @@ export default function AdminTankerRecords() {
             <option value="unloading">Unloading</option>
             <option value="transit">Transit</option>
           </select>
+
+          {/* Delayed Only Checkbox */}
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', height: '36px', padding: '0 10px', borderRadius: '6px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
+            <input
+              type="checkbox"
+              checked={delayedOnly}
+              onChange={(e) => setDelayedOnly(e.target.checked)}
+            />
+            <span style={{ color: delayedOnly ? '#dc2626' : '#334155', fontWeight: delayedOnly ? 700 : 500 }}>
+              Delayed Only
+            </span>
+          </label>
+
+          {/* Date Range */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', height: '36px' }}>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              style={{ height: '36px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+            />
+            <span style={{ color: '#64748b', fontSize: '12px' }}>to</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              style={{ height: '36px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+            />
+          </div>
         </div>
 
-        {/* Delayed Only Checkbox */}
-        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={delayedOnly}
-            onChange={(e) => setDelayedOnly(e.target.checked)}
-          />
-          <span style={{ color: delayedOnly ? '#dc2626' : '#334155', fontWeight: delayedOnly ? 700 : 500 }}>
-            Delayed Only
-          </span>
-        </label>
-
-        {/* Date Range */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            style={{ padding: '5px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-          />
-          <span style={{ color: '#64748b' }}>to</span>
-          <input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            style={{ padding: '5px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-          />
-        </div>
-
-        {/* Action Buttons: Column Chooser, Exports */}
-        <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto', flexWrap: 'wrap' }}>
+        {/* Action Buttons Toolbar Row */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
           <button
             type="button"
             onClick={handleExportDailyReport}
-            className="btn btn-primary"
+            className="btn btn-primary btn-sm"
             style={{
+              height: '34px',
               fontSize: '12px',
-              padding: '6px 12px',
+              padding: '0 12px',
               backgroundColor: '#0284c7',
               borderColor: '#0369a1',
               fontWeight: 700,
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '4px',
+              gap: '6px',
+              width: 'auto',
             }}
             title="Download official Aavin IDMS Daily Milk & Tanker Reception Excel Report"
           >
@@ -951,32 +951,32 @@ export default function AdminTankerRecords() {
           <button
             type="button"
             onClick={() => setShowColumnChooser(!showColumnChooser)}
-            className="btn btn-secondary"
-            style={{ fontSize: '12px', padding: '6px 10px' }}
+            className="btn btn-secondary btn-sm"
+            style={{ height: '34px', fontSize: '12px', padding: '0 10px', width: 'auto' }}
           >
             ⚙️ Columns
           </button>
           <button
             type="button"
             onClick={() => handleExport('xlsx')}
-            className="btn btn-secondary"
-            style={{ fontSize: '12px', padding: '6px 10px' }}
+            className="btn btn-secondary btn-sm"
+            style={{ height: '34px', fontSize: '12px', padding: '0 10px', width: 'auto' }}
           >
             Excel
           </button>
           <button
             type="button"
             onClick={() => handleExport('csv')}
-            className="btn btn-secondary"
-            style={{ fontSize: '12px', padding: '6px 10px' }}
+            className="btn btn-secondary btn-sm"
+            style={{ height: '34px', fontSize: '12px', padding: '0 10px', width: 'auto' }}
           >
             CSV
           </button>
           <button
             type="button"
             onClick={handleExportStageWise}
-            className="btn btn-secondary"
-            style={{ fontSize: '12px', padding: '6px 10px' }}
+            className="btn btn-secondary btn-sm"
+            style={{ height: '34px', fontSize: '12px', padding: '0 10px', width: 'auto' }}
             title="Export complete stage-by-stage timestamps and users"
           >
             Stage Report

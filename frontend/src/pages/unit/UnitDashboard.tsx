@@ -316,9 +316,9 @@ export default function UnitDashboard() {
               </div>
               <button
                 type="button"
-                className="btn-primary btn-sm"
+                className="btn btn-primary btn-sm"
                 onClick={() => navigate('/unit/tanker')}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', height: '34px', padding: '0 14px', width: 'auto' }}
               >
                 <span>+</span> Dispatch Tanker
               </button>
@@ -416,8 +416,8 @@ export default function UnitDashboard() {
                           <td style={{ padding: '8px 10px', textAlign: 'right' }}>
                             <button
                               type="button"
-                              className="btn-secondary"
-                              style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                              className="btn btn-secondary btn-sm"
+                              style={{ fontSize: '0.75rem', height: '28px', padding: '0 10px', width: 'auto' }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedTrip(t);

@@ -162,7 +162,7 @@ export default function UnloadingBay() {
           <span style={{ fontSize: '13px', color: '#475569', fontWeight: 600 }}>
             Tankers in Queue: <strong style={{ color: '#0284c7' }}>{tankers.length}</strong>
           </span>
-          <button onClick={fetchTankers} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '13px' }}>
+          <button onClick={fetchTankers} className="btn btn-secondary" style={{ height: '36px', padding: '0 12px', fontSize: '13px', width: 'auto' }}>
             🔄 Refresh
           </button>
         </div>
@@ -773,8 +773,8 @@ export default function UnloadingBay() {
                             setSelectedTankerId(t.id);
                             window.scrollTo({ top: 0, behavior: 'smooth' });
                           }}
-                          className={isSel ? 'btn-primary' : 'btn-secondary'}
-                          style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                          className={isSel ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+                          style={{ fontSize: '0.75rem', height: '28px', padding: '0 10px', width: 'auto' }}
                         >
                           {isSel ? 'Selected' : 'Select'}
                         </button>

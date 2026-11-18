@@ -713,14 +713,14 @@ export default function AdminTeams() {
       header: 'Actions',
       align: 'center',
       render: (u) => (
-        <div style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center' }}>
+        <div style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center' }}>
           {/* Edit */}
           <button
             type="button"
-            className="btn-secondary btn-sm"
+            className="btn btn-secondary btn-sm"
             onClick={() => openEditModal(u)}
             title="Edit user details"
-            style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem' }}
+            style={{ width: '30px', height: '30px', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem' }}
           >
             ✏️
           </button>
@@ -729,10 +729,10 @@ export default function AdminTeams() {
           {u.user_type === 'plant' && (
             <button
               type="button"
-              className="btn-secondary btn-sm"
+              className="btn btn-secondary btn-sm"
               onClick={() => openMoveModal(u)}
               title="Move to another plant team"
-              style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem' }}
+              style={{ width: '30px', height: '30px', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem' }}
             >
               ⇄
             </button>
@@ -741,14 +741,14 @@ export default function AdminTeams() {
           {/* Reset Password */}
           <button
             type="button"
-            className="btn-secondary btn-sm"
+            className="btn btn-secondary btn-sm"
             onClick={() => {
               setResetTarget(u);
               setResetTempPwd('');
               setResetError('');
             }}
             title="Reset Password"
-            style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem' }}
+            style={{ width: '30px', height: '30px', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem' }}
           >
             🔑
           </button>
@@ -756,12 +756,17 @@ export default function AdminTeams() {
           {/* Toggle Active Status */}
           <button
             type="button"
-            className="btn-secondary btn-sm"
+            className="btn btn-secondary btn-sm"
             onClick={() => setToggleUserTarget(u)}
             title={u.is_active ? 'Deactivate user' : 'Activate user'}
             style={{
-              padding: '0.25rem 0.5rem',
-              fontSize: '0.78rem',
+              width: '30px',
+              height: '30px',
+              padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '0.85rem',
               color: u.is_active ? '#dc2626' : '#16a34a',
             }}
           >
@@ -802,16 +807,18 @@ export default function AdminTeams() {
           <button
             type="button"
             onClick={() => openAddUserModal()}
-            className="btn-primary"
+            className="btn btn-primary"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.45rem',
               fontWeight: 700,
-              padding: '0.55rem 1.15rem',
+              padding: '0 1.15rem',
+              height: '38px',
               fontSize: '0.9rem',
               background: '#2563eb',
               boxShadow: '0 2px 4px rgba(37,99,235,0.25)',
+              width: 'auto',
             }}
           >
             ➕ {lang === 'ta' ? 'பயனர் சேர் (Add User)' : 'Add User'}
@@ -823,8 +830,8 @@ export default function AdminTeams() {
               void fetchTeams();
               void fetchAllUsers();
             }}
-            className="btn-secondary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+            className="btn btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', height: '38px', padding: '0 0.85rem', width: 'auto' }}
           >
             🔄 {lang === 'ta' ? 'புதுப்பி' : 'Refresh'}
           </button>
@@ -833,7 +840,7 @@ export default function AdminTeams() {
             type="button"
             onClick={handleSeedUsers}
             disabled={seeding}
-            className="btn-secondary"
+            className="btn btn-secondary"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -841,6 +848,9 @@ export default function AdminTeams() {
               background: '#ecfdf5',
               borderColor: '#a7f3d0',
               color: '#065f46',
+              height: '38px',
+              padding: '0 0.85rem',
+              width: 'auto',
             }}
           >
             🌱 {seeding ? (lang === 'ta' ? 'உருவாக்குகிறது...' : 'Seeding...') : (lang === 'ta' ? 'மாதிரி பயனர்கள்' : 'Seed Test Users')}

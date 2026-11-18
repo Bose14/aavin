@@ -133,7 +133,7 @@ export default function QCLab() {
           </h1>
         </div>
 
-        <button type="button" onClick={fetchTankers} className="btn-secondary" style={{ padding: '0.45rem 0.85rem' }}>
+        <button type="button" onClick={fetchTankers} className="btn btn-secondary" style={{ height: '38px', padding: '0 0.85rem', width: 'auto' }}>
           🔄 Refresh
         </button>
       </div>
@@ -806,8 +806,8 @@ export default function QCLab() {
                             setSelectedTankerId(t.id);
                             window.scrollTo({ top: 0, behavior: 'smooth' });
                           }}
-                          className={isSel ? 'btn-primary' : 'btn-secondary'}
-                          style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                          className={isSel ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+                          style={{ fontSize: '0.75rem', height: '28px', padding: '0 10px', width: 'auto' }}
                         >
                           {isSel ? 'Selected' : 'Select'}
                         </button>

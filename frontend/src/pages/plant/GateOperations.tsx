@@ -290,34 +290,44 @@ export default function GateOperations() {
             style={{
               background: '#f8fafc',
               border: '1px solid #cbd5e1',
-              padding: '0.4rem 0.85rem',
+              padding: '0 0.85rem',
               borderRadius: 6,
               fontSize: '0.85rem',
               fontWeight: 700,
               color: '#1e293b',
+              height: '38px',
+              display: 'inline-flex',
+              alignItems: 'center',
             }}
           >
-            No.Of Vehicles In Today : <span style={{ color: '#047857', fontSize: '1rem' }}>{vehiclesInTodayCount}</span>
+            No.Of Vehicles In Today : <span style={{ color: '#047857', fontSize: '1rem', marginLeft: '6px' }}>{vehiclesInTodayCount}</span>
           </div>
 
           <button
             type="button"
-            className="btn-primary"
+            className="btn btn-primary"
             onClick={() => setShowCreateModal(true)}
             style={{
               background: '#16a34a',
               borderColor: '#15803d',
               fontWeight: 700,
-              padding: '0.45rem 1rem',
+              height: '38px',
+              padding: '0 1rem',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.4rem',
+              width: 'auto',
             }}
           >
             ➕ Create New Tanker
           </button>
 
-          <button type="button" onClick={fetchTankers} className="btn-secondary" style={{ padding: '0.45rem 0.85rem' }}>
+          <button
+            type="button"
+            onClick={fetchTankers}
+            className="btn btn-secondary"
+            style={{ height: '38px', padding: '0 0.85rem', width: 'auto' }}
+          >
             🔄 Refresh
           </button>
         </div>
@@ -1033,8 +1043,8 @@ export default function GateOperations() {
                             setSelectedTankerId(t.id);
                             window.scrollTo({ top: 0, behavior: 'smooth' });
                           }}
-                          className={isSel ? 'btn-primary' : 'btn-secondary'}
-                          style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                          className={isSel ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+                          style={{ fontSize: '0.75rem', height: '28px', padding: '0 10px', width: 'auto' }}
                         >
                           {isSel ? 'Selected' : 'Select'}
                         </button>
