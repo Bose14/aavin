@@ -58,9 +58,10 @@ export default function App() {
             <Route path="/admin/settings" element={<ProtectedRoute role="admin"><Layout><AdminSettings /></Layout></ProtectedRoute>} />
 
             {/* Unit portal */}
-            <Route path="/unit" element={<ProtectedRoute role="unit"><Layout><UnitDashboard /></Layout></ProtectedRoute>} />
-            <Route path="/unit/milk-entry" element={<ProtectedRoute role="unit"><Layout><MilkEntry /></Layout></ProtectedRoute>} />
+            <Route path="/unit" element={<Navigate to="/unit/tanker" replace />} />
             <Route path="/unit/tanker" element={<ProtectedRoute role="unit"><Layout><TankerDispatch /></Layout></ProtectedRoute>} />
+            <Route path="/unit/analytics" element={<ProtectedRoute role="unit"><Layout><UnitDashboard /></Layout></ProtectedRoute>} />
+            <Route path="/unit/milk-entry" element={<ProtectedRoute role="unit"><Layout><MilkEntry /></Layout></ProtectedRoute>} />
             <Route path="/unit/records" element={<ProtectedRoute role="unit"><Layout><UnitRecords /></Layout></ProtectedRoute>} />
 
             {/* Plant Team Portals */}

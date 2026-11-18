@@ -68,7 +68,7 @@ test('1. Role-based redirect routing in frontend ProtectedRoute', () => {
   assert.equal(roleHome('QC'), '/qc');
   assert.equal(roleHome('unloading'), '/unloading');
   assert.equal(roleHome('UNLOADING'), '/unloading');
-  assert.equal(roleHome('unit'), '/unit');
+  assert.equal(roleHome('unit'), '/unit/tanker');
 });
 
 test('2. StagePipeline renders team names & active user counts in stage chip tooltips', () => {

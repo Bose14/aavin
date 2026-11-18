@@ -228,7 +228,7 @@ test('8. Role-based redirect routing for all roles', () => {
     if (r === 'gate') return '/gate';
     if (r === 'qc') return '/qc';
     if (r === 'unloading') return '/unloading';
-    return '/unit';
+    return '/unit/tanker';
   }
 
   assert.equal(roleHome('superadmin'), '/superadmin');
@@ -239,7 +239,7 @@ test('8. Role-based redirect routing for all roles', () => {
   assert.equal(roleHome('QC'), '/qc');
   assert.equal(roleHome('unloading'), '/unloading');
   assert.equal(roleHome('UNLOADING'), '/unloading');
-  assert.equal(roleHome('unit'), '/unit');
+  assert.equal(roleHome('unit'), '/unit/tanker');
 });
 
 test('9. Unique User ID generation and prefix mapping for plant team operators (AV_IT_001 format)', async () => {
