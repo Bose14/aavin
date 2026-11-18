@@ -578,6 +578,24 @@ export default function TankerDispatch() {
       )}
       {warningMsg && <div className="warning-banner" style={{ marginBottom: '16px' }}><span>⚠ {warningMsg}</span></div>}
 
+      {/* Recent Dispatches Table (Placed above Dispatch Entry Form) */}
+      <div className="card table-card" style={{ padding: '20px', marginBottom: '24px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+        <h2 style={{ margin: '0 0 12px 0', fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
+          Recent Tanker Dispatches
+        </h2>
+        {listLoading ? (
+          <TableSkeleton rows={4} cols={7} />
+        ) : (
+          <DataTable
+            rows={dispatches}
+            columns={columns}
+            getRowKey={(r) => r.id}
+            emptyMessage="No tanker dispatches recorded yet."
+            showTotalsRow
+          />
+        )}
+      </div>
+
       {/* Main Dispatch Form Card */}
       <div className="card form-card" style={{ padding: '20px', marginBottom: '24px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '16px' }}>
@@ -954,24 +972,6 @@ export default function TankerDispatch() {
             {loading ? 'Dispatching Tanker…' : '🚛 Confirm & Dispatch Tanker to Dairy Plant'}
           </button>
         </form>
-      </div>
-
-      {/* Recent Dispatches Table */}
-      <div className="card table-card" style={{ padding: '20px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-        <h2 style={{ margin: '0 0 12px 0', fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
-          Recent Tanker Dispatches
-        </h2>
-        {listLoading ? (
-          <TableSkeleton rows={4} cols={7} />
-        ) : (
-          <DataTable
-            rows={dispatches}
-            columns={columns}
-            getRowKey={(r) => r.id}
-            emptyMessage="No tanker dispatches recorded yet."
-            showTotalsRow
-          />
-        )}
       </div>
 
       <ConfirmDialog
