@@ -5,12 +5,6 @@ import { formatLitres, getLocalTodayIso } from '../../lib/format';
 import { ErrorBanner } from '../../components/UiPrimitives';
 import { useTranslation } from '../../context/LanguageContext';
 
-interface Unit {
-  id: string;
-  name: string;
-  unit_code: string;
-}
-
 function computeTimeDifference(
   dispDate: string,
   dispTime: string,
@@ -53,7 +47,6 @@ function computeTimeDifference(
 export default function GateOperations() {
   const { lang } = useTranslation();
   const [tankers, setTankers] = useState<any[]>([]);
-  const [units, setUnits] = useState<Unit[]>([]);
   const [, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -94,31 +87,6 @@ export default function GateOperations() {
   // Submitting state
   const [submitting, setSubmitting] = useState(false);
 
-  // Modal: Create New Tanker at Gate
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createUnitId, setCreateUnitId] = useState('');
-  const [createVehicleNo, setCreateVehicleNo] = useState('');
-  const [createDriverName, setCreateDriverName] = useState('');
-  const [createDcNo, setCreateDcNo] = useState('');
-  const [createSealNo, setCreateSealNo] = useState('');
-  const [createQuantity, setCreateQuantity] = useState('9000');
-  const [createFat, setCreateFat] = useState('4.50');
-  const [createSnf, setCreateSnf] = useState('8.40');
-  const [creatingTanker, setCreatingTanker] = useState(false);
-  const [createError, setCreateError] = useState('');
-
-  const fetchUnits = async () => {
-    try {
-      const res = await api.get<Unit[]>('/units');
-      setUnits(res.data || []);
-      if (res.data && res.data.length > 0 && !createUnitId) {
-        setCreateUnitId(res.data[0].id);
-      }
-    } catch {
-      // non-fatal
-    }
-  };
-
   const fetchTankers = async () => {
     setLoading(true);
     setError('');
@@ -138,7 +106,6 @@ export default function GateOperations() {
   };
 
   useEffect(() => {
-    void fetchUnits();
     void fetchTankers();
   }, []);
 
@@ -251,51 +218,6 @@ export default function GateOperations() {
     }
   };
 
-  const handleCreateNewTanker = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!createVehicleNo.trim() || !createQuantity || Number(createQuantity) <= 0) {
-      setCreateError('Vehicle No and positive quantity are required');
-      return;
-    }
-    setCreatingTanker(true);
-    setCreateError('');
-    try {
-      const payload = {
-        unit_id: createUnitId || (units[0]?.id ?? undefined),
-        date: entryDate,
-        tanker_number: createVehicleNo.trim().toUpperCase(),
-        driver_name: createDriverName.trim() || undefined,
-        seal_number: createSealNo.trim() || undefined,
-        dc_number: createDcNo.trim() || undefined,
-        quantity_dispatched: Number(createQuantity),
-        dispatch_fat_pct: createFat ? Number(createFat) : undefined,
-        dispatch_snf_pct: createSnf ? Number(createSnf) : undefined,
-        dispatch_time: `${dispatchTime} ${dispatchAmPm}`,
-        record_vehicle_entered: true,
-        entry_date: entryDate,
-        entry_time: `${entryTime} ${entryAmPm}`,
-        time_difference: calculatedTimeDiff,
-        receiving_dairy: 'NAMAKKAL DAIRY',
-      };
-
-      const res = await api.post('/tanker', payload);
-      const created = res.data;
-
-      setSuccessMsg(`Tanker ${createVehicleNo.toUpperCase()} created and entered gate successfully!`);
-      setShowCreateModal(false);
-      setCreateVehicleNo('');
-      setCreateDriverName('');
-      setCreateDcNo('');
-      setCreateSealNo('');
-      await fetchTankers();
-      if (created?.id) setSelectedTankerId(created.id);
-    } catch (err: any) {
-      setCreateError(err.response?.data?.error || err.message || 'Failed to create tanker');
-    } finally {
-      setCreatingTanker(false);
-    }
-  };
-
   // Count vehicles entered today
   const vehiclesInTodayCount = tankers.filter((t) => t.journey?.tripStatus !== 'on_the_way').length;
 
@@ -341,25 +263,6 @@ export default function GateOperations() {
           >
             No.Of Vehicles In Today : <span style={{ color: '#047857', fontSize: '1rem', marginLeft: '6px' }}>{vehiclesInTodayCount}</span>
           </div>
-
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setShowCreateModal(true)}
-            style={{
-              background: '#16a34a',
-              borderColor: '#15803d',
-              fontWeight: 700,
-              height: '38px',
-              padding: '0 1rem',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              width: 'auto',
-            }}
-          >
-            ➕ Create New Tanker
-          </button>
 
           <button
             type="button"
@@ -964,16 +867,9 @@ export default function GateOperations() {
           <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '1.1rem' }}>
             No tankers currently waiting in queue
           </div>
-          <p style={{ fontSize: '0.85rem', margin: '0.4rem 0 1rem' }}>
-            Click &quot;Create New Tanker&quot; above to register a new vehicle entry at the dairy gate.
+          <p style={{ fontSize: '0.85rem', margin: '0.4rem 0' }}>
+            Tankers dispatched from BMC collection units will appear here automatically for gate reception.
           </p>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => setShowCreateModal(true)}
-          >
-            ➕ Create New Tanker
-          </button>
         </div>
       )}
 
@@ -1096,140 +992,6 @@ export default function GateOperations() {
           </div>
         )}
       </div>
-
-      {/* 3. CREATE NEW TANKER MODAL (Matching photo header button) */}
-      {showCreateModal && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="modal-card" style={{ maxWidth: 560 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>
-                  Create New Tanker Entry
-                </h3>
-                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.84rem', color: '#64748b' }}>
-                  Register tanker arrival directly at the plant gate and enter Delivery Challan details
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '1.25rem' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {createError && <ErrorBanner message={createError} />}
-
-            <form onSubmit={handleCreateNewTanker} className="entry-form" style={{ marginTop: '0.75rem' }}>
-              {/* BMC Selection */}
-              <div className="form-group">
-                <label style={{ fontWeight: 600 }}>Source BMC Unit *</label>
-                <select value={createUnitId} onChange={(e) => setCreateUnitId(e.target.value)} required>
-                  {units.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      BMC: {u.name} ({u.unit_code})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Vehicle No & Driver Name */}
-              <div className="form-row">
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>Vehicle No *</label>
-                  <input
-                    value={createVehicleNo}
-                    onChange={(e) => setCreateVehicleNo(e.target.value.toUpperCase())}
-                    placeholder="e.g. TN-28-AB-1234"
-                    required
-                    style={{ fontWeight: 700 }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>Driver Name *</label>
-                  <input
-                    value={createDriverName}
-                    onChange={(e) => setCreateDriverName(e.target.value)}
-                    placeholder="e.g. S. Raman"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* DC No & Outlet Seal No */}
-              <div className="form-row">
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>
-                    DC No * <span style={{ fontSize: '0.72rem', color: '#64748b' }}>(BMC Invoice No)</span>
-                  </label>
-                  <input
-                    value={createDcNo}
-                    onChange={(e) => setCreateDcNo(e.target.value.toUpperCase())}
-                    placeholder="e.g. DC-2026-9041"
-                    required
-                    style={{ fontWeight: 700 }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>Outlet Seal No *</label>
-                  <input
-                    value={createSealNo}
-                    onChange={(e) => setCreateSealNo(e.target.value.toUpperCase())}
-                    placeholder="e.g. SL-9941"
-                    required
-                    style={{ fontWeight: 700 }}
-                  />
-                </div>
-              </div>
-
-              {/* Quantity, Fat, SNF */}
-              <div className="form-row">
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>Dispatched Milk (Litres) *</label>
-                  <input
-                    type="number"
-                    value={createQuantity}
-                    onChange={(e) => setCreateQuantity(e.target.value)}
-                    placeholder="9000"
-                    required
-                    style={{ fontWeight: 700 }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>Dispatch Fat %</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={createFat}
-                    onChange={(e) => setCreateFat(e.target.value)}
-                    placeholder="4.50"
-                  />
-                </div>
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>Dispatch SNF %</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={createSnf}
-                    onChange={(e) => setCreateSnf(e.target.value)}
-                    placeholder="8.40"
-                  />
-                </div>
-              </div>
-
-              <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1.25rem' }}>
-                <button type="button" className="btn-secondary" onClick={() => setShowCreateModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary" disabled={creatingTanker} style={{ minWidth: 160 }}>
-                  {creatingTanker ? 'Registering…' : '✓ Register & Enter Gate'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

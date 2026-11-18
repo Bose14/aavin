@@ -230,7 +230,7 @@ test('Frontend Plant Teams & Admin DC No integration (Gate, QC, Unloading, Admin
 
   // Gate form contains authentic Aavin IDMS layout fields
   assert.ok(gateSrc.includes('No.Of Vehicles In Today :'), 'Gate page has No.Of Vehicles In Today');
-  assert.ok(gateSrc.includes('Create New Tanker'), 'Gate page has Create New Tanker action');
+  assert.ok(!gateSrc.includes('Create New Tanker'), 'Gate page does not have Create New Tanker (outward dispatch is exclusively BMC)');
   assert.ok(gateSrc.includes('VEHICLE ENTRY DETAILS'), 'Gate page has VEHICLE ENTRY DETAILS heading');
   assert.ok(gateSrc.includes('DC No'), 'Gate form has DC No input');
   assert.ok(gateSrc.includes('Time Difference Between Dispatch And Entry(HH.MM)'), 'Gate form has Time Difference');
