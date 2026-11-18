@@ -69,5 +69,16 @@ drop policy if exists "teams_admin_all" on teams;
 create policy "teams_admin_all" on teams
   for all using (auth.role() = 'authenticated');
 
+-- 4. Ensure tanker_dispatches has all dispatch attributes (driver, seal, compartments, etc.)
+alter table tanker_dispatches add column if not exists driver_name text;
+alter table tanker_dispatches add column if not exists driver_phone text;
+alter table tanker_dispatches add column if not exists dc_number text;
+alter table tanker_dispatches add column if not exists seal_number text;
+alter table tanker_dispatches add column if not exists dispatch_time text;
+alter table tanker_dispatches add column if not exists dispatch_ampm text;
+alter table tanker_dispatches add column if not exists dispatch_fat_pct decimal(5,2);
+alter table tanker_dispatches add column if not exists dispatch_snf_pct decimal(5,2);
+alter table tanker_dispatches add column if not exists compartments jsonb default '[]'::jsonb;
+
 -- Reload PostgREST schema cache immediately
 notify pgrst, 'reload schema';

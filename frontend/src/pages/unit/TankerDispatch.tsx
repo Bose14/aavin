@@ -23,7 +23,7 @@ interface CompartmentFormItem {
   capacity_litres: string;
   fat_pct: string;
   snf_pct: string;
-  dipstick_cm: string;
+  dipstick_cm?: string;
   seal_number: string;
   milk_type: string;
   temperature: string;
@@ -77,7 +77,7 @@ export default function TankerDispatch() {
   const [dispatchAmPm, setDispatchAmPm] = useState<'AM' | 'PM'>('AM');
   const [destination, setDestination] = useState(settings.destinations[0] ?? 'Namakkal Dairy');
 
-  // Multi-Compartment Form State
+  // Multi-Compartment Form State (Maximum 3 compartments)
   const [compartments, setCompartments] = useState<CompartmentFormItem[]>([
     {
       compartment_no: 1,
@@ -86,7 +86,6 @@ export default function TankerDispatch() {
       capacity_litres: '5000',
       fat_pct: '4.30',
       snf_pct: '8.45',
-      dipstick_cm: '132.5',
       seal_number: 'CMP-1-789',
       milk_type: 'Raw Cow Milk',
       temperature: '4.0',
@@ -98,7 +97,6 @@ export default function TankerDispatch() {
       capacity_litres: '5000',
       fat_pct: '4.20',
       snf_pct: '8.40',
-      dipstick_cm: '131.0',
       seal_number: 'CMP-2-790',
       milk_type: 'Raw Cow Milk',
       temperature: '4.0',
@@ -136,16 +134,16 @@ export default function TankerDispatch() {
     void fetchAll();
   }, [fetchAll]);
 
-  // Compartment Quick Presets
+  // Compartment Quick Presets (Max 3 compartments)
   const setPresetCompartments = (count: number) => {
     const names = [
       'Front Compartment (Comp 1)',
       'Middle Compartment (Comp 2)',
       'Rear Compartment (Comp 3)',
-      'Auxiliary Compartment (Comp 4)',
     ];
     const newItems: CompartmentFormItem[] = [];
-    for (let i = 1; i <= count; i++) {
+    const validCount = Math.min(Math.max(count, 1), 3);
+    for (let i = 1; i <= validCount; i++) {
       newItems.push({
         compartment_no: i,
         compartment_name: names[i - 1] || `Compartment ${i}`,
@@ -153,7 +151,6 @@ export default function TankerDispatch() {
         capacity_litres: '5000',
         fat_pct: '4.20',
         snf_pct: '8.40',
-        dipstick_cm: '',
         seal_number: '',
         milk_type: 'Raw Cow Milk',
         temperature: '4.0',
@@ -163,17 +160,22 @@ export default function TankerDispatch() {
   };
 
   const addCompartment = () => {
+    if (compartments.length >= 3) return;
     const nextNo = compartments.length + 1;
+    const names = [
+      'Front Compartment (Comp 1)',
+      'Middle Compartment (Comp 2)',
+      'Rear Compartment (Comp 3)',
+    ];
     setCompartments((prev) => [
       ...prev,
       {
         compartment_no: nextNo,
-        compartment_name: `Compartment ${nextNo}`,
+        compartment_name: names[nextNo - 1] || `Compartment ${nextNo}`,
         quantity_litres: '',
         capacity_litres: '5000',
         fat_pct: '4.20',
         snf_pct: '8.40',
-        dipstick_cm: '',
         seal_number: '',
         milk_type: 'Raw Cow Milk',
         temperature: '4.0',
@@ -703,10 +705,10 @@ export default function TankerDispatch() {
                 </span>
               </div>
 
-              {/* Quick Presets & Add */}
+              {/* Quick Presets & Add (Max 3 compartments) */}
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                 <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Presets:</span>
-                {[1, 2, 3, 4].map((count) => (
+                {[1, 2, 3].map((count) => (
                   <button
                     key={count}
                     type="button"
@@ -724,14 +726,16 @@ export default function TankerDispatch() {
                     {count} Comp
                   </button>
                 ))}
-                <button
-                  type="button"
-                  onClick={addCompartment}
-                  className="btn btn-secondary btn-sm"
-                  style={{ fontSize: '11px', padding: '3px 8px', color: '#16a34a', fontWeight: 700 }}
-                >
-                  + Add
-                </button>
+                {compartments.length < 3 && (
+                  <button
+                    type="button"
+                    onClick={addCompartment}
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: '11px', padding: '3px 8px', color: '#16a34a', fontWeight: 700 }}
+                  >
+                    + Add
+                  </button>
+                )}
               </div>
             </div>
 
@@ -801,20 +805,6 @@ export default function TankerDispatch() {
                         onChange={(e) => updateCompartment(idx, 'quantity_litres', e.target.value)}
                         required
                         style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '13px' }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '3px' }}>
-                        Dipstick Level (cm)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        placeholder="e.g. 132.5"
-                        value={comp.dipstick_cm}
-                        onChange={(e) => updateCompartment(idx, 'dipstick_cm', e.target.value)}
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}
                       />
                     </div>
 

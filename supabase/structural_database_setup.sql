@@ -166,8 +166,13 @@ create table if not exists tanker_dispatches (
 -- Ensure all operational & stage progression columns exist
 alter table tanker_dispatches add column if not exists dc_number text;
 alter table tanker_dispatches add column if not exists driver_name text;
+alter table tanker_dispatches add column if not exists driver_phone text;
 alter table tanker_dispatches add column if not exists seal_number text;
 alter table tanker_dispatches add column if not exists dispatch_time text;
+alter table tanker_dispatches add column if not exists dispatch_ampm text;
+alter table tanker_dispatches add column if not exists dispatch_fat_pct decimal(5,2);
+alter table tanker_dispatches add column if not exists dispatch_snf_pct decimal(5,2);
+alter table tanker_dispatches add column if not exists compartments jsonb default '[]'::jsonb;
 alter table tanker_dispatches add column if not exists receipt_time text;
 alter table tanker_dispatches add column if not exists trip_status text default 'on_the_way';
 alter table tanker_dispatches add column if not exists current_stage text default 'vehicle_entered';

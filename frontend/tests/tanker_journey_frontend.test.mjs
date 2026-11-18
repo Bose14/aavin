@@ -262,13 +262,14 @@ test('Frontend BMC Dispatch Form: Lorry num, driver name, and compartment detail
   assert.ok(dispatchSrc.includes('DC No (Delivery Challan / Invoice No)'), 'BMC dispatch has DC No input');
   assert.ok(dispatchSrc.includes('LORRY COMPARTMENT DETAILS'), 'BMC dispatch has Compartment Details section');
   assert.ok(dispatchSrc.includes('Quantity (Litres)'), 'BMC dispatch has Compartment Quantity field');
-  assert.ok(dispatchSrc.includes('Dipstick Level (cm)'), 'BMC dispatch has Dipstick field');
+  assert.ok(!dispatchSrc.includes('Dipstick Level (cm)'), 'BMC dispatch has Dipstick field removed per requirements');
+  assert.ok(!dispatchSrc.includes('4 Comp'), '4th compartment removed; capped at 3');
   assert.ok(dispatchSrc.includes('Top Seal No'), 'BMC dispatch has Top Seal No field');
   assert.ok(dispatchSrc.includes('setPresetCompartments'), 'BMC dispatch has quick presets for compartments');
 
   // 2. TankerDetailDrawer displays Lorry Compartment Details breakdown
   assert.ok(drawerSrc.includes('Lorry Compartment Details'), 'Drawer has Lorry Compartment Details section');
-  assert.ok(drawerSrc.includes('Dipstick'), 'Drawer displays dipstick level');
+  assert.ok(!drawerSrc.includes('Dipstick Level:'), 'Drawer has dipstick level removed');
   assert.ok(drawerSrc.includes('Top Seal:'), 'Drawer displays top seal number');
 
   // 3. Admin Tanker Records displays compartment count badge

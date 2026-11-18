@@ -38,20 +38,27 @@ const EXTENDED_TANKER_SELECT = `
   units(name, unit_code)
 `;
 
+const OPERATIONAL_TANKER_SELECT = `
+  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dispatch_time,
+  quantity_dispatched, destination,
+  received_qty, receipt_time, received_fat_pct, received_snf_pct, received_by, created_at,
+  gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data,
+  units(name, unit_code)
+`;
+
 const V2_TANKER_SELECT = `
   id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dispatch_time,
-  quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct,
-  received_qty, receipt_time, received_fat_pct, received_snf_pct, received_by, created_at,
+  quantity_dispatched, destination, stage_data, created_at,
   units(name, unit_code)
 `;
 
 const MINIMAL_TANKER_SELECT = `
-  id, unit_id, zone_id, date, tanker_number, quantity_dispatched, destination, created_at,
+  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, stage_data, created_at,
   units(name, unit_code)
 `;
 
 const BARE_TANKER_SELECT = `
-  id, unit_id, zone_id, date, tanker_number, quantity_dispatched, destination, created_at
+  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, stage_data, created_at
 `;
 
 async function runResilientTankerQuery(
@@ -59,6 +66,7 @@ async function runResilientTankerQuery(
 ): Promise<{ data: any[]; error: any }> {
   const tiers = [
     EXTENDED_TANKER_SELECT,
+    OPERATIONAL_TANKER_SELECT,
     V2_TANKER_SELECT,
     MINIMAL_TANKER_SELECT,
     BARE_TANKER_SELECT,
@@ -124,17 +132,59 @@ function enrichTankerRow(row: Record<string, unknown>, stages?: StageRecordItem[
     (row.stage_data as any)?.vehicle_entered?.compartments ||
     [];
 
+  const driverName =
+    (row.driver_name as string) ||
+    (row.stage_data as any)?.driver_name ||
+    (row.stage_data as any)?.vehicle_entered?.driver_name ||
+    null;
+
+  const driverPhone =
+    (row.driver_phone as string) ||
+    (row.stage_data as any)?.driver_phone ||
+    (row.stage_data as any)?.vehicle_entered?.driver_phone ||
+    null;
+
+  const sealNumber =
+    (row.seal_number as string) ||
+    (row.stage_data as any)?.seal_number ||
+    (row.stage_data as any)?.vehicle_entered?.seal_number ||
+    null;
+
+  const dispatchTime =
+    (row.dispatch_time as string) ||
+    (row.stage_data as any)?.dispatch_time ||
+    null;
+
+  const destination =
+    (row.destination as string) ||
+    (row.stage_data as any)?.destination ||
+    'Namakkal Dairy';
+
+  const dispatchFat =
+    row.dispatch_fat_pct != null
+      ? Number(row.dispatch_fat_pct)
+      : (row.stage_data as any)?.dispatch_fat_pct != null
+        ? Number((row.stage_data as any).dispatch_fat_pct)
+        : null;
+
+  const dispatchSnf =
+    row.dispatch_snf_pct != null
+      ? Number(row.dispatch_snf_pct)
+      : (row.stage_data as any)?.dispatch_snf_pct != null
+        ? Number((row.stage_data as any).dispatch_snf_pct)
+        : null;
+
   const tripInput: TankerTripInput = {
     id: String(row.id),
     date: String(row.date),
     tanker_number: String(row.tanker_number ?? ''),
-    driver_name: (row.driver_name as string) || null,
-    seal_number: (row.seal_number as string) || null,
-    dispatch_time: (row.dispatch_time as string) || null,
+    driver_name: driverName,
+    seal_number: sealNumber,
+    dispatch_time: dispatchTime,
     quantity_dispatched: Number(row.quantity_dispatched ?? 0),
-    destination: (row.destination as string) || null,
-    dispatch_fat_pct: row.dispatch_fat_pct != null ? Number(row.dispatch_fat_pct) : null,
-    dispatch_snf_pct: row.dispatch_snf_pct != null ? Number(row.dispatch_snf_pct) : null,
+    destination,
+    dispatch_fat_pct: dispatchFat,
+    dispatch_snf_pct: dispatchSnf,
     received_qty: row.received_qty != null ? Number(row.received_qty) : null,
     receipt_time: (row.receipt_time as string) || null,
     received_fat_pct: row.received_fat_pct != null ? Number(row.received_fat_pct) : null,
@@ -157,8 +207,6 @@ function enrichTankerRow(row: Record<string, unknown>, stages?: StageRecordItem[
   const received = journey.calculated.received_litres;
   const transitLoss = journey.calculated.transit_loss_litres;
   const transitLossPct = journey.calculated.transit_loss_pct;
-  const dispatchFat = row.dispatch_fat_pct != null ? Number(row.dispatch_fat_pct) : null;
-  const dispatchSnf = row.dispatch_snf_pct != null ? Number(row.dispatch_snf_pct) : null;
   const receivedFat = journey.calculated.received_litres != null && row.received_fat_pct != null
     ? Number(row.received_fat_pct)
     : null;
@@ -168,6 +216,13 @@ function enrichTankerRow(row: Record<string, unknown>, stages?: StageRecordItem[
 
   return {
     ...row,
+    driver_name: driverName,
+    driver_phone: driverPhone,
+    seal_number: sealNumber,
+    dispatch_time: dispatchTime,
+    destination,
+    dispatch_fat_pct: dispatchFat,
+    dispatch_snf_pct: dispatchSnf,
     dc_number: dcNumber,
     compartments,
     stages: journey.timelineSteps,
@@ -677,13 +732,20 @@ router.post('/', async (req, res) => {
   const shouldRecordEntry = Boolean((req.body as any).record_vehicle_entered);
 
   const stageData: Record<string, any> = {
+    driver_name: driver_name?.trim() || null,
+    seal_number: seal_number?.trim() || null,
+    dispatch_time: dispatch_time || null,
+    destination: destination?.trim() || 'Namakkal Dairy',
+    quantity_dispatched: +Number(computedQty).toFixed(2),
     ...(dcNo ? { dc_number: dcNo } : {}),
     ...(compartments.length > 0 ? { compartments } : {}),
     ...((req.body as any).driver_phone ? { driver_phone: String((req.body as any).driver_phone).trim() } : {}),
     ...((req.body as any).dispatch_ampm ? { dispatch_ampm: (req.body as any).dispatch_ampm } : {}),
+    ...(computedFat != null && String(computedFat) !== '' ? { dispatch_fat_pct: +Number(computedFat).toFixed(2) } : {}),
+    ...(computedSnf != null && String(computedSnf) !== '' ? { dispatch_snf_pct: +Number(computedSnf).toFixed(2) } : {}),
   };
 
-  const extendedInsert = {
+  const insertTier1: Record<string, any> = {
     unit_id,
     zone_id: req.profile.zone_id,
     date,
@@ -692,7 +754,7 @@ router.post('/', async (req, res) => {
     seal_number: seal_number?.trim() || null,
     dispatch_time: dispatch_time || null,
     quantity_dispatched: +Number(computedQty).toFixed(2),
-    destination: destination?.trim() || null,
+    destination: destination?.trim() || 'Namakkal Dairy',
     dispatch_fat_pct: computedFat != null && String(computedFat) !== '' ? +Number(computedFat).toFixed(2) : null,
     dispatch_snf_pct: computedSnf != null && String(computedSnf) !== '' ? +Number(computedSnf).toFixed(2) : null,
     trip_status: shouldRecordEntry ? 'vehicle_entered' : 'on_the_way',
@@ -700,31 +762,65 @@ router.post('/', async (req, res) => {
     stage_data: stageData,
     created_by: req.user.id,
   };
+  if ((req.body as any).driver_phone) insertTier1.driver_phone = String((req.body as any).driver_phone).trim();
+  if ((req.body as any).dispatch_ampm) insertTier1.dispatch_ampm = (req.body as any).dispatch_ampm;
+  if (compartments.length > 0) insertTier1.compartments = compartments;
 
-  let { data, error } = await supabase.from('tanker_dispatches').insert(extendedInsert).select().single();
-  if (error && (isMissingSchemaError(error) || error.message?.includes('column'))) {
-    const { dc_number: _dropDc, ...safeExtended } = extendedInsert;
-    const retryRes = await supabase.from('tanker_dispatches').insert(safeExtended).select().single();
-    if (!retryRes.error) {
-      data = retryRes.data;
+  const insertTier2 = {
+    unit_id,
+    zone_id: req.profile.zone_id,
+    date,
+    tanker_number: tanker_number.trim().toUpperCase(),
+    driver_name: driver_name?.trim() || null,
+    seal_number: seal_number?.trim() || null,
+    dispatch_time: dispatch_time || null,
+    quantity_dispatched: +Number(computedQty).toFixed(2),
+    destination: destination?.trim() || 'Namakkal Dairy',
+    trip_status: shouldRecordEntry ? 'vehicle_entered' : 'on_the_way',
+    dc_number: dcNo,
+    stage_data: stageData,
+    created_by: req.user.id,
+  };
+
+  const { dc_number: _d3, ...insertTier3 } = insertTier2;
+
+  const insertTier4 = {
+    unit_id,
+    zone_id: req.profile.zone_id,
+    date,
+    tanker_number: tanker_number.trim().toUpperCase(),
+    driver_name: driver_name?.trim() || null,
+    seal_number: seal_number?.trim() || null,
+    dispatch_time: dispatch_time || null,
+    quantity_dispatched: +Number(computedQty).toFixed(2),
+    destination: destination?.trim() || 'Namakkal Dairy',
+    stage_data: stageData,
+    created_by: req.user.id,
+  };
+
+  let data: any = null;
+  let error: any = null;
+
+  for (const insertObj of [insertTier1, insertTier2, insertTier3, insertTier4]) {
+    const res = await supabase.from('tanker_dispatches').insert(insertObj).select().single();
+    if (!res.error) {
+      data = res.data;
       error = null;
-    } else {
-      const fb = await supabase
-        .from('tanker_dispatches')
-        .insert({
-          unit_id,
-          zone_id: req.profile.zone_id,
-          date,
-          tanker_number: tanker_number.trim().toUpperCase(),
-          quantity_dispatched: +Number(quantity_dispatched).toFixed(2),
-          destination: destination?.trim() || null,
-          created_by: req.user.id,
-        })
-        .select()
-        .single();
-      data = fb.data;
-      error = fb.error;
+      break;
     }
+    error = res.error;
+    const msg = String(res.error.message || '').toLowerCase();
+    if (!isMissingSchemaError(res.error) && !msg.includes('column') && !msg.includes('does not exist')) {
+      break;
+    }
+  }
+
+  if (data) {
+    if (!data.driver_name && driver_name?.trim()) data.driver_name = driver_name.trim();
+    if (!data.dc_number && dcNo) data.dc_number = dcNo;
+    if (!data.seal_number && seal_number?.trim()) data.seal_number = seal_number.trim();
+    if (!data.stage_data) data.stage_data = stageData;
+    if (!data.destination) data.destination = destination?.trim() || 'Namakkal Dairy';
   }
 
   if (error) {
@@ -770,11 +866,11 @@ router.post('/', async (req, res) => {
     action: 'create',
     changes: {
       date,
-      tanker_number: extendedInsert.tanker_number,
-      quantity_dispatched: extendedInsert.quantity_dispatched,
-      destination: extendedInsert.destination,
-      driver_name: extendedInsert.driver_name,
-      seal_number: extendedInsert.seal_number,
+      tanker_number: data.tanker_number || tanker_number.trim().toUpperCase(),
+      quantity_dispatched: data.quantity_dispatched || +Number(computedQty).toFixed(2),
+      destination: data.destination || destination?.trim() || 'Namakkal Dairy',
+      driver_name: data.driver_name || driver_name?.trim() || null,
+      seal_number: data.seal_number || seal_number?.trim() || null,
     },
     actor_id: req.user.id,
     actor_name: req.profile.full_name ?? req.user.email ?? 'Staff',
@@ -936,9 +1032,14 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
 
   if (stageKey === 'vehicle_entered') {
     const dcNo = payload.dc_number || payload.dc_no || trip.dc_number || (trip.stage_data as any)?.dc_number || null;
+    const drvName = payload.driver_name || trip.driver_name || (trip.stage_data as any)?.driver_name || null;
+    const drvPhone = payload.driver_phone || (trip as any).driver_phone || (trip.stage_data as any)?.driver_phone || null;
+    const sealNo = payload.seal_number || trip.seal_number || (trip.stage_data as any)?.seal_number || null;
+
     stageData.tanker_number = trip.tanker_number;
-    stageData.driver_name = payload.driver_name || trip.driver_name;
-    stageData.seal_number = payload.seal_number || trip.seal_number;
+    stageData.driver_name = drvName;
+    stageData.driver_phone = drvPhone;
+    stageData.seal_number = sealNo;
     stageData.dc_number = dcNo;
     stageData.entry_date = payload.entry_date || new Date().toISOString().slice(0, 10);
     stageData.entry_time = payload.entry_time || new Date().toISOString();
@@ -951,8 +1052,8 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
     stageData.receiving_dairy = payload.receiving_dairy || 'NAMAKKAL DAIRY';
     updateTripFields.trip_status = 'vehicle_entered';
     if (dcNo) updateTripFields.dc_number = dcNo;
-    if (payload.driver_name) updateTripFields.driver_name = payload.driver_name;
-    if (payload.seal_number) updateTripFields.seal_number = payload.seal_number;
+    if (drvName) updateTripFields.driver_name = drvName;
+    if (sealNo) updateTripFields.seal_number = sealNo;
   } else if (stageKey === 'gross_weight') {
     const grossKg = Number(payload.gross_weight_kg);
     if (!grossKg || grossKg <= 0) {
