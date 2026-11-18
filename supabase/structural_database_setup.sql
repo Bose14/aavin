@@ -187,6 +187,7 @@ alter table tanker_dispatches add column if not exists unloaded_litres decimal(1
 alter table tanker_dispatches add column if not exists received_qty decimal(10,2);
 alter table tanker_dispatches add column if not exists received_fat_pct decimal(5,2);
 alter table tanker_dispatches add column if not exists received_snf_pct decimal(5,2);
+alter table tanker_dispatches add column if not exists received_by uuid references auth.users(id);
 alter table tanker_dispatches add column if not exists unloading_bay text;
 alter table tanker_dispatches add column if not exists weighbridge_gross_ticket text;
 alter table tanker_dispatches add column if not exists weighbridge_tare_ticket text;

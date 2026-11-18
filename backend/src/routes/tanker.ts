@@ -47,18 +47,22 @@ const OPERATIONAL_TANKER_SELECT = `
 `;
 
 const V2_TANKER_SELECT = `
-  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dispatch_time,
+  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number,
   quantity_dispatched, destination, stage_data, created_at,
   units(name, unit_code)
 `;
 
+const DYNAMIC_JOIN_TANKER_SELECT = `*, units(name, unit_code)`;
+
+const DYNAMIC_BARE_TANKER_SELECT = `*`;
+
 const MINIMAL_TANKER_SELECT = `
-  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, stage_data, created_at,
+  id, unit_id, zone_id, date, tanker_number, quantity_dispatched, destination, stage_data, created_at,
   units(name, unit_code)
 `;
 
 const BARE_TANKER_SELECT = `
-  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, stage_data, created_at
+  id, unit_id, zone_id, date, tanker_number, quantity_dispatched, destination, created_at
 `;
 
 async function runResilientTankerQuery(
@@ -68,6 +72,8 @@ async function runResilientTankerQuery(
     EXTENDED_TANKER_SELECT,
     OPERATIONAL_TANKER_SELECT,
     V2_TANKER_SELECT,
+    DYNAMIC_JOIN_TANKER_SELECT,
+    DYNAMIC_BARE_TANKER_SELECT,
     MINIMAL_TANKER_SELECT,
     BARE_TANKER_SELECT,
   ];
@@ -784,6 +790,7 @@ router.post('/', async (req, res) => {
 
   const { dc_number: _d3, ...insertTier3 } = insertTier2;
 
+  // Tier 4: Without dispatch_time and dc_number (if dispatch_time not present in schema)
   const insertTier4 = {
     unit_id,
     zone_id: req.profile.zone_id,
@@ -791,17 +798,39 @@ router.post('/', async (req, res) => {
     tanker_number: tanker_number.trim().toUpperCase(),
     driver_name: driver_name?.trim() || null,
     seal_number: seal_number?.trim() || null,
-    dispatch_time: dispatch_time || null,
     quantity_dispatched: +Number(computedQty).toFixed(2),
     destination: destination?.trim() || 'Namakkal Dairy',
     stage_data: stageData,
     created_by: req.user.id,
   };
 
+  // Tier 5: Without driver_name & seal_number (safely preserved in stage_data)
+  const insertTier5 = {
+    unit_id,
+    zone_id: req.profile.zone_id,
+    date,
+    tanker_number: tanker_number.trim().toUpperCase(),
+    quantity_dispatched: +Number(computedQty).toFixed(2),
+    destination: destination?.trim() || 'Namakkal Dairy',
+    stage_data: stageData,
+    created_by: req.user.id,
+  };
+
+  // Tier 6: Absolute baseline table (guaranteed on any bare tanker_dispatches table)
+  const insertTier6 = {
+    unit_id,
+    zone_id: req.profile.zone_id,
+    date,
+    tanker_number: tanker_number.trim().toUpperCase(),
+    quantity_dispatched: +Number(computedQty).toFixed(2),
+    destination: destination?.trim() || 'Namakkal Dairy',
+    created_by: req.user.id,
+  };
+
   let data: any = null;
   let error: any = null;
 
-  for (const insertObj of [insertTier1, insertTier2, insertTier3, insertTier4]) {
+  for (const insertObj of [insertTier1, insertTier2, insertTier3, insertTier4, insertTier5, insertTier6]) {
     const res = await supabase.from('tanker_dispatches').insert(insertObj).select().single();
     if (!res.error) {
       data = res.data;
@@ -819,6 +848,7 @@ router.post('/', async (req, res) => {
     if (!data.driver_name && driver_name?.trim()) data.driver_name = driver_name.trim();
     if (!data.dc_number && dcNo) data.dc_number = dcNo;
     if (!data.seal_number && seal_number?.trim()) data.seal_number = seal_number.trim();
+    if (!data.dispatch_time && dispatch_time) data.dispatch_time = dispatch_time;
     if (!data.stage_data) data.stage_data = stageData;
     if (!data.destination) data.destination = destination?.trim() || 'Namakkal Dairy';
   }

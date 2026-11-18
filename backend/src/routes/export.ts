@@ -643,7 +643,15 @@ router.get('/tanker/:id', async (req, res) => {
     .eq('id', id)
     .maybeSingle();
 
-  if (resT.error && isMissingSchemaError(resT.error)) {
+  if (resT.error) {
+    resT = await supabase
+      .from('tanker_dispatches')
+      .select('*, units(name, unit_code)')
+      .eq('id', id)
+      .maybeSingle();
+  }
+
+  if (resT.error) {
     resT = await supabase
       .from('tanker_dispatches')
       .select('id, date, tanker_number, quantity_dispatched, destination, units(name, unit_code)')

@@ -44,7 +44,7 @@ async function computeWaitingTankersPerTeam(zoneId: string): Promise<Record<stri
   try {
     const { data, error } = await supabase
       .from('tanker_dispatches')
-      .select('id, date, tanker_number, driver_name, seal_number, quantity_dispatched, trip_status, current_stage, waiting_team, stage_data, created_at')
+      .select('*')
       .eq('zone_id', zoneId)
       .neq('trip_status', 'exited');
 
