@@ -1,497 +1,706 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
+import { supabase } from '../../supabase';
 import api from '../../lib/api';
+import { useAuth } from '../../context/AuthContext';
+import { useTranslation } from '../../context/LanguageContext';
 import { useZoneSettings } from '../../hooks/useZoneSettings';
-import {
-  calcRateFromChart,
-  formatDateDDMMYYYY,
-  formatINR,
-  getLocalTodayIso,
-} from '../../lib/format';
-import type { ZoneSettings } from '../../lib/format';
 import { ErrorBanner, StatusBadge } from '../../components/UiPrimitives';
+import type { ZoneSettings } from '../../lib/format';
 
 export default function AdminSettings() {
-  const { settings, sellingRates, loading, reload } = useZoneSettings();
+  const { user, profile, refreshProfile, signOut } = useAuth();
+  const { lang, setLang } = useTranslation();
+  const { settings, reload: reloadZoneSettings } = useZoneSettings();
 
-  const [form, setForm] = useState<ZoneSettings>(settings);
-  const [destText, setDestText] = useState(settings.destinations.join(', '));
-  const [locText, setLocText] = useState(settings.locations.join(', '));
+  // Password change state
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [passwordError, setPasswordError] = useState('');
 
-  const [newSellRate, setNewSellRate] = useState('52');
-  const [effectiveFrom, setEffectiveFrom] = useState(() => getLocalTodayIso());
-  const [rateNote, setRateNote] = useState('');
+  // Profile details state
+  const [fullName, setFullName] = useState(profile?.full_name || '');
+  const [updatingProfile, setUpdatingProfile] = useState(false);
+  const [profileSuccess, setProfileSuccess] = useState('');
+  const [profileError, setProfileError] = useState('');
 
-  const [simFat, setSimFat] = useState('4.50');
-  const [simSnf, setSimSnf] = useState('8.40');
-
-  const [savingSettings, setSavingSettings] = useState(false);
-  const [savingRate, setSavingRate] = useState(false);
-  const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
+  // Collapsible Advanced Settings
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [advancedForm, setAdvancedForm] = useState<ZoneSettings>(settings);
+  const [savingAdvanced, setSavingAdvanced] = useState(false);
+  const [advancedSuccess, setAdvancedSuccess] = useState('');
+  const [advancedError, setAdvancedError] = useState('');
 
   useEffect(() => {
-    setForm(settings);
-    setDestText(settings.destinations.join(', '));
-    setLocText(settings.locations.join(', '));
-    if (sellingRates.length > 0) {
-      setNewSellRate(String(sellingRates[0].rate_per_litre));
+    if (profile?.full_name) {
+      setFullName(profile.full_name);
     }
-  }, [settings, sellingRates]);
+  }, [profile?.full_name]);
 
-  const handleSaveSettings = async (e: FormEvent) => {
+  useEffect(() => {
+    setAdvancedForm(settings);
+  }, [settings]);
+
+  // Handle password change
+  const handleChangePassword = async (e: FormEvent) => {
     e.preventDefault();
-    setError('');
-    setSuccessMsg('');
-    setSavingSettings(true);
-    try {
-      const payload: ZoneSettings = {
-        ...form,
-        destinations: destText.split(',').map(s => s.trim()).filter(Boolean),
-        locations: locText.split(',').map(s => s.trim()).filter(Boolean),
-      };
-      await api.put('/settings', payload);
-      await reload();
-      setSuccessMsg('Zone configuration and thresholds saved.');
-    } catch (err: unknown) {
-      setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to save settings');
-    } finally {
-      setSavingSettings(false);
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (newPassword.length < 8) {
+      setPasswordError(
+        lang === 'ta'
+          ? 'கடவுச்சொல் குறைந்தபட்சம் 8 எழுத்துக்கள் இருக்க வேண்டும்.'
+          : 'New password must be at least 8 characters long.'
+      );
+      return;
     }
-  };
 
-  const handleAddSellingRate = async (e: FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setSuccessMsg('');
-    setSavingRate(true);
+    if (newPassword !== confirmPassword) {
+      setPasswordError(
+        lang === 'ta' ? 'கடவுச்சொற்கள் பொருந்தவில்லை.' : 'Passwords do not match. Please verify.'
+      );
+      return;
+    }
+
+    setUpdatingPassword(true);
     try {
-      await api.post('/settings/selling-rates', {
-        rate_per_litre: parseFloat(newSellRate),
-        effective_from: effectiveFrom,
-        note: rateNote.trim() || undefined,
+      const { error: authErr } = await supabase.auth.updateUser({
+        password: newPassword,
+        data: { must_change_password: false },
       });
-      setRateNote('');
-      await reload();
-      setSuccessMsg(`Selling rate ₹${parseFloat(newSellRate).toFixed(2)}/L scheduled effective ${formatDateDDMMYYYY(effectiveFrom)}. Past entries remain unchanged.`);
+      if (authErr) throw authErr;
+
+      await api.post('/users/complete-password-change').catch(() => {});
+      await refreshProfile();
+
+      setPasswordSuccess(
+        lang === 'ta'
+          ? 'உங்கள் கடவுச்சொல் வெற்றிகரமாக மாற்றப்பட்டது!'
+          : 'Your account password has been updated successfully!'
+      );
+      setNewPassword('');
+      setConfirmPassword('');
     } catch (err: unknown) {
-      setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to add selling rate');
+      setPasswordError((err as Error)?.message || 'Failed to update password');
     } finally {
-      setSavingRate(false);
+      setUpdatingPassword(false);
     }
   };
 
-  const simulatedRate = calcRateFromChart(
-    parseFloat(simFat || '0') || 0,
-    parseFloat(simSnf || '0') || 0,
-    form,
-  );
+  // Handle profile name update
+  const handleUpdateProfile = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!profile?.id || !fullName.trim()) return;
+    setProfileError('');
+    setProfileSuccess('');
+    setUpdatingProfile(true);
+
+    try {
+      const { error: profErr } = await supabase
+        .from('profiles')
+        .update({ full_name: fullName.trim() })
+        .eq('id', profile.id);
+
+      if (profErr) {
+        // Fallback through API if direct DB update encounters RLS policy
+        await api.patch(`/users/${profile.id}`, { full_name: fullName.trim() });
+      }
+
+      await refreshProfile();
+      setProfileSuccess(
+        lang === 'ta'
+          ? 'சுயவிவரப் பெயர் வெற்றிகரமாக புதுப்பிக்கப்பட்டது!'
+          : 'Profile name updated successfully!'
+      );
+    } catch (err: unknown) {
+      setProfileError((err as Error)?.message || 'Failed to update profile name');
+    } finally {
+      setUpdatingProfile(false);
+    }
+  };
+
+  // Handle advanced zone settings save
+  const handleSaveAdvanced = async (e: FormEvent) => {
+    e.preventDefault();
+    setAdvancedError('');
+    setAdvancedSuccess('');
+    setSavingAdvanced(true);
+
+    try {
+      await api.put('/settings', advancedForm);
+      await reloadZoneSettings();
+      setAdvancedSuccess('Advanced operations thresholds and SLA rules updated.');
+    } catch (err: unknown) {
+      setAdvancedError(
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+          'Failed to save advanced settings'
+      );
+    } finally {
+      setSavingAdvanced(false);
+    }
+  };
 
   return (
-    <div className="page">
-      <div className="page-header">
+    <div className="page" style={{ maxWidth: '960px', margin: '0 auto' }}>
+      {/* Page Header */}
+      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
         <div>
-          <h1>Zone Settings &amp; Assumptions</h1>
-          <p className="page-subtitle">Configure rate charts, effective-dated selling rates, rejection payment rules &amp; thresholds</p>
+          <h1 style={{ margin: 0, fontSize: '1.6rem', color: '#0f172a' }}>
+            {lang === 'ta' ? 'அமைப்புகள் (Settings)' : 'Settings'}
+          </h1>
+          <p className="page-subtitle" style={{ margin: '4px 0 0 0', color: '#64748b' }}>
+            {lang === 'ta'
+              ? 'உங்கள் கணக்கு பாதுகாப்பு, கடவுச்சொல் மாற்றம் மற்றும் கணினி விருப்பங்களை நிர்வகிக்கவும்'
+              : 'Manage your account security, password changes, profile details, and preferences'}
+          </p>
         </div>
       </div>
 
-      {error && <ErrorBanner message={error} onRetry={reload} />}
-      {successMsg && <div className="success-banner"><span>{successMsg}</span></div>}
-
-      {/* Effective-Dated Selling Rate */}
-      <div className="card form-card">
-        <h2>Selling Rate Schedule (Effective-Dated)</h2>
-        <p className="chart-subtitle" style={{ marginBottom: '1rem' }}>
-          Changing the selling rate adds a new rule from an effective date so historical profit/loss numbers are never rewritten.
+      {/* 1. PASSWORD & SECURITY (Simple, direct, user-friendly) */}
+      <div
+        className="card"
+        style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '12px',
+          border: '1px solid #e2e8f0',
+          padding: '24px',
+          marginBottom: '20px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+          <span style={{ fontSize: '20px' }}>🔒</span>
+          <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: '#0f172a' }}>
+            {lang === 'ta' ? 'கடவுச்சொல் மாற்றம் (Change Password)' : 'Change Password'}
+          </h2>
+        </div>
+        <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: '#64748b' }}>
+          {lang === 'ta'
+            ? 'உங்கள் கணக்கின் பாதுகாப்பிற்காக புதிய கடவுச்சொல்லை உள்ளிடவும்'
+            : 'Update your login password to keep your Aavin administration account secure'}
         </p>
 
-        <form onSubmit={handleAddSellingRate} className="entry-form" style={{ marginBottom: '1.25rem' }}>
-          <div className="form-row">
-            <div className="form-group">
-              <label>New Selling Rate (₹ / Litre)</label>
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="1"
-                value={newSellRate}
-                onChange={e => setNewSellRate(e.target.value)}
-                required
-              />
+        {passwordError && (
+          <div style={{ marginBottom: '16px' }}>
+            <ErrorBanner message={passwordError} />
+          </div>
+        )}
+
+        {passwordSuccess && (
+          <div
+            style={{
+              padding: '12px 16px',
+              backgroundColor: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              borderRadius: '8px',
+              color: '#166534',
+              fontSize: '13px',
+              fontWeight: 600,
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <span>✅</span>
+            <span>{passwordSuccess}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleChangePassword}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                {lang === 'ta' ? 'புதிய கடவுச்சொல் *' : 'New Password *'}{' '}
+                <span style={{ fontWeight: 400, color: '#64748b', fontSize: '12px' }}>(min. 8 characters)</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder={lang === 'ta' ? 'புதிய கடவுச்சொல்லை உள்ளிடவும்' : 'Enter new password'}
+                  required
+                  minLength={8}
+                  style={{
+                    width: '100%',
+                    height: '40px',
+                    padding: '0 40px 0 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '14px',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  style={{
+                    position: 'absolute',
+                    right: '10px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    padding: '4px',
+                    color: '#64748b',
+                  }}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
             </div>
-            <div className="form-group">
-              <label>Effective From <span className="hint">({formatDateDDMMYYYY(effectiveFrom)})</span></label>
-              <input
-                type="date"
-                value={effectiveFrom}
-                onChange={e => setEffectiveFrom(e.target.value)}
-                required
-              />
+
+            <div className="form-group" style={{ margin: 0 }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                {lang === 'ta' ? 'கடவுச்சொல்லை உறுதிப்படுத்தவும் *' : 'Confirm New Password *'}
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder={lang === 'ta' ? 'கடவுச்சொல்லை மீண்டும் உள்ளிடவும்' : 'Re-enter new password'}
+                  required
+                  minLength={8}
+                  style={{
+                    width: '100%',
+                    height: '40px',
+                    padding: '0 40px 0 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '14px',
+                  }}
+                />
+              </div>
             </div>
           </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label>Revision Note <span className="hint">(optional)</span></label>
-              <input
-                type="text"
-                value={rateNote}
-                onChange={e => setRateNote(e.target.value)}
-                placeholder="e.g. Aavin G.O. seasonal revision"
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-              <button type="submit" disabled={savingRate || loading} className="btn-primary">
-                {savingRate ? 'Adding…' : 'Schedule Selling Rate'}
-              </button>
-            </div>
+
+          {/* Validation Checklist Pills */}
+          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '20px', fontSize: '12px' }}>
+            <span style={{ color: newPassword.length >= 8 ? '#16a34a' : '#94a3b8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              {newPassword.length >= 8 ? '✓' : '○'} At least 8 characters
+            </span>
+            <span
+              style={{
+                color: newPassword && confirmPassword && newPassword === confirmPassword ? '#16a34a' : '#94a3b8',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              {newPassword && confirmPassword && newPassword === confirmPassword ? '✓' : '○'} Passwords match
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <button
+              type="submit"
+              disabled={updatingPassword || newPassword.length < 8 || newPassword !== confirmPassword}
+              className="btn btn-primary"
+              style={{
+                height: '40px',
+                padding: '0 20px',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: 600,
+                width: 'auto',
+              }}
+            >
+              {updatingPassword
+                ? lang === 'ta'
+                  ? 'புதுப்பிக்கப்படுகிறது…'
+                  : 'Updating Password…'
+                : lang === 'ta'
+                ? 'கடவுச்சொல்லைப் புதுப்பி'
+                : 'Update Password'}
+            </button>
           </div>
         </form>
-
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Effective Date</th>
-              <th>Selling Rate (₹/L)</th>
-              <th>Note</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sellingRates.map((sr, i) => (
-              <tr key={sr.id ?? `${sr.effective_from}-${i}`}>
-                <td>{formatDateDDMMYYYY(sr.effective_from)}</td>
-                <td><strong>{formatINR(sr.rate_per_litre)}/L</strong></td>
-                <td>{sr.note || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
 
-      {/* Zone Rules Form */}
-      <form onSubmit={handleSaveSettings} className="card form-card">
-        <h2>Rate Chart, Rejection Rules &amp; Quality Thresholds</h2>
-        <div className="entry-form">
-          <div className="procurement-section">
-            <div className="form-section-header">
-              <div>
-                <h2 style={{ marginBottom: 2 }}>Fat / SNF Rate Chart Formula</h2>
-                <p className="chart-subtitle">Rate (₹/L) = Base + (Fat % × Fat Coeff) + (SNF % × SNF Coeff)</p>
-              </div>
-              <StatusBadge tone="indigo">
-                Simulator ({simFat || '0'}% Fat, {simSnf || '0'}% SNF) = ₹{simulatedRate.toFixed(2)}/L
-              </StatusBadge>
-            </div>
-            <div className="form-row" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-              <div className="form-group">
-                <label>Base (₹)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={form.rate_base}
-                  onChange={e => setForm({ ...form, rate_base: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
-              <div className="form-group">
-                <label>Fat Coefficient</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={form.rate_fat_coeff}
-                  onChange={e => setForm({ ...form, rate_fat_coeff: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
-              <div className="form-group">
-                <label>SNF Coefficient</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={form.rate_snf_coeff}
-                  onChange={e => setForm({ ...form, rate_snf_coeff: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
-              <div className="form-group">
-                <label>Test Fat / SNF</label>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <input type="number" step="0.1" value={simFat} onChange={e => setSimFat(e.target.value)} aria-label="Simulator Fat" />
-                  <input type="number" step="0.1" value={simSnf} onChange={e => setSimSnf(e.target.value)} aria-label="Simulator SNF" />
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* 2. PROFILE & ACCOUNT DETAILS */}
+      <div
+        className="card"
+        style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '12px',
+          border: '1px solid #e2e8f0',
+          padding: '24px',
+          marginBottom: '20px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+          <span style={{ fontSize: '20px' }}>👤</span>
+          <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: '#0f172a' }}>
+            {lang === 'ta' ? 'கணக்கு மற்றும் சுயவிவர விவரங்கள்' : 'Account & Profile Information'}
+          </h2>
+        </div>
+        <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: '#64748b' }}>
+          {lang === 'ta'
+            ? 'உங்கள் கணக்கு விவரங்கள் மற்றும் நிர்வாக பாத்திரத் தகவல்கள்'
+            : 'Your user profile information and administrative privileges'}
+        </p>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label>Rejection Payment Rule</label>
-              <select
-                value={form.rejection_payment_rule}
-                onChange={e => setForm({ ...form, rejection_payment_rule: e.target.value as 'net' | 'gross' })}
-              >
-                <option value="net">NET quantity only (rejected milk not paid)</option>
-                <option value="gross">GROSS quantity paid (track rejection loss separately)</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Entry Edit Lock Window (hours)</label>
+        {profileError && (
+          <div style={{ marginBottom: '16px' }}>
+            <ErrorBanner message={profileError} />
+          </div>
+        )}
+
+        {profileSuccess && (
+          <div
+            style={{
+              padding: '12px 16px',
+              backgroundColor: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              borderRadius: '8px',
+              color: '#166534',
+              fontSize: '13px',
+              fontWeight: 600,
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <span>✅</span>
+            <span>{profileSuccess}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleUpdateProfile}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                {lang === 'ta' ? 'முழு பெயர் *' : 'Full Name *'}
+              </label>
               <input
-                type="number"
-                min="1"
-                max="168"
-                value={form.edit_lock_hours}
-                onChange={e => setForm({ ...form, edit_lock_hours: parseInt(e.target.value, 10) || 24 })}
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Enter your name"
+                required
+                style={{
+                  width: '100%',
+                  height: '40px',
+                  padding: '0 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '14px',
+                }}
+              />
+            </div>
+
+            <div className="form-group" style={{ margin: 0 }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                {lang === 'ta' ? 'மின்னஞ்சல் முகவரி' : 'Email Address'}
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="email"
+                  value={user?.email || 'admin@aavin.gov.in'}
+                  disabled
+                  style={{
+                    width: '100%',
+                    height: '40px',
+                    padding: '0 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    backgroundColor: '#f8fafc',
+                    color: '#64748b',
+                    fontSize: '14px',
+                  }}
+                />
+                <StatusBadge tone="green">Verified</StatusBadge>
+              </div>
+            </div>
+
+            <div className="form-group" style={{ margin: 0 }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                {lang === 'ta' ? 'அணுகல் பங்கு' : 'Access Role'}
+              </label>
+              <input
+                type="text"
+                value={profile?.role ? profile.role.toUpperCase() + ' (Plant Administrator)' : 'ADMIN'}
+                disabled
+                style={{
+                  width: '100%',
+                  height: '40px',
+                  padding: '0 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  backgroundColor: '#f8fafc',
+                  color: '#0369a1',
+                  fontWeight: 600,
+                  fontSize: '14px',
+                }}
+              />
+            </div>
+
+            <div className="form-group" style={{ margin: 0 }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                {lang === 'ta' ? 'ஒன்றியம் / பால் பண்ணை' : 'Milk Producers Union / Dairy'}
+              </label>
+              <input
+                type="text"
+                value={profile?.zones?.name || 'Salem District Co-op Milk Producers Union'}
+                disabled
+                style={{
+                  width: '100%',
+                  height: '40px',
+                  padding: '0 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  backgroundColor: '#f8fafc',
+                  color: '#475569',
+                  fontSize: '14px',
+                }}
               />
             </div>
           </div>
 
-          <div className="form-row" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-            <div className="form-group">
-              <label>Fat Min / Max / Benchmark (%)</label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input type="number" step="0.1" value={form.fat_min} onChange={e => setForm({ ...form, fat_min: parseFloat(e.target.value) || 3.5 })} />
-                <input type="number" step="0.1" value={form.fat_max} onChange={e => setForm({ ...form, fat_max: parseFloat(e.target.value) || 8.5 })} />
-                <input type="number" step="0.1" value={form.fat_benchmark} onChange={e => setForm({ ...form, fat_benchmark: parseFloat(e.target.value) || 4.0 })} />
-              </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <button
+              type="submit"
+              disabled={updatingProfile || !fullName.trim()}
+              className="btn btn-secondary"
+              style={{
+                height: '40px',
+                padding: '0 20px',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: 600,
+                width: 'auto',
+              }}
+            >
+              {updatingProfile ? 'Saving…' : 'Save Profile Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* 3. APPLICATION & LANGUAGE PREFERENCES */}
+      <div
+        className="card"
+        style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '12px',
+          border: '1px solid #e2e8f0',
+          padding: '24px',
+          marginBottom: '20px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+          <span style={{ fontSize: '20px' }}>🌐</span>
+          <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: '#0f172a' }}>
+            {lang === 'ta' ? 'கணினி விருப்பத்தேர்வுகள்' : 'System & Language Preferences'}
+          </h2>
+        </div>
+        <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: '#64748b' }}>
+          {lang === 'ta'
+            ? 'போர்ட்டல் இடைமுக மொழி மற்றும் விருப்பங்களை தேர்வு செய்யவும்'
+            : 'Choose your preferred display language for the Aavin portal'}
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
+          <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
+            {lang === 'ta' ? 'இடைமுக மொழி:' : 'Portal Language:'}
+          </span>
+          <button
+            type="button"
+            className={lang === 'en' ? 'btn btn-primary' : 'btn btn-secondary'}
+            onClick={() => setLang('en')}
+            style={{ height: '36px', padding: '0 16px', borderRadius: '6px', fontSize: '13px', width: 'auto' }}
+          >
+            🇬🇧 English
+          </button>
+          <button
+            type="button"
+            className={lang === 'ta' ? 'btn btn-primary' : 'btn btn-secondary'}
+            onClick={() => setLang('ta')}
+            style={{ height: '36px', padding: '0 16px', borderRadius: '6px', fontSize: '13px', width: 'auto' }}
+          >
+            🇮🇳 தமிழ் (Tamil)
+          </button>
+        </div>
+
+        <div
+          style={{
+            padding: '16px',
+            borderRadius: '8px',
+            backgroundColor: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>
+              Aavin Integrated Dairy Management System (IDMS)
             </div>
-            <div className="form-group">
-              <label>SNF Min / Max / Benchmark (%)</label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input type="number" step="0.1" value={form.snf_min} onChange={e => setForm({ ...form, snf_min: parseFloat(e.target.value) || 8.0 })} />
-                <input type="number" step="0.1" value={form.snf_max} onChange={e => setForm({ ...form, snf_max: parseFloat(e.target.value) || 9.5 })} />
-                <input type="number" step="0.1" value={form.snf_benchmark} onChange={e => setForm({ ...form, snf_benchmark: parseFloat(e.target.value) || 8.2 })} />
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Rejection Warning / Danger (%)</label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input type="number" step="0.5" value={form.rejection_warn_pct} onChange={e => setForm({ ...form, rejection_warn_pct: parseFloat(e.target.value) || 5 })} />
-                <input type="number" step="0.5" value={form.rejection_danger_pct} onChange={e => setForm({ ...form, rejection_danger_pct: parseFloat(e.target.value) || 10 })} />
-              </div>
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+              Salem Dairy Plant Edition · Current Session: {user?.email || 'admin'}
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            className="btn btn-secondary"
+            style={{
+              height: '34px',
+              padding: '0 14px',
+              color: '#dc2626',
+              borderColor: '#fca5a5',
+              background: '#fef2f2',
+              fontSize: '12px',
+              fontWeight: 600,
+              width: 'auto',
+            }}
+          >
+            ⏻ Sign Out of Session
+          </button>
+        </div>
+      </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label>Tanker Destinations <span className="hint">(comma-separated)</span></label>
-              <input value={destText} onChange={e => setDestText(e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label>Zone Taluks / Villages <span className="hint">(comma-separated)</span></label>
-              <input value={locText} onChange={e => setLocText(e.target.value)} />
-            </div>
+      {/* 4. ADVANCED OPERATIONS SETTINGS (Collapsible accordion for zone thresholds if needed) */}
+      <div
+        className="card"
+        style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '12px',
+          border: '1px solid #e2e8f0',
+          padding: '16px 24px',
+          marginBottom: '20px',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((v) => !v)}
+          style={{
+            width: '100%',
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            textAlign: 'left',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '16px' }}>⚙️</span>
+            <span style={{ fontSize: '15px', fontWeight: 600, color: '#334155' }}>
+              Advanced Plant Operations &amp; SLA Rules
+            </span>
           </div>
+          <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 600 }}>
+            {showAdvanced ? '▲ Hide Advanced' : '▼ Show Advanced'}
+          </span>
+        </button>
 
-          {/* Tanker Journey & Plant Operations Configuration */}
-          <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
-            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', color: '#1e293b' }}>
-              Tanker Journey &amp; Plant Operations Thresholds
-            </h3>
-            <p className="chart-subtitle" style={{ marginBottom: '1rem' }}>
-              Configure per-stage SLA time limits, transit loss alert thresholds, milk density for volume conversion, and mismatch warning levels.
+        {showAdvanced && (
+          <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
+            <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#64748b' }}>
+              Optional configuration for tanker stage SLAs, rejection thresholds, and dairy rate formulas.
             </p>
 
-            <div className="form-row" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
-              <div className="form-group">
-                <label>Gate Entry SLA (min)</label>
-                <input
-                  type="number"
-                  min="5"
-                  value={form.stage_time_limits_min?.vehicle_entered ?? 15}
-                  onChange={e =>
-                    setForm({
-                      ...form,
-                      stage_time_limits_min: {
-                        ...(form.stage_time_limits_min || {} as any),
-                        vehicle_entered: parseInt(e.target.value, 10) || 15,
-                      },
-                    })
-                  }
-                />
+            {advancedError && (
+              <div style={{ marginBottom: '12px' }}>
+                <ErrorBanner message={advancedError} />
               </div>
-              <div className="form-group">
-                <label>Gross Weighing SLA (min)</label>
-                <input
-                  type="number"
-                  min="5"
-                  value={form.stage_time_limits_min?.gross_weight ?? 15}
-                  onChange={e =>
-                    setForm({
-                      ...form,
-                      stage_time_limits_min: {
-                        ...(form.stage_time_limits_min || {} as any),
-                        gross_weight: parseInt(e.target.value, 10) || 15,
-                      },
-                    })
-                  }
-                />
+            )}
+            {advancedSuccess && (
+              <div style={{ padding: '8px 12px', background: '#f0fdf4', color: '#166534', borderRadius: 6, fontSize: '13px', marginBottom: '12px' }}>
+                {advancedSuccess}
               </div>
-              <div className="form-group">
-                <label>QC Testing SLA (min)</label>
-                <input
-                  type="number"
-                  min="5"
-                  value={form.stage_time_limits_min?.qc_completed ?? 30}
-                  onChange={e =>
-                    setForm({
-                      ...form,
-                      stage_time_limits_min: {
-                        ...(form.stage_time_limits_min || {} as any),
-                        qc_completed: parseInt(e.target.value, 10) || 30,
-                      },
-                    })
-                  }
-                />
-              </div>
-              <div className="form-group">
-                <label>Unloading Bay SLA (min)</label>
-                <input
-                  type="number"
-                  min="10"
-                  value={form.stage_time_limits_min?.unloaded ?? 45}
-                  onChange={e =>
-                    setForm({
-                      ...form,
-                      stage_time_limits_min: {
-                        ...(form.stage_time_limits_min || {} as any),
-                        unloaded: parseInt(e.target.value, 10) || 45,
-                      },
-                    })
-                  }
-                />
-              </div>
-              <div className="form-group">
-                <label>Tare Weighing SLA (min)</label>
-                <input
-                  type="number"
-                  min="5"
-                  value={form.stage_time_limits_min?.tare_weight ?? 15}
-                  onChange={e =>
-                    setForm({
-                      ...form,
-                      stage_time_limits_min: {
-                        ...(form.stage_time_limits_min || {} as any),
-                        tare_weight: parseInt(e.target.value, 10) || 15,
-                      },
-                    })
-                  }
-                />
-              </div>
-              <div className="form-group">
-                <label>CIP Sanitization SLA (min)</label>
-                <input
-                  type="number"
-                  min="5"
-                  value={form.stage_time_limits_min?.cip_completed ?? 30}
-                  onChange={e =>
-                    setForm({
-                      ...form,
-                      stage_time_limits_min: {
-                        ...(form.stage_time_limits_min || {} as any),
-                        cip_completed: parseInt(e.target.value, 10) || 30,
-                      },
-                    })
-                  }
-                />
-              </div>
-              <div className="form-group">
-                <label>Vehicle Exit SLA (min)</label>
-                <input
-                  type="number"
-                  min="5"
-                  value={form.stage_time_limits_min?.vehicle_exit ?? 15}
-                  onChange={e =>
-                    setForm({
-                      ...form,
-                      stage_time_limits_min: {
-                        ...(form.stage_time_limits_min || {} as any),
-                        vehicle_exit: parseInt(e.target.value, 10) || 15,
-                      },
-                    })
-                  }
-                />
-              </div>
-            </div>
+            )}
 
-            <div className="form-row" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-              <div className="form-group">
-                <label>Transit Loss Warning / Danger (%)</label>
-                <div style={{ display: 'flex', gap: 6 }}>
+            <form onSubmit={handleSaveAdvanced}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                    Rejection Payment Rule
+                  </label>
+                  <select
+                    value={advancedForm.rejection_payment_rule}
+                    onChange={(e) =>
+                      setAdvancedForm({
+                        ...advancedForm,
+                        rejection_payment_rule: e.target.value as 'net' | 'gross',
+                      })
+                    }
+                    style={{ width: '100%', height: '36px', borderRadius: '6px', border: '1px solid #cbd5e1', padding: '0 8px', fontSize: '13px' }}
+                  >
+                    <option value="net">NET quantity (pay only accepted milk)</option>
+                    <option value="gross">GROSS quantity (track rejection separately)</option>
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                    Standard Milk Density (kg/L)
+                  </label>
                   <input
                     type="number"
-                    step="0.1"
-                    value={form.transit_loss_warn_pct ?? 1.0}
-                    onChange={e => setForm({ ...form, transit_loss_warn_pct: parseFloat(e.target.value) || 1.0 })}
+                    step="0.001"
+                    value={advancedForm.milk_density_kg_per_litre ?? 1.03}
+                    onChange={(e) =>
+                      setAdvancedForm({
+                        ...advancedForm,
+                        milk_density_kg_per_litre: parseFloat(e.target.value) || 1.03,
+                      })
+                    }
+                    style={{ width: '100%', height: '36px', borderRadius: '6px', border: '1px solid #cbd5e1', padding: '0 8px', fontSize: '13px' }}
                   />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                    Transit Loss Alert Limit (%)
+                  </label>
                   <input
                     type="number"
                     step="0.1"
-                    value={form.transit_loss_danger_pct ?? 2.0}
-                    onChange={e => setForm({ ...form, transit_loss_danger_pct: parseFloat(e.target.value) || 2.0 })}
+                    value={advancedForm.transit_loss_warn_pct ?? 1.0}
+                    onChange={(e) =>
+                      setAdvancedForm({
+                        ...advancedForm,
+                        transit_loss_warn_pct: parseFloat(e.target.value) || 1.0,
+                      })
+                    }
+                    style={{ width: '100%', height: '36px', borderRadius: '6px', border: '1px solid #cbd5e1', padding: '0 8px', fontSize: '13px' }}
                   />
                 </div>
               </div>
-              <div className="form-group">
-                <label>Milk Density (kg / Litre)</label>
-                <input
-                  type="number"
-                  step="0.001"
-                  value={form.milk_density_kg_per_litre ?? 1.030}
-                  onChange={e => setForm({ ...form, milk_density_kg_per_litre: parseFloat(e.target.value) || 1.030 })}
-                />
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="submit"
+                  disabled={savingAdvanced}
+                  className="btn btn-secondary btn-sm"
+                  style={{ width: 'auto', height: '34px', padding: '0 14px' }}
+                >
+                  {savingAdvanced ? 'Saving…' : 'Save Advanced Rules'}
+                </button>
               </div>
-              <div className="form-group">
-                <label>Net Wt vs Dispatched Mismatch (kg)</label>
-                <input
-                  type="number"
-                  step="5"
-                  value={form.net_weight_diff_threshold_kg ?? 50}
-                  onChange={e => setForm({ ...form, net_weight_diff_threshold_kg: parseFloat(e.target.value) || 50 })}
-                />
-              </div>
-              <div className="form-group">
-                <label>Fat Drop Alert Threshold (%)</label>
-                <input
-                  type="number"
-                  step="0.05"
-                  value={form.quality_drop_threshold_fat ?? 0.30}
-                  onChange={e => setForm({ ...form, quality_drop_threshold_fat: parseFloat(e.target.value) || 0.30 })}
-                />
-              </div>
-              <div className="form-group">
-                <label>SNF Drop Alert Threshold (%)</label>
-                <input
-                  type="number"
-                  step="0.05"
-                  value={form.quality_drop_threshold_snf ?? 0.20}
-                  onChange={e => setForm({ ...form, quality_drop_threshold_snf: parseFloat(e.target.value) || 0.20 })}
-                />
-              </div>
-              <div className="form-group">
-                <label>Live Auto-Refresh Interval (sec)</label>
-                <input
-                  type="number"
-                  min="15"
-                  max="120"
-                  value={form.auto_refresh_interval_sec ?? 30}
-                  onChange={e => setForm({ ...form, auto_refresh_interval_sec: parseInt(e.target.value, 10) || 30 })}
-                />
-              </div>
-            </div>
+            </form>
           </div>
-
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.9rem', cursor: 'pointer', marginTop: '1rem' }}>
-            <input
-              type="checkbox"
-              checked={form.show_unit_profit}
-              onChange={e => setForm({ ...form, show_unit_profit: e.target.checked })}
-            />
-            Allow Unit staff to view Est. Revenue &amp; Projected Profit / Loss
-          </label>
-
-          <button type="submit" disabled={savingSettings} className="btn-primary">
-            {savingSettings ? 'Saving Settings…' : 'Save Zone Settings'}
-          </button>
-        </div>
-      </form>
+        )}
+      </div>
     </div>
   );
 }
