@@ -146,7 +146,7 @@ test('4. AdminTeams page structure: top Add User button, entire team list table,
   assert.ok(teamsPageSrc.includes('openAddUserModal()'), 'Top Add User button must trigger openAddUserModal()');
 
   // 2. Entire team list section and table
-  assert.ok(teamsPageSrc.includes('Plant Team Members & Operators'), 'Must show plant team operators list');
+  assert.ok(teamsPageSrc.includes('Internal Team Users Management'), 'Must show internal team users management list');
   assert.ok(teamsPageSrc.includes('userColumns'), 'Must define userColumns for DataTable');
   assert.ok(teamsPageSrc.includes('Unique User ID'), 'Table must display Unique User ID column');
 

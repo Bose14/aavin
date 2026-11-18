@@ -844,12 +844,12 @@ export default function AdminTeams() {
       )}
 
 
-      {/* 3. SHOW ENTIRE USER DIRECTORY & PLANT TEAM MEMBERS */}
+      {/* 3. SHOW ENTIRE USER DIRECTORY & INTERNAL TEAM USERS MANAGEMENT */}
       <div id="team-users-section" className="card" style={{ padding: '1.5rem', background: '#ffffff', borderRadius: 10, border: '1px solid #e2e8f0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
           <div>
             <h2 style={{ fontSize: '1.3rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
-              {lang === 'ta' ? 'பயனர்கள் பட்டியல்' : 'Plant Team Members & Operators'} ({filteredUsers.length})
+              {lang === 'ta' ? 'உள் குழு பயனர்கள் மேலாண்மை' : 'Internal Team Users Management'} ({filteredUsers.length})
             </h2>
             <p style={{ margin: '0.2rem 0 0 0', color: '#64748b', fontSize: '0.85rem' }}>
               {lang === 'ta'
