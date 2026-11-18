@@ -77,12 +77,12 @@ export default function TankerDispatch() {
   const [dispatchAmPm, setDispatchAmPm] = useState<'AM' | 'PM'>('AM');
   const [destination, setDestination] = useState(settings.destinations[0] ?? 'Namakkal Dairy');
 
-  // Multi-Compartment Form State (Maximum 3 compartments)
+  // Multi-Compartment Form State (Default 3 compartments)
   const [compartments, setCompartments] = useState<CompartmentFormItem[]>([
     {
       compartment_no: 1,
       compartment_name: 'Front Compartment (Comp 1)',
-      quantity_litres: '4500',
+      quantity_litres: '3000',
       capacity_litres: '5000',
       fat_pct: '4.30',
       snf_pct: '8.45',
@@ -92,12 +92,23 @@ export default function TankerDispatch() {
     },
     {
       compartment_no: 2,
-      compartment_name: 'Rear Compartment (Comp 2)',
-      quantity_litres: '4500',
+      compartment_name: 'Middle Compartment (Comp 2)',
+      quantity_litres: '3000',
+      capacity_litres: '5000',
+      fat_pct: '4.25',
+      snf_pct: '8.42',
+      seal_number: 'CMP-2-790',
+      milk_type: 'Raw Cow Milk',
+      temperature: '4.0',
+    },
+    {
+      compartment_no: 3,
+      compartment_name: 'Rear Compartment (Comp 3)',
+      quantity_litres: '3000',
       capacity_litres: '5000',
       fat_pct: '4.20',
       snf_pct: '8.40',
-      seal_number: 'CMP-2-790',
+      seal_number: 'CMP-3-791',
       milk_type: 'Raw Cow Milk',
       temperature: '4.0',
     },
@@ -134,24 +145,28 @@ export default function TankerDispatch() {
     void fetchAll();
   }, [fetchAll]);
 
-  // Compartment Quick Presets (Max 3 compartments)
+  // Compartment Quick Presets (1, 2, or 3 compartments)
   const setPresetCompartments = (count: number) => {
+    const defaultLitres = count === 1 ? '9000' : count === 2 ? '4500' : '3000';
     const names = [
       'Front Compartment (Comp 1)',
       'Middle Compartment (Comp 2)',
       'Rear Compartment (Comp 3)',
     ];
+    if (count === 2) {
+      names[1] = 'Rear Compartment (Comp 2)';
+    }
     const newItems: CompartmentFormItem[] = [];
     const validCount = Math.min(Math.max(count, 1), 3);
     for (let i = 1; i <= validCount; i++) {
       newItems.push({
         compartment_no: i,
         compartment_name: names[i - 1] || `Compartment ${i}`,
-        quantity_litres: '',
+        quantity_litres: defaultLitres,
         capacity_litres: '5000',
-        fat_pct: '4.20',
-        snf_pct: '8.40',
-        seal_number: '',
+        fat_pct: (4.30 - (i - 1) * 0.05).toFixed(2),
+        snf_pct: (8.45 - (i - 1) * 0.02).toFixed(2),
+        seal_number: `CMP-${i}-78${8 + i}`,
         milk_type: 'Raw Cow Milk',
         temperature: '4.0',
       });
@@ -160,36 +175,48 @@ export default function TankerDispatch() {
   };
 
   const addCompartment = () => {
-    if (compartments.length >= 3) return;
-    const nextNo = compartments.length + 1;
-    const names = [
-      'Front Compartment (Comp 1)',
-      'Middle Compartment (Comp 2)',
-      'Rear Compartment (Comp 3)',
-    ];
-    setCompartments((prev) => [
-      ...prev,
-      {
-        compartment_no: nextNo,
-        compartment_name: names[nextNo - 1] || `Compartment ${nextNo}`,
-        quantity_litres: '',
-        capacity_litres: '5000',
-        fat_pct: '4.20',
-        snf_pct: '8.40',
-        seal_number: '',
-        milk_type: 'Raw Cow Milk',
-        temperature: '4.0',
-      },
-    ]);
+    setCompartments((prev) => {
+      const nextNo = prev.length + 1;
+      const names = [
+        'Front Compartment (Comp 1)',
+        'Middle Compartment (Comp 2)',
+        'Rear Compartment (Comp 3)',
+        'Auxiliary Compartment (Comp 4)',
+        'Rear Auxiliary Compartment (Comp 5)',
+      ];
+      return [
+        ...prev,
+        {
+          compartment_no: nextNo,
+          compartment_name: names[nextNo - 1] || `Compartment ${nextNo}`,
+          quantity_litres: '3000',
+          capacity_litres: '5000',
+          fat_pct: '4.20',
+          snf_pct: '8.40',
+          seal_number: `CMP-${nextNo}-79${nextNo}`,
+          milk_type: 'Raw Cow Milk',
+          temperature: '4.0',
+        },
+      ];
+    });
   };
 
   const removeCompartment = (index: number) => {
     if (compartments.length <= 1) return;
     setCompartments((prev) => {
       const updated = prev.filter((_, idx) => idx !== index);
+      const names = [
+        'Front Compartment (Comp 1)',
+        'Middle Compartment (Comp 2)',
+        'Rear Compartment (Comp 3)',
+      ];
+      if (updated.length === 2) {
+        names[1] = 'Rear Compartment (Comp 2)';
+      }
       return updated.map((item, idx) => ({
         ...item,
         compartment_no: idx + 1,
+        compartment_name: names[idx] || `Compartment ${idx + 1}`,
       }));
     });
   };
@@ -308,7 +335,7 @@ export default function TankerDispatch() {
       setDriverPhone('');
       setDcNumber('');
       setOutletSealNo('');
-      setPresetCompartments(2);
+      setPresetCompartments(3);
 
       await fetchAll();
     } catch (err: unknown) {
@@ -726,16 +753,21 @@ export default function TankerDispatch() {
                     {count} Comp
                   </button>
                 ))}
-                {compartments.length < 3 && (
-                  <button
-                    type="button"
-                    onClick={addCompartment}
-                    className="btn btn-secondary btn-sm"
-                    style={{ fontSize: '11px', padding: '3px 8px', color: '#16a34a', fontWeight: 700 }}
-                  >
-                    + Add
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={addCompartment}
+                  className="btn btn-secondary btn-sm"
+                  style={{
+                    fontSize: '11px',
+                    padding: '3px 8px',
+                    color: '#16a34a',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                  title="Add compartment"
+                >
+                  + Add
+                </button>
               </div>
             </div>
 
