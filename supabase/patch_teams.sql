@@ -22,10 +22,13 @@ values
 on conflict (code) do update
 set name = excluded.name, active = excluded.active;
 
--- 2. Add team_id, shift, and username columns to profiles
+-- 2. Add team_id, shift, username, and user state columns to profiles
 alter table profiles add column if not exists team_id uuid references teams(id);
 alter table profiles add column if not exists shift text default 'General';
 alter table profiles add column if not exists username text;
+alter table profiles add column if not exists is_active boolean default true;
+alter table profiles add column if not exists must_change_password boolean default false;
+alter table profiles add column if not exists sub_role text default 'operator';
 
 -- Update role check constraint on profiles to allow plant team roles
 alter table profiles drop constraint if exists profiles_role_check;
@@ -46,8 +49,13 @@ create unique index if not exists idx_profiles_zone_username on profiles(zone_id
 -- 3. Enable RLS and setup policies for teams
 alter table teams enable row level security;
 
+drop policy if exists "teams_read_authenticated" on teams;
 create policy "teams_read_authenticated" on teams
   for select using (auth.role() = 'authenticated');
 
+drop policy if exists "teams_admin_all" on teams;
 create policy "teams_admin_all" on teams
   for all using (auth.role() = 'authenticated');
+
+-- Reload PostgREST schema cache immediately
+notify pgrst, 'reload schema';

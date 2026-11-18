@@ -9,6 +9,7 @@ import {
   getZoneSettings,
   getTankerStagesForTrips,
   writeAuditLog,
+  isMissingSchemaError,
 } from '../lib/settingsStore';
 import { deriveTankerJourneyState } from '../lib/tankerJourney';
 import type { StageRecordItem, TankerTripInput } from '../lib/tankerJourney';
@@ -100,12 +101,25 @@ async function computeActiveUsersPerTeam(zoneId: string): Promise<Record<string,
   };
 
   try {
-    // 1. Fetch profiles for this zone
-    const { data: profiles, error } = await supabase
+    // 1. Fetch profiles for this zone with resilient fallback
+    const initialRes = await supabase
       .from('profiles')
       .select('id, role, team_id, is_active')
       .eq('zone_id', zoneId)
       .in('role', ['gate', 'qc', 'unloading', 'GATE', 'QC', 'UNLOADING']);
+
+    let profiles: any[] | null = initialRes.data as any;
+    let error: any = initialRes.error;
+
+    if (error && isMissingSchemaError(error)) {
+      const fbRes = await supabase
+        .from('profiles')
+        .select('id, role')
+        .eq('zone_id', zoneId)
+        .in('role', ['gate', 'qc', 'unloading', 'GATE', 'QC', 'UNLOADING']);
+      profiles = fbRes.data as any;
+      error = fbRes.error;
+    }
 
     if (error || !profiles) {
       return counts;
@@ -224,12 +238,26 @@ router.get('/users', async (req, res) => {
   const { team, status, search } = req.query as Record<string, string>;
 
   try {
-    const { data: profiles, error } = await supabase
+    const initialRes = await supabase
       .from('profiles')
       .select('id, full_name, role, zone_id, team_id, shift, username, phone, created_at')
       .eq('zone_id', zoneId)
       .in('role', ['gate', 'qc', 'unloading', 'GATE', 'QC', 'UNLOADING'])
       .order('created_at', { ascending: false });
+
+    let profiles: any[] | null = initialRes.data as any;
+    let error: any = initialRes.error;
+
+    if (error && isMissingSchemaError(error)) {
+      const fbRes = await supabase
+        .from('profiles')
+        .select('id, full_name, role, zone_id, phone, created_at')
+        .eq('zone_id', zoneId)
+        .in('role', ['gate', 'qc', 'unloading', 'GATE', 'QC', 'UNLOADING'])
+        .order('created_at', { ascending: false });
+      profiles = fbRes.data as any;
+      error = fbRes.error;
+    }
 
     if (error) {
       res.status(500).json({ error: error.message });
@@ -241,7 +269,7 @@ router.get('/users', async (req, res) => {
     const teamById = new Map(allTeams.map((t) => [t.id, t]));
 
     // Fetch auth metadata
-    const authById = new Map<string, { email?: string; is_active?: boolean; last_sign_in_at?: string }>();
+    const authById = new Map<string, { email?: string; is_active?: boolean; last_sign_in_at?: string; shift?: string; username?: string; team?: string }>();
     try {
       const { data: authUsersData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
       for (const au of authUsersData?.users ?? []) {
@@ -249,6 +277,9 @@ router.get('/users', async (req, res) => {
           email: au.email,
           is_active: au.user_metadata?.is_active !== false,
           last_sign_in_at: au.last_sign_in_at,
+          shift: au.user_metadata?.shift,
+          username: au.user_metadata?.username,
+          team: au.user_metadata?.team,
         });
       }
     } catch (e) {
@@ -257,23 +288,26 @@ router.get('/users', async (req, res) => {
 
     let list = (profiles ?? []).map((p: any) => {
       const roleUpper = (p.role || '').toUpperCase();
+      const meta = authById.get(p.id);
       let teamObj = p.team_id ? teamById.get(p.team_id) : undefined;
+      if (!teamObj && meta?.team) {
+        teamObj = teamByCode.get(meta.team.toUpperCase());
+      }
       if (!teamObj && ['GATE', 'QC', 'UNLOADING'].includes(roleUpper)) {
         teamObj = teamByCode.get(roleUpper);
       }
-      const meta = authById.get(p.id);
 
       return {
         id: p.id,
         full_name: p.full_name || '',
-        username: p.username || null,
+        username: p.username || meta?.username || null,
         email: meta?.email || null,
         phone: p.phone || null,
         role: roleUpper.toLowerCase(),
         team_id: teamObj?.id || p.team_id || null,
         team: teamObj ? { id: teamObj.id, code: teamObj.code, name: teamObj.name } : null,
-        shift: p.shift || 'General',
-        is_active: meta?.is_active ?? p.is_active ?? true,
+        shift: p.shift || meta?.shift || 'General',
+        is_active: meta?.is_active ?? (p.is_active !== false),
         created_at: p.created_at,
         last_sign_in_at: meta?.last_sign_in_at || null,
       };
@@ -351,15 +385,19 @@ router.post('/users', requireRole('admin', 'superadmin'), async (req, res) => {
   }
 
   // Validate username uniqueness
-  const { data: dupUser } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('zone_id', zoneId)
-    .ilike('username', username)
-    .limit(1);
-  if (dupUser && dupUser.length > 0) {
-    res.status(409).json({ error: `Unique User ID "${username}" is already taken in this zone` });
-    return;
+  try {
+    const { data: dupUser, error: dupErr } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('zone_id', zoneId)
+      .ilike('username', username)
+      .limit(1);
+    if (!dupErr && dupUser && dupUser.length > 0) {
+      res.status(409).json({ error: `Unique User ID "${username}" is already taken in this zone` });
+      return;
+    }
+  } catch {
+    // Ignore schema cache errors during lookup
   }
 
   // Validate phone if provided
@@ -401,7 +439,7 @@ router.post('/users', requireRole('admin', 'superadmin'), async (req, res) => {
   }
 
   const userId = authData.user.id;
-  const { error: pErr } = await supabase.from('profiles').insert({
+  let { error: pErr } = await supabase.from('profiles').insert({
     id: userId,
     role,
     zone_id: zoneId,
@@ -411,6 +449,20 @@ router.post('/users', requireRole('admin', 'superadmin'), async (req, res) => {
     shift,
     username,
   });
+
+  // Resilient fallback: if database schema does not have shift/team_id/username columns yet,
+  // insert using base columns so user creation succeeds without throwing schema cache errors.
+  if (pErr && isMissingSchemaError(pErr)) {
+    console.warn('[teams/users] Extended insert failed (schema cache missing columns), retrying with base columns:', pErr.message);
+    const fallbackRes = await supabase.from('profiles').insert({
+      id: userId,
+      role,
+      zone_id: zoneId,
+      full_name,
+      phone: normalizedPhone,
+    });
+    pErr = fallbackRes.error;
+  }
 
   if (pErr) {
     await supabase.auth.admin.deleteUser(userId);
@@ -584,8 +636,8 @@ router.post('/seed-users', requireRole('admin', 'superadmin'), async (req, res) 
     }
 
     if (existingUserId) {
-      // Upsert into profiles
-      await supabase.from('profiles').upsert(
+      // Upsert into profiles with resilient schema fallback
+      let { error: upErr } = await supabase.from('profiles').upsert(
         {
           id: existingUserId,
           role: tu.role,
@@ -598,6 +650,19 @@ router.post('/seed-users', requireRole('admin', 'superadmin'), async (req, res) 
         },
         { onConflict: 'id' },
       );
+
+      if (upErr && isMissingSchemaError(upErr)) {
+        await supabase.from('profiles').upsert(
+          {
+            id: existingUserId,
+            role: tu.role,
+            zone_id: zoneId,
+            full_name: tu.full_name,
+            phone: tu.phone,
+          },
+          { onConflict: 'id' },
+        );
+      }
 
       results.push({
         email: tu.email,

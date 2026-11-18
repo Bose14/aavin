@@ -260,3 +260,33 @@ test('9. Unique User ID generation and prefix mapping for plant team operators (
   const idIT = await generateNextTeamUserId('00000000-0000-0000-0000-000000000001', 'IT');
   assert.match(idIT, /^AV_IT_\d{3}$/);
 });
+
+test('10. Resilient schema fallback detects missing shift/team_id column in schema cache', async () => {
+  const { isMissingSchemaError } = await import('../dist/lib/settingsStore.js');
+
+  // Exact PostgREST schema cache error from user screenshot
+  const exactUserError = {
+    message: "Could not find the 'shift' column of 'profiles' in the schema cache",
+    code: 'PGRST204',
+  };
+  assert.equal(isMissingSchemaError(exactUserError), true);
+
+  const teamIdError = {
+    message: "Could not find the 'team_id' column of 'profiles' in the schema cache",
+  };
+  assert.equal(isMissingSchemaError(teamIdError), true);
+
+  const usernameError = {
+    message: "column profiles.username does not exist",
+    code: '42703',
+  };
+  assert.equal(isMissingSchemaError(usernameError), true);
+
+  // Normal business errors should NOT be treated as missing schema
+  const dupEmailError = { message: 'An account with email already exists' };
+  assert.equal(isMissingSchemaError(dupEmailError), false);
+
+  const requiredError = { message: 'Full name and email are required' };
+  assert.equal(isMissingSchemaError(requiredError), false);
+});
+
