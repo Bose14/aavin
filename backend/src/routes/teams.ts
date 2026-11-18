@@ -421,7 +421,7 @@ router.post('/users', requireRole('admin', 'superadmin'), async (req, res) => {
   const shift = ['Morning', 'Evening', 'General'].includes(rawShift) ? rawShift : 'General';
   const role = teamCode.toLowerCase();
   const teamObj = await getTeamByCode(teamCode);
-  const tempPassword = rawPassword && rawPassword.trim().length >= 8
+  const tempPassword = rawPassword && rawPassword.trim().length >= 6
     ? rawPassword.trim()
     : 'PlantUser@' + Math.floor(1000 + Math.random() * 9000);
 

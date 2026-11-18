@@ -158,4 +158,8 @@ test('4. AdminTeams page structure: top Add User button, entire team list table,
   // 4. Unique User ID format (AV_IT_001)
   assert.ok(teamsPageSrc.includes('AV_IT_001'), 'Must include AV_IT_001 example for Unique User ID');
   assert.ok(teamsPageSrc.includes('fetchNextUserId'), 'Must support fetching/generating next unique user ID');
+
+  // 5. Clean Add User modal without BMC Staff toggle or shift, with manual password entry
+  assert.ok(!teamsPageSrc.includes('BMC Staff (Unit)</button>'), 'Modal must not have BMC Staff (Unit) button');
+  assert.ok(teamsPageSrc.includes('Enter user password'), 'Must have password input for direct manual entry');
 });

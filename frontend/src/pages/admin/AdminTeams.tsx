@@ -79,15 +79,13 @@ export default function AdminTeams() {
   const [addUserType, setAddUserType] = useState<'plant' | 'unit'>('plant');
   const [addTeam, setAddTeam] = useState<'GATE' | 'QC' | 'UNLOADING'>('GATE');
   const [addUnitId, setAddUnitId] = useState('');
-  const [addSubRole, setAddSubRole] = useState<'operator' | 'supervisor'>('operator');
   const [addUserId, setAddUserId] = useState('AV_GT_001');
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
   const [addPhone, setAddPhone] = useState('');
-  const [addShift, setAddShift] = useState<'Morning' | 'Evening' | 'General'>('General');
-  const [addPassword, setAddPassword] = useState(() => generateRandomPassword());
+  const [addPassword, setAddPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [addForceChange, setAddForceChange] = useState(true);
+  const [addForceChange, setAddForceChange] = useState(false);
   const [savingUser, setSavingUser] = useState(false);
   const [addUserError, setAddUserError] = useState('');
   const [userCreatedAlert, setUserCreatedAlert] = useState<{
@@ -210,10 +208,9 @@ export default function AdminTeams() {
     setAddName('');
     setAddEmail('');
     setAddPhone('');
-    setAddShift('General');
-    setAddPassword(generateRandomPassword());
+    setAddPassword('');
     setShowPassword(false);
-    setAddForceChange(true);
+    setAddForceChange(false);
     setAddUserError('');
     setShowAddModal(true);
     void fetchNextUserId(target);
@@ -231,6 +228,10 @@ export default function AdminTeams() {
       setAddUserError('Full name is required');
       return;
     }
+    if (!addPassword.trim() || addPassword.trim().length < 6) {
+      setAddUserError('Password is required (minimum 6 characters)');
+      return;
+    }
     if (!addEmail.trim() && addUserType === 'unit') {
       setAddUserError('Email address is required for BMC staff');
       return;
@@ -246,9 +247,9 @@ export default function AdminTeams() {
           phone: addPhone.trim() || undefined,
           team: addTeam,
           user_type: 'plant',
-          shift: addShift,
+          shift: 'General',
           password: addPassword.trim(),
-          force_password_change: addForceChange,
+          force_password_change: false,
         };
 
         const res = await api.post('/teams/users', payload);
@@ -269,7 +270,7 @@ export default function AdminTeams() {
           phone: addPhone.trim() || undefined,
           role: 'unit',
           unit_id: addUnitId || (units[0]?.id ?? undefined),
-          sub_role: addSubRole,
+          sub_role: 'operator',
           username: addUserId.trim() || undefined,
           password: addPassword.trim(),
           force_password_change: addForceChange,
@@ -1046,21 +1047,15 @@ export default function AdminTeams() {
       {showAddModal && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal-card" style={{ maxWidth: 540 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>
-                  {addUserType === 'plant'
-                    ? lang === 'ta' ? 'புதிய தொழிற்சாலை பணியாளர் சேர்' : 'Add Plant Team User'
-                    : lang === 'ta' ? 'புதிய பி.எம்.சி பணியாளர் சேர்' : 'Add BMC Staff User'}
+                  {lang === 'ta' ? 'புதிய தொழிற்சாலை பணியாளர் சேர்' : 'Add Plant Team User'}
                 </h3>
-                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.84rem', color: '#64748b' }}>
-                  {addUserType === 'plant'
-                    ? lang === 'ta'
-                      ? 'குழுவைத் தேர்வு செய்து தனித்துவ அடையாள எண்ணை (AV_IT_001) ஒதுக்கவும்'
-                      : 'Assign team, generate a structured Unique User ID (e.g. AV_IT_001) and set credentials'
-                    : lang === 'ta'
-                      ? 'பி.எம்.சி மையத்தை ஒதுக்கி பணியாளரை பதிவு செய்யவும்'
-                      : 'Assign BMC unit and configure user login credentials'}
+                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.84rem', color: '#64748b' }}>
+                  {lang === 'ta'
+                    ? 'குழுவைத் தேர்வு செய்து தனித்துவ அடையாள எண்ணை (AV_IT_001) ஒதுக்கவும்'
+                    : 'Assign team, generate a structured Unique User ID (e.g. AV_IT_001) and set password'}
                 </p>
               </div>
               <button
@@ -1072,269 +1067,123 @@ export default function AdminTeams() {
               </button>
             </div>
 
-            {/* Toggle User Type */}
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', background: '#f1f5f9', padding: '3px', borderRadius: 8 }}>
-              <button
-                type="button"
-                onClick={() => setAddUserType('plant')}
-                style={{
-                  flex: 1,
-                  padding: '0.45rem',
-                  borderRadius: 6,
-                  border: 'none',
-                  fontSize: '0.85rem',
-                  fontWeight: addUserType === 'plant' ? 700 : 500,
-                  background: addUserType === 'plant' ? '#ffffff' : 'transparent',
-                  color: addUserType === 'plant' ? '#0f172a' : '#64748b',
-                  cursor: 'pointer',
-                  boxShadow: addUserType === 'plant' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
-                }}
-              >
-                🏭 Plant Team Operator (Gate, QC, Unload)
-              </button>
-              <button
-                type="button"
-                onClick={() => setAddUserType('unit')}
-                style={{
-                  flex: 1,
-                  padding: '0.45rem',
-                  borderRadius: 6,
-                  border: 'none',
-                  fontSize: '0.85rem',
-                  fontWeight: addUserType === 'unit' ? 700 : 500,
-                  background: addUserType === 'unit' ? '#ffffff' : 'transparent',
-                  color: addUserType === 'unit' ? '#0f172a' : '#64748b',
-                  cursor: 'pointer',
-                  boxShadow: addUserType === 'unit' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
-                }}
-              >
-                🏢 BMC Staff (Unit)
-              </button>
-            </div>
-
             {addUserError && <ErrorBanner message={addUserError} />}
 
             <form onSubmit={handleCreateUser} className="entry-form" style={{ marginTop: '0.75rem' }}>
-              {addUserType === 'plant' ? (
-                <>
-                  {/* Row 1: Team Dropdown & Unique User ID */}
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600 }}>
-                        {lang === 'ta' ? 'குழு (Select Team)' : 'Select Team'} *
-                      </label>
-                      <select
-                        value={addTeam}
-                        onChange={(e) => handleTeamChangeInModal(e.target.value as any)}
-                        required
-                        style={{ fontWeight: 600 }}
-                      >
-                        <option value="GATE">GATE — Vehicle Entry & Weighbridge</option>
-                        <option value="QC">QC — Quality Testing & CIP</option>
-                        <option value="UNLOADING">UNLOAD — Silo & Milk Reception</option>
-                      </select>
-                    </div>
-
-                    <div className="form-group">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <label style={{ fontWeight: 600 }}>Unique User ID *</label>
-                        <button
-                          type="button"
-                          onClick={() => void fetchNextUserId(addTeam)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#2563eb',
-                            fontSize: '0.75rem',
-                            cursor: 'pointer',
-                            fontWeight: 600,
-                            padding: 0,
-                          }}
-                        >
-                          ⚡ Auto-Generate
-                        </button>
-                      </div>
-                      <input
-                        value={addUserId}
-                        onChange={(e) => setAddUserId(e.target.value.toUpperCase())}
-                        placeholder="e.g. AV_IT_001"
-                        required
-                        style={{ fontWeight: 700, letterSpacing: '0.04em' }}
-                      />
-                      <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px', display: 'block' }}>
-                        Format example: <code>AV_IT_001</code>, <code>AV_GT_001</code>. Stored in database.
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Row 2: Full Name & Shift */}
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'முழு பெயர்' : 'Full Name'} *</label>
-                      <input
-                        value={addName}
-                        onChange={(e) => setAddName(e.target.value)}
-                        placeholder="e.g. Raman K"
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'பணி முறை (Shift)' : 'Shift'} *</label>
-                      <select value={addShift} onChange={(e) => setAddShift(e.target.value as any)} required>
-                        <option value="Morning">Morning (AM)</option>
-                        <option value="Evening">Evening (PM)</option>
-                        <option value="General">General (Full Day)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Row 3: Email & Phone */}
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'மின்னஞ்சல்' : 'Email Address'}</label>
-                      <input
-                        type="email"
-                        value={addEmail}
-                        onChange={(e) => setAddEmail(e.target.value)}
-                        placeholder="e.g. raman.gate@aavin.internal"
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'அலைபேசி எண்' : 'Mobile Number (+91)'}</label>
-                      <input
-                        type="tel"
-                        value={addPhone}
-                        onChange={(e) => setAddPhone(e.target.value)}
-                        placeholder="9876543210"
-                        maxLength={10}
-                      />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {/* BMC Staff Form */}
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600 }}>Assign to BMC *</label>
-                      <select value={addUnitId} onChange={(e) => setAddUnitId(e.target.value)} required>
-                        {units.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.name} ({u.unit_code})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600 }}>Sub-Role</label>
-                      <select value={addSubRole} onChange={(e) => setAddSubRole(e.target.value as any)}>
-                        <option value="operator">Operator (Data Entry)</option>
-                        <option value="supervisor">Supervisor</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600 }}>Full Name *</label>
-                      <input
-                        value={addName}
-                        onChange={(e) => setAddName(e.target.value)}
-                        placeholder="e.g. Murugan S"
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600 }}>Email Address *</label>
-                      <input
-                        type="email"
-                        value={addEmail}
-                        onChange={(e) => setAddEmail(e.target.value)}
-                        placeholder="e.g. murugan@aavin.internal"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600 }}>Mobile Number (+91)</label>
-                      <input
-                        type="tel"
-                        value={addPhone}
-                        onChange={(e) => setAddPhone(e.target.value)}
-                        placeholder="9876543210"
-                        maxLength={10}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600 }}>Username (Optional)</label>
-                      <input
-                        value={addUserId}
-                        onChange={(e) => setAddUserId(e.target.value)}
-                        placeholder="e.g. namakkal_op_1"
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Password with Auto-generate */}
-              <div className="form-group">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'கடவுச்சொல்' : 'Initial Password'} *</label>
-                  <button
-                    type="button"
-                    onClick={() => setAddPassword(generateRandomPassword())}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#2563eb',
-                      fontSize: '0.75rem',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      padding: 0,
-                    }}
+              {/* Row 1: Team Dropdown & Unique User ID */}
+              <div className="form-row">
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>
+                    {lang === 'ta' ? 'குழு (Select Team)' : 'Select Team'} *
+                  </label>
+                  <select
+                    value={addTeam}
+                    onChange={(e) => handleTeamChangeInModal(e.target.value as any)}
+                    required
+                    style={{ fontWeight: 600 }}
                   >
-                    🎲 New Password
-                  </button>
+                    <option value="GATE">GATE — Vehicle Entry & Weighbridge</option>
+                    <option value="QC">QC — Quality Testing & CIP</option>
+                    <option value="UNLOADING">UNLOAD — Silo & Milk Reception</option>
+                  </select>
                 </div>
+
+                <div className="form-group">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label style={{ fontWeight: 600 }}>Unique User ID *</label>
+                    <button
+                      type="button"
+                      onClick={() => void fetchNextUserId(addTeam)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#2563eb',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        padding: 0,
+                      }}
+                    >
+                      ⚡ Auto-Generate
+                    </button>
+                  </div>
+                  <input
+                    value={addUserId}
+                    onChange={(e) => setAddUserId(e.target.value.toUpperCase())}
+                    placeholder="e.g. AV_IT_001"
+                    required
+                    style={{ fontWeight: 700, letterSpacing: '0.04em' }}
+                  />
+                  <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px', display: 'block' }}>
+                    Format example: <code>AV_IT_001</code>, <code>AV_GT_001</code>. Stored in database.
+                  </span>
+                </div>
+              </div>
+
+              {/* Row 2: Full Name */}
+              <div className="form-group">
+                <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'முழு பெயர்' : 'Full Name'} *</label>
+                <input
+                  value={addName}
+                  onChange={(e) => setAddName(e.target.value)}
+                  placeholder="e.g. Raman K"
+                  required
+                />
+              </div>
+
+              {/* Row 3: Email & Mobile Phone */}
+              <div className="form-row">
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'மின்னஞ்சல்' : 'Email Address'}</label>
+                  <input
+                    type="email"
+                    value={addEmail}
+                    onChange={(e) => setAddEmail(e.target.value)}
+                    placeholder="e.g. raman.gate@aavin.internal"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'அலைபேசி எண்' : 'Mobile Number (+91)'}</label>
+                  <input
+                    type="tel"
+                    value={addPhone}
+                    onChange={(e) => setAddPhone(e.target.value)}
+                    placeholder="9876543210"
+                    maxLength={10}
+                  />
+                </div>
+              </div>
+
+              {/* Row 4: Password (Entered directly while creating user) */}
+              <div className="form-group">
+                <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'கடவுச்சொல்' : 'Password'} *</label>
                 <div style={{ display: 'flex', gap: '0.4rem' }}>
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={addPassword}
                     onChange={(e) => setAddPassword(e.target.value)}
+                    placeholder="Enter user password (min 6 characters)"
                     required
-                    style={{ flex: 1, fontFamily: 'monospace' }}
+                    minLength={6}
+                    style={{ flex: 1 }}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="btn-secondary"
-                    style={{ padding: '0 0.65rem', fontSize: '0.8rem' }}
+                    style={{ padding: '0 0.85rem', fontSize: '0.82rem', whiteSpace: 'nowrap' }}
                   >
                     {showPassword ? '🙈 Hide' : '👁️ Show'}
                   </button>
                 </div>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '3px', display: 'block' }}>
+                  Entered directly while creating the user account.
+                </span>
               </div>
 
-              {/* Force Password Change Checkbox */}
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', color: '#475569', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={addForceChange}
-                  onChange={(e) => setAddForceChange(e.target.checked)}
-                />
-                <span>Require password change at first login</span>
-              </label>
-
               {/* Modal Buttons */}
-              <div className="modal-actions" style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <div className="modal-actions" style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
                 <button type="button" className="btn-secondary" onClick={() => setShowAddModal(false)}>
                   Cancel
                 </button>

@@ -329,7 +329,7 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
   }
 
   const normalizedSubRole = sub_role === 'supervisor' ? 'supervisor' : 'operator';
-  const tempPassword = rawPassword && rawPassword.trim().length >= 8
+  const tempPassword = rawPassword && rawPassword.trim().length >= 6
     ? rawPassword.trim()
     : generateTempPassword();
 
