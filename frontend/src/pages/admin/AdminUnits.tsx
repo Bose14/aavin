@@ -24,14 +24,12 @@ export default function AdminUnits() {
   const [units, setUnits] = useState<Unit[]>([]);
   const [loadingList, setLoadingList] = useState(true);
 
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'pending' | 'submitted' | 'inactive'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const [name, setName] = useState('');
   const [unitCode, setUnitCode] = useState('');
-  const [location, setLocation] = useState(() => settings.locations[0] ?? 'Rasipuram');
-  const [customLocation, setCustomLocation] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -65,18 +63,17 @@ export default function AdminUnits() {
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
+    if (!name.trim() || !unitCode.trim()) return;
     setError('');
     setSaving(true);
-    const chosenLocation = location === '__custom__' ? customLocation.trim() : location;
     try {
       await api.post('/units', {
         name: name.trim(),
         unit_code: unitCode.trim().toUpperCase(),
-        location: chosenLocation || undefined,
       });
       setName('');
       setUnitCode('');
-      setCustomLocation('');
+      setShowAddModal(false);
       await fetchUnits();
     } catch (err: unknown) {
       setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to create unit');
@@ -214,10 +211,15 @@ export default function AdminUnits() {
         <button
           type="button"
           className="btn btn-primary"
-          onClick={() => setShowAddForm(v => !v)}
+          onClick={() => {
+            setName('');
+            setUnitCode('');
+            setError('');
+            setShowAddModal(true);
+          }}
           style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', width: 'auto', height: '38px', padding: '0 1rem' }}
         >
-          <span>{showAddForm ? '✕ Close Form' : '+ Add New BMC'}</span>
+          <span>+ Add New BMC</span>
         </button>
       </div>
 
@@ -257,54 +259,190 @@ export default function AdminUnits() {
         </div>
       </div>
 
-      {/* Collapsible Add New BMC Form */}
-      {showAddForm && (
-        <div className="card form-card" style={{ marginBottom: '16px' }}>
-          <h2>Add New Bulk Milk Chilling Centre (BMC)</h2>
-          <form onSubmit={handleCreate} className="entry-form">
-            <div className="form-row">
-              <div className="form-group">
-                <label>BMC Name *</label>
-                <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Rasipuram BMC" required />
+      {/* Create New BMC Modal (Matching Uploaded Dialog Style) */}
+      {showAddModal && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowAddModal(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.45)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1100,
+            padding: '16px',
+          }}
+        >
+          <div
+            className="modal-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '16px',
+              maxWidth: '430px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              border: '1px solid #e2e8f0',
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
+                  Create New BMC
+                </h2>
+                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
+                  Fill in the basic BMC details to create a new chilling centre
+                </p>
               </div>
-              <div className="form-group">
-                <label>BMC Code *</label>
-                <input value={unitCode} onChange={e => setUnitCode(e.target.value)} placeholder="e.g. RNK-001" required />
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                aria-label="Close"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#94a3b8',
+                  fontSize: '20px',
+                  lineHeight: 1,
+                  padding: '4px',
+                }}
+              >
+                ✕
+              </button>
             </div>
 
-            <div className="form-row">
-              <div className="form-group">
-                <label>Location (Taluk / Village)</label>
-                <select value={location} onChange={e => setLocation(e.target.value)}>
-                  {settings.locations.map(loc => (
-                    <option key={loc} value={loc}>{loc}</option>
-                  ))}
-                  <option value="__custom__">Other (specify below)…</option>
-                </select>
-              </div>
-              {location === '__custom__' && (
-                <div className="form-group">
-                  <label>Custom Village / Taluk</label>
+            {/* Form */}
+            <form onSubmit={handleCreate}>
+              {/* BMC Name Field */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1e293b', marginBottom: '6px' }}>
+                  BMC Name <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ position: 'absolute', left: '12px', display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 21h18M3 7v14M21 7v14M6 7V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v3M9 11h2M13 11h2M9 15h2M13 15h2" />
+                    </svg>
+                  </span>
                   <input
-                    value={customLocation}
-                    onChange={e => setCustomLocation(e.target.value)}
-                    placeholder="Enter village or taluk name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Enter BMC name"
                     required
+                    style={{
+                      width: '100%',
+                      height: '42px',
+                      paddingLeft: '38px',
+                      paddingRight: '12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '14px',
+                      color: '#0f172a',
+                      outline: 'none',
+                      backgroundColor: '#ffffff',
+                    }}
                   />
                 </div>
-              )}
-            </div>
+              </div>
 
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="submit" disabled={saving} className="btn-primary">
-                {saving ? 'Creating…' : 'Create BMC'}
-              </button>
-              <button type="button" className="btn-secondary" onClick={() => setShowAddForm(false)}>
-                Cancel
-              </button>
-            </div>
-          </form>
+              {/* BMC Code Field */}
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1e293b', marginBottom: '6px' }}>
+                  BMC Code <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ position: 'absolute', left: '12px', display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="4" y1="9" x2="20" y2="9" />
+                      <line x1="4" y1="15" x2="20" y2="15" />
+                      <line x1="10" y1="3" x2="8" y2="21" />
+                      <line x1="16" y1="3" x2="14" y2="21" />
+                    </svg>
+                  </span>
+                  <input
+                    type="text"
+                    value={unitCode}
+                    onChange={(e) => setUnitCode(e.target.value)}
+                    placeholder="Enter BMC code (e.g. RNK-001)"
+                    required
+                    style={{
+                      width: '100%',
+                      height: '42px',
+                      paddingLeft: '38px',
+                      paddingRight: '12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '14px',
+                      color: '#0f172a',
+                      outline: 'none',
+                      backgroundColor: '#ffffff',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Modal Actions Footer (Image 3 Style: Cancel on Left, Create on Right) */}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '12px',
+                  justifyContent: 'space-between',
+                  paddingTop: '16px',
+                  borderTop: '1px solid #f1f5f9',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  style={{
+                    flex: 1,
+                    height: '42px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: '#ffffff',
+                    color: '#334155',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving || !name.trim() || !unitCode.trim()}
+                  style={{
+                    flex: 1,
+                    height: '42px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: '#3b82f6',
+                    color: '#ffffff',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: saving || !name.trim() || !unitCode.trim() ? 'not-allowed' : 'pointer',
+                    opacity: saving || !name.trim() || !unitCode.trim() ? 0.7 : 1,
+                  }}
+                >
+                  {saving ? 'Creating…' : 'Create BMC'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
