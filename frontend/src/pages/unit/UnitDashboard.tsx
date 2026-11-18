@@ -390,7 +390,7 @@ export default function UnitDashboard() {
                             {t.driver_name || 'Driver'}
                           </td>
                           <td style={{ padding: '8px 10px', color: '#475569' }}>
-                            {t.destination || 'Salem Dairy'}
+                            {t.destination || 'Namakkal Dairy'}
                           </td>
                           <td style={{ padding: '8px 10px' }}>
                             {isRej ? (

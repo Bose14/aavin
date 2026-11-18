@@ -749,7 +749,7 @@ router.post('/', async (req, res) => {
           dispatch_date: (req.body as any).dispatch_date || data.date,
           dispatch_time: (req.body as any).dispatch_time || data.dispatch_time,
           time_difference: (req.body as any).time_difference || null,
-          receiving_dairy: (req.body as any).receiving_dairy || 'SALEM DAIRY',
+          receiving_dairy: (req.body as any).receiving_dairy || 'NAMAKKAL DAIRY',
           seal_verified: true,
           compartments: compartments.length > 0 ? compartments : undefined,
         },
@@ -948,7 +948,7 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
     stageData.dispatch_time = payload.dispatch_time || trip.dispatch_time;
     stageData.dispatch_ampm = payload.dispatch_ampm || null;
     stageData.time_difference = payload.time_difference || null;
-    stageData.receiving_dairy = payload.receiving_dairy || 'SALEM DAIRY';
+    stageData.receiving_dairy = payload.receiving_dairy || 'NAMAKKAL DAIRY';
     updateTripFields.trip_status = 'vehicle_entered';
     if (dcNo) updateTripFields.dc_number = dcNo;
     if (payload.driver_name) updateTripFields.driver_name = payload.driver_name;

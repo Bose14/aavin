@@ -602,7 +602,7 @@ router.get('/tanker/daily-report', async (req, res) => {
   // Overview Sheet
   const overviewRows = [
     { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': 'TAMIL NADU CO-OPERATIVE MILK PRODUCERS FEDERATION (AAVIN)' },
-    { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': `Receiving Dairy: SALEM DAIRY PLANT | Report Date: ${targetDate ? formatDateDDMMYYYY(targetDate) : buildRangeTag(from, to).replace(/_/g, ' ')}` },
+    { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': `Receiving Dairy: NAMAKKAL DAIRY PLANT | Report Date: ${targetDate ? formatDateDDMMYYYY(targetDate) : buildRangeTag(from, to).replace(/_/g, ' ')}` },
     { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': `Generated At: ${formatDateDDMMYYYY(new Date().toISOString().slice(0, 10))} ${new Date().toLocaleTimeString('en-IN')}` },
     { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': '------------------------------------------------------------------------------------------------------------------------' },
     { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': `Total Tankers: ${tableRows.length} | Dispatched Volume: ${totalDispatchedL.toLocaleString('en-IN')} L | Unloaded Volume: ${totalReceivedL.toLocaleString('en-IN')} L` },
@@ -705,7 +705,7 @@ router.get('/tanker/:id', async (req, res) => {
     { 'Field': 'Tanker / Vehicle Number', 'Value': r.tanker_number || '' },
     { 'Field': 'Delivery Challan No (DC No)', 'Value': dcNo },
     { 'Field': 'Source BMC Unit', 'Value': `${u?.name || 'BMC'} (${u?.unit_code || '—'})` },
-    { 'Field': 'Destination Dairy', 'Value': r.destination || 'Salem Dairy' },
+    { 'Field': 'Destination Dairy', 'Value': r.destination || 'Namakkal Dairy' },
     { 'Field': 'Driver Name', 'Value': r.driver_name || '—' },
     { 'Field': 'Outlet Valve Seal Number', 'Value': r.seal_number || '—' },
     { 'Field': 'Dispatch Date & Time', 'Value': `${formatDateDDMMYYYY(String(r.date))} ${r.dispatch_time || ''}` },

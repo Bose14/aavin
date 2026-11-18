@@ -417,7 +417,7 @@ export default function AdminSettings() {
               </label>
               <input
                 type="text"
-                value={profile?.zones?.name || 'Salem District Co-op Milk Producers Union'}
+                value={profile?.zones?.name || 'Namakkal District Co-op Milk Producers Union'}
                 disabled
                 style={{
                   width: '100%',
@@ -517,7 +517,7 @@ export default function AdminSettings() {
               Aavin Integrated Dairy Management System (IDMS)
             </div>
             <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-              Salem Dairy Plant Edition · Current Session: {user?.email || 'admin'}
+              Namakkal Dairy Plant Edition · Current Session: {user?.email || 'admin'}
             </div>
           </div>
           <button

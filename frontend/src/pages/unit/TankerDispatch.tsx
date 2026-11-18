@@ -75,7 +75,7 @@ export default function TankerDispatch() {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   });
   const [dispatchAmPm, setDispatchAmPm] = useState<'AM' | 'PM'>('AM');
-  const [destination, setDestination] = useState(settings.destinations[0] ?? 'Salem Dairy');
+  const [destination, setDestination] = useState(settings.destinations[0] ?? 'Namakkal Dairy');
 
   // Multi-Compartment Form State
   const [compartments, setCompartments] = useState<CompartmentFormItem[]>([
@@ -290,7 +290,7 @@ export default function TankerDispatch() {
         quantity_dispatched: totalCompartmentLitres,
         dispatch_fat_pct: weightedFat > 0 ? weightedFat : undefined,
         dispatch_snf_pct: weightedSnf > 0 ? weightedSnf : undefined,
-        destination: destination || 'Salem Dairy',
+        destination: destination || 'Namakkal Dairy',
         compartments: structuredCompartments,
       });
 
@@ -425,7 +425,7 @@ export default function TankerDispatch() {
       key: 'dest',
       header: t('destination'),
       sortValue: (r) => r.destination ?? '',
-      render: (r) => <span>{r.destination || 'Salem Dairy'}</span>,
+      render: (r) => <span>{r.destination || 'Namakkal Dairy'}</span>,
     },
     {
       key: 'progress',

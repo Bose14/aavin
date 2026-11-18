@@ -236,7 +236,7 @@ export default function GateOperations() {
         entry_date: entryDate,
         entry_time: `${entryTime} ${entryAmPm}`,
         time_difference: calculatedTimeDiff,
-        receiving_dairy: 'SALEM DAIRY',
+        receiving_dairy: 'NAMAKKAL DAIRY',
       };
 
       const res = await api.post('/tanker', payload);
@@ -480,7 +480,7 @@ export default function GateOperations() {
                         dispatch_date: dispatchDate,
                         dispatch_time: `${dispatchTime} ${dispatchAmPm}`,
                         time_difference: calculatedTimeDiff,
-                        receiving_dairy: 'SALEM DAIRY',
+                        receiving_dairy: 'NAMAKKAL DAIRY',
                         seal_verified: sealVerified,
                       });
                     }}
@@ -660,7 +660,7 @@ export default function GateOperations() {
                     <div className="form-group">
                       <label style={{ fontWeight: 600, color: '#475569' }}>Receiving Dairy</label>
                       <div style={{ fontWeight: 700, color: '#1e293b', padding: '0.35rem 0' }}>
-                        SALEM DAIRY
+                        NAMAKKAL DAIRY
                       </div>
                     </div>
 
@@ -955,7 +955,7 @@ export default function GateOperations() {
               📋 Today's Gate Vehicle Register ({tankers.length} Vehicles)
             </h3>
             <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-              Salem Dairy gate entry, gross weighbridge, tare weighbridge, and exit pass issuance log
+              Namakkal Dairy gate entry, gross weighbridge, tare weighbridge, and exit pass issuance log
             </p>
           </div>
           <span style={{ fontSize: '12px', color: '#64748b' }}>

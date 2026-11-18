@@ -1277,7 +1277,7 @@ export default function AdminTeams() {
                       <input
                         value={addUserId}
                         onChange={(e) => setAddUserId(e.target.value)}
-                        placeholder="e.g. salem_op_1"
+                        placeholder="e.g. namakkal_op_1"
                       />
                     </div>
                   </div>

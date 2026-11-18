@@ -375,7 +375,7 @@ test('10. Tanker Dossier & Daily Reconciliation Export structure', async () => {
   const wbDaily = XLSX.utils.book_new();
   const summaryRows = [
     { Header: 'TAMIL NADU CO-OPERATIVE MILK PRODUCERS FEDERATION (AAVIN)' },
-    { Header: 'Receiving Dairy: SALEM DAIRY PLANT | Report Date: 18-11-2026' },
+    { Header: 'Receiving Dairy: NAMAKKAL DAIRY PLANT | Report Date: 18-11-2026' },
   ];
   const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
   XLSX.utils.book_append_sheet(wbDaily, wsSummary, 'Summary Header');

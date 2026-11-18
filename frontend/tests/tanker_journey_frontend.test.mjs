@@ -234,7 +234,7 @@ test('Frontend Plant Teams & Admin DC No integration (Gate, QC, Unloading, Admin
   assert.ok(gateSrc.includes('VEHICLE ENTRY DETAILS'), 'Gate page has VEHICLE ENTRY DETAILS heading');
   assert.ok(gateSrc.includes('DC No'), 'Gate form has DC No input');
   assert.ok(gateSrc.includes('Time Difference Between Dispatch And Entry(HH.MM)'), 'Gate form has Time Difference');
-  assert.ok(gateSrc.includes('SALEM DAIRY'), 'Gate form displays Receiving Dairy SALEM DAIRY');
+  assert.ok(gateSrc.includes('NAMAKKAL DAIRY'), 'Gate form displays Receiving Dairy NAMAKKAL DAIRY');
 
   // QC form displays DC No and quality inputs
   assert.ok(qcSrc.includes('DC #'), 'QC page displays DC No');
