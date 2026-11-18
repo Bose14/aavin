@@ -290,3 +290,28 @@ test('10. Resilient schema fallback detects missing shift/team_id column in sche
   assert.equal(isMissingSchemaError(requiredError), false);
 });
 
+test('11. Resilient check constraint fallback detects profiles_role_check violation from user screenshot', async () => {
+  const { isCheckConstraintError } = await import('../dist/lib/settingsStore.js');
+
+  // Exact PostgreSQL error from user screenshot
+  const exactUserError = {
+    message: 'new row for relation "profiles" violates check constraint "profiles_role_check"',
+    code: '23514',
+  };
+  assert.equal(isCheckConstraintError(exactUserError), true);
+
+  const genericCheckViolation = {
+    message: 'violates check constraint "profiles_shift_check"',
+    code: '23514',
+  };
+  assert.equal(isCheckConstraintError(genericCheckViolation), true);
+
+  // Missing schema errors or business validation errors should NOT match check constraint
+  const schemaError = { message: "Could not find the 'shift' column of 'profiles' in the schema cache" };
+  assert.equal(isCheckConstraintError(schemaError), false);
+
+  const duplicateError = { message: 'Unique User ID "AV_GT_001" is already taken' };
+  assert.equal(isCheckConstraintError(duplicateError), false);
+});
+
+

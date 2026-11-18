@@ -97,7 +97,19 @@ alter table profiles add column if not exists must_change_password boolean defau
 alter table profiles add column if not exists created_at timestamptz default now();
 
 -- Update role constraint to allow all plant team and administrative roles
-alter table profiles drop constraint if exists profiles_role_check;
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN (
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'profiles'::regclass AND contype = 'c' AND conname LIKE '%role%'
+    ) LOOP
+        EXECUTE 'ALTER TABLE profiles DROP CONSTRAINT IF EXISTS ' || quote_ident(r.conname);
+    END LOOP;
+END $$;
+
 alter table profiles add constraint profiles_role_check
   check (role in ('superadmin', 'admin', 'unit', 'gate', 'qc', 'unloading', 'GATE', 'QC', 'UNLOADING'));
 

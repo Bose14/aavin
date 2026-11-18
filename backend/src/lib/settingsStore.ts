@@ -82,6 +82,99 @@ export function isMissingSchemaError(err: { code?: string; message?: string } | 
   );
 }
 
+export function isCheckConstraintError(err: { code?: string; message?: string } | null | undefined): boolean {
+  if (!err) return false;
+  const code = err.code ?? '';
+  const msg = (err.message ?? '').toLowerCase();
+  return (
+    code === '23514' ||
+    msg.includes('check constraint') ||
+    msg.includes('violates check constraint') ||
+    msg.includes('profiles_role_check') ||
+    msg.includes('profiles_shift_check')
+  );
+}
+
+/**
+ * Resiliently inserts a profile into PostgreSQL.
+ * Gracefully handles legacy schemas where:
+ * 1. Columns like shift, team_id, username are missing from profiles
+ * 2. profiles_role_check only allows ('superadmin', 'admin', 'unit')
+ */
+export async function insertProfileResiliently(params: {
+  id: string;
+  role: string;
+  zone_id: string;
+  unit_id?: string | null;
+  full_name: string;
+  phone?: string | null;
+  team_id?: string | null;
+  shift?: string | null;
+  username?: string | null;
+  email?: string | null;
+  sub_role?: string | null;
+  is_active?: boolean;
+  must_change_password?: boolean;
+}): Promise<{ error: any }> {
+  const extendedObj: Record<string, unknown> = {
+    id: params.id,
+    role: params.role,
+    zone_id: params.zone_id,
+    full_name: params.full_name,
+    phone: params.phone ?? null,
+  };
+  if (params.unit_id !== undefined) extendedObj.unit_id = params.unit_id;
+  if (params.team_id !== undefined) extendedObj.team_id = params.team_id;
+  if (params.shift !== undefined) extendedObj.shift = params.shift;
+  if (params.username !== undefined) extendedObj.username = params.username;
+  if (params.email !== undefined) extendedObj.email = params.email;
+  if (params.sub_role !== undefined) extendedObj.sub_role = params.sub_role;
+  if (params.is_active !== undefined) extendedObj.is_active = params.is_active;
+  if (params.must_change_password !== undefined) extendedObj.must_change_password = params.must_change_password;
+
+  let res = await supabase.from('profiles').insert(extendedObj);
+  if (!res.error) return { error: null };
+
+  let lastErr = res.error;
+
+  // Step 2: If check constraint failed on role, retry extended insert with fallback role 'unit'
+  if (isCheckConstraintError(lastErr)) {
+    console.warn('[insertProfileResiliently] Database check constraint rejected role "' + params.role + '", retrying with fallback role "unit":', lastErr.message);
+    const withUnitRole = { ...extendedObj, role: 'unit' };
+    res = await supabase.from('profiles').insert(withUnitRole);
+    if (!res.error) return { error: null };
+    lastErr = res.error;
+  }
+
+  // Step 3: If missing schema error (columns missing in profiles table), retry with base columns
+  if (isMissingSchemaError(lastErr)) {
+    console.warn('[insertProfileResiliently] Schema columns missing, retrying with base columns:', lastErr.message);
+    const baseObj: Record<string, unknown> = {
+      id: params.id,
+      role: params.role,
+      zone_id: params.zone_id,
+      full_name: params.full_name,
+      phone: params.phone ?? null,
+    };
+    if (params.unit_id !== undefined) baseObj.unit_id = params.unit_id;
+
+    res = await supabase.from('profiles').insert(baseObj);
+    if (!res.error) return { error: null };
+    lastErr = res.error;
+
+    // Step 4: If base insert also violated role check constraint, retry base columns with role 'unit'
+    if (isCheckConstraintError(lastErr)) {
+      console.warn('[insertProfileResiliently] Base insert rejected role "' + params.role + '", retrying base with role "unit":', lastErr.message);
+      baseObj.role = 'unit';
+      res = await supabase.from('profiles').insert(baseObj);
+      if (!res.error) return { error: null };
+      lastErr = res.error;
+    }
+  }
+
+  return { error: lastErr };
+}
+
 function readFallback(): FallbackStoreData {
   try {
     if (fs.existsSync(FALLBACK_FILE)) {

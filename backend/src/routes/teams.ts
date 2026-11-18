@@ -10,6 +10,8 @@ import {
   getTankerStagesForTrips,
   writeAuditLog,
   isMissingSchemaError,
+  isCheckConstraintError,
+  insertProfileResiliently,
 } from '../lib/settingsStore';
 import { deriveTankerJourneyState } from '../lib/tankerJourney';
 import type { StageRecordItem, TankerTripInput } from '../lib/tankerJourney';
@@ -105,8 +107,7 @@ async function computeActiveUsersPerTeam(zoneId: string): Promise<Record<string,
     const initialRes = await supabase
       .from('profiles')
       .select('id, role, team_id, is_active')
-      .eq('zone_id', zoneId)
-      .in('role', ['gate', 'qc', 'unloading', 'GATE', 'QC', 'UNLOADING']);
+      .eq('zone_id', zoneId);
 
     let profiles: any[] | null = initialRes.data as any;
     let error: any = initialRes.error;
@@ -115,8 +116,7 @@ async function computeActiveUsersPerTeam(zoneId: string): Promise<Record<string,
       const fbRes = await supabase
         .from('profiles')
         .select('id, role')
-        .eq('zone_id', zoneId)
-        .in('role', ['gate', 'qc', 'unloading', 'GATE', 'QC', 'UNLOADING']);
+        .eq('zone_id', zoneId);
       profiles = fbRes.data as any;
       error = fbRes.error;
     }
@@ -125,13 +125,17 @@ async function computeActiveUsersPerTeam(zoneId: string): Promise<Record<string,
       return counts;
     }
 
-    // 2. Cross-reference with auth users for active state
+    // 2. Cross-reference with auth users for active state and team metadata
     let inactiveAuthIds = new Set<string>();
+    const teamByAuthId = new Map<string, string>();
     try {
       const { data: authData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
       for (const u of authData?.users ?? []) {
         if (u.user_metadata?.is_active === false) {
           inactiveAuthIds.add(u.id);
+        }
+        if (u.user_metadata?.team) {
+          teamByAuthId.set(u.id, String(u.user_metadata.team).toUpperCase());
         }
       }
     } catch {
@@ -142,7 +146,7 @@ async function computeActiveUsersPerTeam(zoneId: string): Promise<Record<string,
       if (p.is_active === false || inactiveAuthIds.has(p.id)) {
         continue;
       }
-      const roleUpper = (p.role || '').toUpperCase();
+      const roleUpper = teamByAuthId.get(p.id) || (p.role || '').toUpperCase();
       if (counts[roleUpper] !== undefined) {
         counts[roleUpper] += 1;
       }
@@ -242,7 +246,6 @@ router.get('/users', async (req, res) => {
       .from('profiles')
       .select('id, full_name, role, zone_id, team_id, shift, username, phone, created_at')
       .eq('zone_id', zoneId)
-      .in('role', ['gate', 'qc', 'unloading', 'GATE', 'QC', 'UNLOADING'])
       .order('created_at', { ascending: false });
 
     let profiles: any[] | null = initialRes.data as any;
@@ -253,7 +256,6 @@ router.get('/users', async (req, res) => {
         .from('profiles')
         .select('id, full_name, role, zone_id, phone, created_at')
         .eq('zone_id', zoneId)
-        .in('role', ['gate', 'qc', 'unloading', 'GATE', 'QC', 'UNLOADING'])
         .order('created_at', { ascending: false });
       profiles = fbRes.data as any;
       error = fbRes.error;
@@ -286,32 +288,37 @@ router.get('/users', async (req, res) => {
       console.warn('[teams/users] listUsers fallback:', e);
     }
 
-    let list = (profiles ?? []).map((p: any) => {
-      const roleUpper = (p.role || '').toUpperCase();
-      const meta = authById.get(p.id);
-      let teamObj = p.team_id ? teamById.get(p.team_id) : undefined;
-      if (!teamObj && meta?.team) {
-        teamObj = teamByCode.get(meta.team.toUpperCase());
-      }
-      if (!teamObj && ['GATE', 'QC', 'UNLOADING'].includes(roleUpper)) {
-        teamObj = teamByCode.get(roleUpper);
-      }
+    let list = (profiles ?? [])
+      .map((p: any) => {
+        const roleUpper = (p.role || '').toUpperCase();
+        const meta = authById.get(p.id);
+        const metaTeam = (meta?.team || '').toUpperCase();
+        let teamObj = p.team_id ? teamById.get(p.team_id) : undefined;
+        if (!teamObj && metaTeam) {
+          teamObj = teamByCode.get(metaTeam);
+        }
+        if (!teamObj && ['GATE', 'QC', 'UNLOADING'].includes(roleUpper)) {
+          teamObj = teamByCode.get(roleUpper);
+        }
 
-      return {
-        id: p.id,
-        full_name: p.full_name || '',
-        username: p.username || meta?.username || null,
-        email: meta?.email || null,
-        phone: p.phone || null,
-        role: roleUpper.toLowerCase(),
-        team_id: teamObj?.id || p.team_id || null,
-        team: teamObj ? { id: teamObj.id, code: teamObj.code, name: teamObj.name } : null,
-        shift: p.shift || meta?.shift || 'General',
-        is_active: meta?.is_active ?? (p.is_active !== false),
-        created_at: p.created_at,
-        last_sign_in_at: meta?.last_sign_in_at || null,
-      };
-    });
+        const effectiveRole = teamObj ? teamObj.code.toLowerCase() : (p.role || '').toLowerCase();
+
+        return {
+          id: p.id,
+          full_name: p.full_name || '',
+          username: p.username || meta?.username || null,
+          email: meta?.email || null,
+          phone: p.phone || null,
+          role: effectiveRole,
+          team_id: teamObj?.id || p.team_id || null,
+          team: teamObj ? { id: teamObj.id, code: teamObj.code, name: teamObj.name } : null,
+          shift: p.shift || meta?.shift || 'General',
+          is_active: meta?.is_active ?? (p.is_active !== false),
+          created_at: p.created_at,
+          last_sign_in_at: meta?.last_sign_in_at || null,
+        };
+      })
+      .filter((u) => u.team != null || ['gate', 'qc', 'unloading'].includes(u.role));
 
     if (team) {
       const tUpper = team.trim().toUpperCase();
@@ -439,7 +446,7 @@ router.post('/users', requireRole('admin', 'superadmin'), async (req, res) => {
   }
 
   const userId = authData.user.id;
-  let { error: pErr } = await supabase.from('profiles').insert({
+  const { error: pErr } = await insertProfileResiliently({
     id: userId,
     role,
     zone_id: zoneId,
@@ -448,21 +455,11 @@ router.post('/users', requireRole('admin', 'superadmin'), async (req, res) => {
     team_id: teamObj?.id || null,
     shift,
     username,
+    email,
+    sub_role: 'operator',
+    is_active: true,
+    must_change_password: force_password_change,
   });
-
-  // Resilient fallback: if database schema does not have shift/team_id/username columns yet,
-  // insert using base columns so user creation succeeds without throwing schema cache errors.
-  if (pErr && isMissingSchemaError(pErr)) {
-    console.warn('[teams/users] Extended insert failed (schema cache missing columns), retrying with base columns:', pErr.message);
-    const fallbackRes = await supabase.from('profiles').insert({
-      id: userId,
-      role,
-      zone_id: zoneId,
-      full_name,
-      phone: normalizedPhone,
-    });
-    pErr = fallbackRes.error;
-  }
 
   if (pErr) {
     await supabase.auth.admin.deleteUser(userId);
@@ -637,31 +634,22 @@ router.post('/seed-users', requireRole('admin', 'superadmin'), async (req, res) 
 
     if (existingUserId) {
       // Upsert into profiles with resilient schema fallback
-      let { error: upErr } = await supabase.from('profiles').upsert(
-        {
-          id: existingUserId,
-          role: tu.role,
-          zone_id: zoneId,
-          full_name: tu.full_name,
-          phone: tu.phone,
-          team_id: teamId || null,
-          shift: tu.shift,
-          username: tu.username,
-        },
-        { onConflict: 'id' },
-      );
-
-      if (upErr && isMissingSchemaError(upErr)) {
-        await supabase.from('profiles').upsert(
-          {
-            id: existingUserId,
-            role: tu.role,
-            zone_id: zoneId,
-            full_name: tu.full_name,
-            phone: tu.phone,
-          },
-          { onConflict: 'id' },
-        );
+      const { error: pErr } = await insertProfileResiliently({
+        id: existingUserId,
+        role: tu.role,
+        zone_id: zoneId,
+        full_name: tu.full_name,
+        phone: tu.phone,
+        team_id: teamId || null,
+        shift: tu.shift,
+        username: tu.username,
+        email: tu.email,
+        sub_role: 'operator',
+        is_active: true,
+        must_change_password: false,
+      });
+      if (pErr) {
+        console.warn(`[seed-users] Profile save note for ${tu.email}:`, pErr.message);
       }
 
       results.push({

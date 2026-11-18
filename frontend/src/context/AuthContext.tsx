@@ -89,10 +89,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const mustChange = meta.must_change_password === true || raw.must_change_password === true;
     const subRoleRaw = (raw.sub_role ?? meta.sub_role) as string | undefined;
 
+    // Resilient role resolution: if legacy database constraint stored role as 'unit',
+    // resolve true plant team role from auth metadata 'team'
+    const teamInMeta = typeof meta.team === 'string' ? meta.team.trim().toLowerCase() : undefined;
+    const resolvedRole = (teamInMeta && ['gate', 'qc', 'unloading'].includes(teamInMeta)
+      ? teamInMeta
+      : raw.role) as UserProfile['role'];
+
     setAuthError('');
     setProfile({
       id: String(raw.id),
-      role: raw.role as UserProfile['role'],
+      role: resolvedRole,
       zone_id: (raw.zone_id as string | null) ?? null,
       unit_id: (raw.unit_id as string | null) ?? null,
       full_name: (raw.full_name as string | null) ?? null,
