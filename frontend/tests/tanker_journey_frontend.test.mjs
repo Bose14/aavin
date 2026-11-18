@@ -275,4 +275,55 @@ test('Frontend BMC Dispatch Form: Lorry num, driver name, and compartment detail
   assert.ok(recordsSrc.includes('Comp'), 'Admin table has compartment count badge');
 });
 
+test('Frontend Feature Verification: 8-Feature Suite (User Creation, Gate/QC/Unload/BMC/Admin Dashboards, Exports)', () => {
+  const teamsSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/admin/AdminTeams.tsx'), 'utf8');
+  const gateSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/GateOperations.tsx'), 'utf8');
+  const qcSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/QCLab.tsx'), 'utf8');
+  const unloadSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/UnloadingBay.tsx'), 'utf8');
+  const unitDashSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/unit/UnitDashboard.tsx'), 'utf8');
+  const adminUnitsSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/admin/AdminUnits.tsx'), 'utf8');
+  const drawerSrc = fs.readFileSync(path.resolve(__dirname, '../src/components/TankerDetailDrawer.tsx'), 'utf8');
+  const adminRecordsSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/admin/AdminTankerRecords.tsx'), 'utf8');
+
+  // Feature 1: User Creation
+  assert.ok(teamsSrc.includes('AV_IT_001'), 'Feature 1: User creation generates structured user ID (e.g. AV_IT_001)');
+  assert.ok(teamsSrc.includes('GATE — Vehicle Entry & Weighbridge'), 'Feature 1: User modal has Gate team');
+  assert.ok(teamsSrc.includes('QC — Quality Testing & CIP'), 'Feature 1: User modal has QC team');
+  assert.ok(teamsSrc.includes('UNLOAD — Silo & Milk Reception'), 'Feature 1: User modal has Unloading team');
+
+  // Feature 2: Gate team Dashboard
+  assert.ok(gateSrc.includes('No.Of Vehicles In Today :'), 'Feature 2: Gate Dashboard has vehicle count');
+  assert.ok(gateSrc.includes("Today's Gate Vehicle Register"), 'Feature 2: Gate Dashboard has vehicle register table');
+
+  // Feature 3: QC team Dashboard
+  assert.ok(qcSrc.includes('Waiting for QC'), 'Feature 3: QC Dashboard has Waiting for QC KPI card');
+  assert.ok(qcSrc.includes("Today's QC Laboratory Register"), 'Feature 3: QC Dashboard has QC Laboratory Register table');
+
+  // Feature 4: Unload team Dashboard
+  assert.ok(unloadSrc.includes('Ready for Silo Reception'), 'Feature 4: Unload Dashboard has Ready for Silo Reception KPI card');
+  assert.ok(unloadSrc.includes('Total Milk Unloaded Today'), 'Feature 4: Unload Dashboard has Total Unloaded KPI card');
+  assert.ok(unloadSrc.includes("Today's Unloading Bay Reception Register"), 'Feature 4: Unload Dashboard has Reception Register table');
+
+  // Feature 5: BMC team Dashboard
+  assert.ok(unitDashSrc.includes('Outward Tanker Dispatches & Live Plant Status'), 'Feature 5: BMC Dashboard has Outward Tanker tracking section');
+  assert.ok(unitDashSrc.includes('TankerDetailDrawer'), 'Feature 5: BMC Dashboard mounts TankerDetailDrawer for viewing dossiers');
+
+  // Feature 6: BMC Admin Dashboard
+  assert.ok(adminUnitsSrc.includes('BMC Administration Dashboard'), 'Feature 6: Admin BMC has BMC Administration Dashboard');
+  assert.ok(adminUnitsSrc.includes('Total Registered BMCs'), 'Feature 6: Admin BMC has Total Registered BMCs KPI');
+  assert.ok(adminUnitsSrc.includes('Submitted Milk Today'), 'Feature 6: Admin BMC has Submitted Today KPI');
+  assert.ok(adminUnitsSrc.includes('Tankers Dispatched Today'), 'Feature 6: Admin BMC has Dispatched Tankers Today KPI');
+
+  // Feature 7: Export data of this tanker details
+  assert.ok(drawerSrc.includes('handleExportDossier'), 'Feature 7: Drawer has handleExportDossier function');
+  assert.ok(drawerSrc.includes('/export/tanker/'), 'Feature 7: Drawer triggers single tanker export endpoint');
+  assert.ok(drawerSrc.includes('Export Dossier (.xlsx)'), 'Feature 7: Drawer has Export Dossier (.xlsx) button');
+
+  // Feature 8: Create excel daily report as per requested format
+  assert.ok(adminRecordsSrc.includes('handleExportDailyReport'), 'Feature 8: Admin Tanker Records has handleExportDailyReport');
+  assert.ok(adminRecordsSrc.includes('/export/tanker/daily-report'), 'Feature 8: Admin Tanker Records triggers daily report endpoint');
+  assert.ok(adminRecordsSrc.includes('Daily Reception Report (.xlsx)'), 'Feature 8: Admin Tanker Records has Daily Reception Report button');
+});
+
+
 

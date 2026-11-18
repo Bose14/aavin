@@ -928,6 +928,126 @@ export default function GateOperations() {
         </div>
       )}
 
+      {/* Today's Gate Vehicle Register Table */}
+      <div
+        className="card"
+        style={{
+          marginTop: '20px',
+          padding: '16px 20px',
+          backgroundColor: '#ffffff',
+          borderRadius: '8px',
+          border: '1px solid #e2e8f0',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
+              📋 Today's Gate Vehicle Register ({tankers.length} Vehicles)
+            </h3>
+            <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+              Salem Dairy gate entry, gross weighbridge, tare weighbridge, and exit pass issuance log
+            </p>
+          </div>
+          <span style={{ fontSize: '12px', color: '#64748b' }}>
+            Click <strong>Select</strong> to open vehicle at gate
+          </span>
+        </div>
+
+        {tankers.length === 0 ? (
+          <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+            No vehicles registered at gate today yet.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', textAlign: 'left', color: '#475569' }}>
+                  <th style={{ padding: '8px 10px' }}>Vehicle / Tanker</th>
+                  <th style={{ padding: '8px 10px' }}>DC No</th>
+                  <th style={{ padding: '8px 10px' }}>Source BMC</th>
+                  <th style={{ padding: '8px 10px' }}>Driver</th>
+                  <th style={{ padding: '8px 10px' }}>Dispatched Qty</th>
+                  <th style={{ padding: '8px 10px' }}>Gross Wt (kg)</th>
+                  <th style={{ padding: '8px 10px' }}>Tare Wt (kg)</th>
+                  <th style={{ padding: '8px 10px' }}>Stage Status</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tankers.map((t) => {
+                  const isSel = t.id === activeTanker?.id;
+                  const dc = t.dc_number || t.stage_data?.dc_number || t.stage_data?.vehicle_entered?.dc_number || '—';
+                  const gross = t.journey?.calculated?.gross_weight_kg || t.gross_weight_kg;
+                  const tare = t.journey?.calculated?.tare_weight_kg || t.tare_weight_kg;
+                  const isGateTurn = t.journey?.waitingTeam === 'gate';
+
+                  return (
+                    <tr
+                      key={t.id}
+                      style={{
+                        borderBottom: '1px solid #f1f5f9',
+                        background: isSel ? '#f0fdf4' : 'transparent',
+                        fontWeight: isSel ? 600 : 400,
+                      }}
+                    >
+                      <td style={{ padding: '8px 10px', color: '#0f172a', fontWeight: 700 }}>
+                        {t.tanker_number}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: '#0284c7', fontWeight: 600 }}>
+                        #{dc}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: '#334155' }}>
+                        {t.units?.name || 'BMC'}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: '#475569' }}>
+                        {t.driver_name || '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: '#0f172a' }}>
+                        {formatLitres(t.quantity_dispatched)}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: gross ? '#0f172a' : '#94a3b8' }}>
+                        {gross ? `${Number(gross).toLocaleString('en-IN')}` : '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: tare ? '#0f172a' : '#94a3b8' }}>
+                        {tare ? `${Number(tare).toLocaleString('en-IN')}` : '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <span
+                          style={{
+                            background: isGateTurn ? '#eff6ff' : t.journey?.stageColor?.badgeBg || '#f1f5f9',
+                            color: isGateTurn ? '#1d4ed8' : t.journey?.stageColor?.badgeText || '#475569',
+                            border: `1px solid ${isGateTurn ? '#bfdbfe' : t.journey?.stageColor?.border || '#cbd5e1'}`,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            fontWeight: 600,
+                            fontSize: '0.72rem',
+                          }}
+                        >
+                          {isGateTurn ? `👉 ${t.journey?.currentStageTitle || 'Gate Turn'}` : t.journey?.tripStatusLabel || 'In Plant'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTankerId(t.id);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className={isSel ? 'btn-primary' : 'btn-secondary'}
+                          style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                        >
+                          {isSel ? 'Selected' : 'Select'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* 3. CREATE NEW TANKER MODAL (Matching photo header button) */}
       {showCreateModal && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">

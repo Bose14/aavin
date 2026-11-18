@@ -348,3 +348,63 @@ test('9. DC Number handling: formats into vehicle_entered summary and reflects i
   assert.ok(step0.keyDataSummary.includes('Murugan R'));
 });
 
+test('10. Tanker Dossier & Daily Reconciliation Export structure', async () => {
+  const XLSX = await import('xlsx');
+
+  // Test 1: Single Tanker Dossier Multi-Sheet Structure
+  const wbDossier = XLSX.utils.book_new();
+  const dossierRows = [
+    { Field: 'Tanker / Vehicle Number', Value: 'TN-25-DC-1234' },
+    { Field: 'Delivery Challan No (DC No)', Value: 'DC-BMC-2026-889' },
+    { Field: 'Dispatched Milk Volume', Value: '9,500 Litres' },
+  ];
+  const wsDossier = XLSX.utils.json_to_sheet(dossierRows);
+  XLSX.utils.book_append_sheet(wbDossier, wsDossier, 'Tanker Dossier');
+
+  const compRows = [
+    { 'Comp #': 1, 'Compartment Name': 'Front Barrel', 'Milk Volume (L)': 5000, 'Dipstick Level (cm)': 142.5 },
+    { 'Comp #': 2, 'Compartment Name': 'Rear Barrel', 'Milk Volume (L)': 4500, 'Dipstick Level (cm)': 138.0 },
+  ];
+  const wsComp = XLSX.utils.json_to_sheet(compRows);
+  XLSX.utils.book_append_sheet(wbDossier, wsComp, 'Compartment Breakdown');
+
+  const bufDossier = XLSX.write(wbDossier, { type: 'buffer', bookType: 'xlsx' });
+  assert.ok(Buffer.isBuffer(bufDossier) && bufDossier.length > 100, 'Dossier workbook generates binary XLSX buffer');
+
+  // Test 2: Daily Reconciliation Multi-Column Report
+  const wbDaily = XLSX.utils.book_new();
+  const summaryRows = [
+    { Header: 'TAMIL NADU CO-OPERATIVE MILK PRODUCERS FEDERATION (AAVIN)' },
+    { Header: 'Receiving Dairy: SALEM DAIRY PLANT | Report Date: 18-11-2026' },
+  ];
+  const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+  XLSX.utils.book_append_sheet(wbDaily, wsSummary, 'Summary Header');
+
+  const tableRows = [
+    {
+      'S.No': 1,
+      'Date': '18-11-2026',
+      'Tanker / Vehicle No': 'TN-25-DC-1234',
+      'DC No (BMC Invoice)': 'DC-BMC-2026-889',
+      'Source BMC': 'Rasipuram BMC',
+      'Dispatched Qty (L)': 9500,
+      'Dispatched Fat (%)': 4.5,
+      'Dispatched SNF (%)': 8.5,
+      'Gross Weight (kg)': 25200,
+      'Tare Weight (kg)': 15400,
+      'Net Milk Weight (kg)': 9800,
+      'Received Qty (L)': 9480,
+      'Transit Loss (L)': 20,
+      'Transit Loss (%)': '0.21%',
+      'QC Status': 'ACCEPTED',
+      'CIP Status': 'PASSED',
+    },
+  ];
+  const wsTable = XLSX.utils.json_to_sheet(tableRows);
+  XLSX.utils.book_append_sheet(wbDaily, wsTable, 'Daily Tanker Reception');
+
+  const bufDaily = XLSX.write(wbDaily, { type: 'buffer', bookType: 'xlsx' });
+  assert.ok(Buffer.isBuffer(bufDaily) && bufDaily.length > 100, 'Daily report workbook generates binary XLSX buffer');
+});
+
+

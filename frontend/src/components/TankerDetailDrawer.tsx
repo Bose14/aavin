@@ -34,6 +34,32 @@ export function TankerDetailDrawer({
   const [remarkText, setRemarkText] = useState('');
   const [isException, setIsException] = useState(false);
   const [savingRemark, setSavingRemark] = useState(false);
+  const [exportingDossier, setExportingDossier] = useState(false);
+
+  const handleExportDossier = async () => {
+    if (!trip?.id) return;
+    setExportingDossier(true);
+    try {
+      const res = await api.get(`/export/tanker/${trip.id}`, { responseType: 'blob' });
+      const blobUrl = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      const cleanNo = String(trip.tanker_number || 'Tanker').replace(/[^A-Za-z0-9]/g, '_');
+      link.setAttribute('download', `Tanker_${cleanNo}_Dossier.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
+      alert('Failed to export tanker dossier: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setExportingDossier(false);
+    }
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   // Close on Escape & handle Focus trap
   useEffect(() => {
@@ -224,20 +250,66 @@ export function TankerDetailDrawer({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            aria-label="Close details drawer"
-            style={{
-              border: 'none',
-              background: 'transparent',
-              fontSize: '20px',
-              cursor: 'pointer',
-              color: '#64748b',
-              padding: '4px 8px',
-            }}
-          >
-            ✕
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={handleExportDossier}
+              disabled={exportingDossier}
+              style={{
+                fontSize: '11px',
+                padding: '4px 10px',
+                borderRadius: '5px',
+                border: '1px solid #86efac',
+                backgroundColor: '#f0fdf4',
+                color: '#166534',
+                fontWeight: 700,
+                cursor: exportingDossier ? 'wait' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+              title="Export complete tanker particulars, weights, QC, and compartment breakdown as Excel"
+            >
+              {exportingDossier ? 'Exporting…' : '📥 Export Dossier (.xlsx)'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePrint}
+              style={{
+                fontSize: '11px',
+                padding: '4px 8px',
+                borderRadius: '5px',
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#ffffff',
+                color: '#334155',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '3px',
+              }}
+              title="Print official gate pass & tanker dossier"
+            >
+              🖨️ Print
+            </button>
+
+            <button
+              onClick={onClose}
+              aria-label="Close details drawer"
+              style={{
+                border: 'none',
+                background: 'transparent',
+                fontSize: '20px',
+                cursor: 'pointer',
+                color: '#64748b',
+                padding: '4px 8px',
+                marginLeft: '4px',
+              }}
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Auto Flags Notification Banner */}

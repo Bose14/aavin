@@ -27,12 +27,14 @@ export default function UnloadingBay() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.get<any[]>('/tanker', { params: { status: 'waiting' } });
-      setTankers(res.data);
-      if (res.data.length > 0) {
-        // If current selected tanker is no longer in list or not set, select first
-        if (!selectedTankerId || !res.data.some((t) => t.id === selectedTankerId)) {
-          setSelectedTankerId(res.data[0].id);
+      const res = await api.get<any[]>('/tanker');
+      const list = res.data || [];
+      setTankers(list);
+      if (list.length > 0) {
+        // Prioritize a tanker waiting on unloading
+        const unloadWaiting = list.find((t: any) => t.journey?.waitingTeam === 'unloading' || t.journey?.currentStageKey === 'unloaded');
+        if (!selectedTankerId || !list.some((t: any) => t.id === selectedTankerId)) {
+          setSelectedTankerId(unloadWaiting ? unloadWaiting.id : list[0].id);
         }
       } else {
         setSelectedTankerId('');
@@ -113,6 +115,29 @@ export default function UnloadingBay() {
   const testedSnf = qcData.received_snf_pct ?? activeTanker?.received_snf_pct ?? '—';
   const grossKg = activeTanker?.journey?.calculated?.gross_weight_kg || activeTanker?.gross_weight_kg;
 
+  // Top KPI calculations
+  const waitingForUnloadCount = tankers.filter(
+    (t) => t.journey?.waitingTeam === 'unloading' || t.journey?.currentStageKey === 'unloaded'
+  ).length;
+
+  const totalUnloadedLitresToday = tankers.reduce((sum, t) => {
+    const un = t.stage_data?.unloaded?.unloaded_litres ?? t.received_qty ?? 0;
+    return sum + Number(un || 0);
+  }, 0);
+
+  const activeSilosSet = new Set(
+    tankers
+      .map((t) => t.stage_data?.unloaded?.silo_or_bay)
+      .filter(Boolean)
+  );
+  const activeSilosCount = activeSilosSet.size;
+  const activeSilosStr = Array.from(activeSilosSet).slice(0, 3).join(', ') || 'Standby';
+
+  const unloadedTankers = tankers.filter((t) => t.stage_data?.unloaded?.unloaded_litres != null);
+  const avgLossLitres = unloadedTankers.length > 0
+    ? +(unloadedTankers.reduce((sum, t) => sum + (t.journey?.calculated?.transit_loss_litres ?? 0), 0) / unloadedTankers.length).toFixed(1)
+    : 0;
+
   return (
     <div className="page" style={{ maxWidth: '1080px', margin: '0 auto', padding: '16px' }}>
       {/* Breadcrumb matching Aavin IDMS header */}
@@ -160,6 +185,64 @@ export default function UnloadingBay() {
           <span>{successMsg}</span>
         </div>
       )}
+
+      {/* 4 Top KPI Dashboard Cards */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+          gap: '12px',
+          marginBottom: '16px',
+        }}
+      >
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #0284c7', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+          <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
+            Ready for Silo Reception
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#0284c7', marginTop: '4px' }}>
+            {waitingForUnloadCount}
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+            Awaiting hose connection
+          </div>
+        </div>
+
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #16a34a', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+          <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
+            Total Milk Unloaded Today
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#16a34a', marginTop: '4px' }}>
+            {formatLitres(totalUnloadedLitresToday)}
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+            Discharged into plant silos
+          </div>
+        </div>
+
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #8b5cf6', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+          <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
+            Active Storage Silos
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#8b5cf6', marginTop: '4px' }}>
+            {activeSilosCount} <span style={{ fontSize: '13px', fontWeight: 600, color: '#64748b' }}>({activeSilosStr})</span>
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+            Receiving raw chilled milk
+          </div>
+        </div>
+
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #0d9488', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+          <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
+            Avg Transit Loss
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: avgLossLitres > 20 ? '#dc2626' : '#0d9488', marginTop: '4px' }}>
+            {avgLossLitres > 0 ? `${avgLossLitres} L` : '0.0 L'}
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+            Per tanker dispatched
+          </div>
+        </div>
+      </div>
 
       {/* Tanker Selector Bar */}
       <div className="card" style={{ padding: '12px 16px', marginBottom: '16px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
@@ -571,6 +654,139 @@ export default function UnloadingBay() {
           {loading ? 'Loading active tankers…' : 'No tankers currently waiting in plant queue.'}
         </div>
       )}
+      {/* Today's Unloading Bay Reception Register Table */}
+      <div
+        className="card"
+        style={{
+          marginTop: '24px',
+          padding: '16px 20px',
+          backgroundColor: '#ffffff',
+          borderRadius: '8px',
+          border: '1px solid #e2e8f0',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
+              📋 Today's Unloading Bay Reception Register ({tankers.length} Tankers)
+            </h3>
+            <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+              Daily milk reception log, silo allocation, volume discharged, and transit loss
+            </p>
+          </div>
+          <span style={{ fontSize: '12px', color: '#64748b' }}>
+            Click <strong>Select</strong> to load tanker into unloading form
+          </span>
+        </div>
+
+        {tankers.length === 0 ? (
+          <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+            No tanker movements recorded today yet.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', textAlign: 'left', color: '#475569' }}>
+                  <th style={{ padding: '8px 10px' }}>Tanker / Lorry</th>
+                  <th style={{ padding: '8px 10px' }}>DC No</th>
+                  <th style={{ padding: '8px 10px' }}>Source BMC</th>
+                  <th style={{ padding: '8px 10px' }}>Dispatched Qty</th>
+                  <th style={{ padding: '8px 10px' }}>Silo / Bay</th>
+                  <th style={{ padding: '8px 10px' }}>Unloaded Qty</th>
+                  <th style={{ padding: '8px 10px' }}>Transit Variance</th>
+                  <th style={{ padding: '8px 10px' }}>Status</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tankers.map((t) => {
+                  const un = t.stage_data?.unloaded;
+                  const isSel = t.id === activeTanker?.id;
+                  const isUnloadTurn = t.journey?.waitingTeam === 'unloading' || t.journey?.currentStageKey === 'unloaded';
+                  const isQcRej = t.journey?.isQcRejected || t.qc_status === 'rejected';
+                  const isUnloadedDone = un?.unloaded_litres != null || t.received_qty != null;
+                  const disp = Number(t.quantity_dispatched || 0);
+                  const rec = Number(un?.unloaded_litres ?? t.received_qty ?? 0);
+                  const varLtr = disp > 0 && rec > 0 ? +(disp - rec).toFixed(1) : null;
+                  const varPct = disp > 0 && varLtr != null ? +((varLtr / disp) * 100).toFixed(2) : null;
+
+                  return (
+                    <tr
+                      key={t.id}
+                      style={{
+                        borderBottom: '1px solid #f1f5f9',
+                        background: isSel ? '#f0fdf4' : 'transparent',
+                        fontWeight: isSel ? 600 : 400,
+                      }}
+                    >
+                      <td style={{ padding: '8px 10px', color: '#0f172a', fontWeight: 700 }}>
+                        {t.tanker_number}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: '#0284c7', fontWeight: 600 }}>
+                        #{t.dc_number || t.stage_data?.dc_number || t.stage_data?.vehicle_entered?.dc_number || '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: '#334155' }}>
+                        {t.units?.name || 'BMC'}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: '#0f172a' }}>
+                        {formatLitres(t.quantity_dispatched)}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: un?.silo_or_bay ? '#8b5cf6' : '#94a3b8', fontWeight: un?.silo_or_bay ? 600 : 400 }}>
+                        {un?.silo_or_bay || '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: isUnloadedDone ? '#16a34a' : '#94a3b8', fontWeight: isUnloadedDone ? 700 : 400 }}>
+                        {isUnloadedDone ? formatLitres(rec) : 'Pending'}
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        {varLtr != null ? (
+                          <span style={{ color: varLtr > 25 ? '#dc2626' : varLtr > 0 ? '#d97706' : '#16a34a', fontWeight: 600 }}>
+                            {varLtr > 0 ? `-${varLtr} L` : `${Math.abs(varLtr)} L`} ({varPct}%)
+                          </span>
+                        ) : (
+                          <span style={{ color: '#94a3b8' }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        {isQcRej ? (
+                          <span style={{ background: '#fee2e2', color: '#991b1b', padding: '2px 6px', borderRadius: 4, fontWeight: 700, fontSize: '0.72rem' }}>
+                            QC REJECTED
+                          </span>
+                        ) : isUnloadTurn ? (
+                          <span style={{ background: '#dbeafe', color: '#1e40af', padding: '2px 6px', borderRadius: 4, fontWeight: 700, fontSize: '0.72rem' }}>
+                            READY TO UNLOAD
+                          </span>
+                        ) : isUnloadedDone ? (
+                          <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 6px', borderRadius: 4, fontWeight: 700, fontSize: '0.72rem' }}>
+                            UNLOADED
+                          </span>
+                        ) : (
+                          <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: 4, fontWeight: 600, fontSize: '0.72rem' }}>
+                            {t.journey?.tripStatusLabel || 'IN PLANT'}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTankerId(t.id);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className={isSel ? 'btn-primary' : 'btn-secondary'}
+                          style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                        >
+                          {isSel ? 'Selected' : 'Select'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -379,6 +379,11 @@ export default function AdminTankerRecords() {
     void triggerBlobDownload('/tanker/export/stage-wise', exportParams, `Tanker_Stage_Progression_${Date.now()}.csv`);
   };
 
+  const handleExportDailyReport = () => {
+    const todayDDMM = formatDateDDMMYYYY(new Date().toISOString().slice(0, 10));
+    void triggerBlobDownload('/export/tanker/daily-report', exportParams, `Aavin_Daily_Tanker_Report_${todayDDMM}.xlsx`);
+  };
+
   // Table Columns Definition
   const columns: DataColumn<any>[] = useMemo(() => {
     const cols: DataColumn<any>[] = [];
@@ -924,7 +929,25 @@ export default function AdminTankerRecords() {
         </div>
 
         {/* Action Buttons: Column Chooser, Exports */}
-        <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
+        <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={handleExportDailyReport}
+            className="btn btn-primary"
+            style={{
+              fontSize: '12px',
+              padding: '6px 12px',
+              backgroundColor: '#0284c7',
+              borderColor: '#0369a1',
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+            title="Download official Aavin IDMS Daily Milk & Tanker Reception Excel Report"
+          >
+            📊 Daily Reception Report (.xlsx)
+          </button>
           <button
             type="button"
             onClick={() => setShowColumnChooser(!showColumnChooser)}

@@ -34,11 +34,15 @@ export default function QCLab() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.get<any[]>('/tanker', { params: { status: 'waiting' } });
-      setTankers(res.data || []);
-      if (res.data && res.data.length > 0) {
-        if (!selectedTankerId || !res.data.some((t: any) => t.id === selectedTankerId)) {
-          setSelectedTankerId(res.data[0].id);
+      // Fetch all active plant tankers
+      const res = await api.get<any[]>('/tanker');
+      const list = res.data || [];
+      setTankers(list);
+      if (list.length > 0) {
+        // Prioritize a tanker waiting on QC
+        const qcWaiting = list.find((t: any) => t.journey?.waitingTeam === 'qc');
+        if (!selectedTankerId || !list.some((t: any) => t.id === selectedTankerId)) {
+          setSelectedTankerId(qcWaiting ? qcWaiting.id : list[0].id);
         }
       }
     } catch (err: any) {
@@ -98,6 +102,12 @@ export default function QCLab() {
     'Adulteration detected',
   ];
 
+  // QC Dashboard Counters
+  const waitingQcCount = tankers.filter((t) => t.journey?.waitingTeam === 'qc' && t.journey?.currentStageKey === 'qc_completed').length;
+  const waitingCipCount = tankers.filter((t) => t.journey?.waitingTeam === 'qc' && t.journey?.currentStageKey === 'cip_completed').length;
+  const passedCount = tankers.filter((t) => t.stage_data?.qc_completed?.qc_status === 'accepted').length;
+  const rejectedCount = tankers.filter((t) => t.stage_data?.qc_completed?.qc_status === 'rejected' || t.journey?.tripStatus === 'qc_rejected').length;
+
   return (
     <div className="page" style={{ maxWidth: '1060px', margin: '0 auto', padding: '1.25rem' }}>
       {/* 1. Header */}
@@ -135,6 +145,40 @@ export default function QCLab() {
           <button type="button" onClick={() => setSuccessMsg('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534' }}>✕</button>
         </div>
       )}
+
+      {/* QC Dashboard KPI Metric Cards */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '12px',
+          marginBottom: '1.25rem',
+        }}
+      >
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #fed7aa', borderLeft: '4px solid #ea580c', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#c2410c', textTransform: 'uppercase' }}>Waiting for QC</div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#9a3412', marginTop: '2px' }}>{waitingQcCount}</div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Sampling &amp; Quality verification</div>
+        </div>
+
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #bae6fd', borderLeft: '4px solid #0284c7', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase' }}>Awaiting CIP</div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#075985', marginTop: '2px' }}>{waitingCipCount}</div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Post-unloading sanitization</div>
+        </div>
+
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #bbf7d0', borderLeft: '4px solid #16a34a', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>QC Accepted Today</div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#14532d', marginTop: '2px' }}>{passedCount}</div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Approved for silo discharge</div>
+        </div>
+
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #fecaca', borderLeft: '4px solid #dc2626', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase' }}>QC Rejected Today</div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#7f1d1d', marginTop: '2px' }}>{rejectedCount}</div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Rerouted to weighbridge tare</div>
+        </div>
+      </div>
 
       {/* 2. Tanker Queue Selector Bar */}
       <div
@@ -651,6 +695,131 @@ export default function QCLab() {
           </div>
         </div>
       )}
+      {/* 3. QC Lab Milk Testing Register */}
+      <div
+        className="card"
+        style={{
+          marginTop: '1.5rem',
+          padding: '1.25rem',
+          background: '#ffffff',
+          borderRadius: 8,
+          border: '1px solid #cbd5e1',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
+              📋 Today's QC Laboratory Register
+            </h3>
+            <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+              All arriving plant tankers, composite quality samples, and CIP sanitization certifications
+            </p>
+          </div>
+          <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>
+            Total Tankers: <strong style={{ color: '#0284c7' }}>{tankers.length}</strong>
+          </span>
+        </div>
+
+        {tankers.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.88rem' }}>
+            No tankers recorded in the plant queue today
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}>
+                  <th style={{ padding: '8px 10px' }}>Tanker / Lorry</th>
+                  <th style={{ padding: '8px 10px' }}>DC No</th>
+                  <th style={{ padding: '8px 10px' }}>Source BMC</th>
+                  <th style={{ padding: '8px 10px' }}>Dispatched Milk</th>
+                  <th style={{ padding: '8px 10px' }}>Tested Fat %</th>
+                  <th style={{ padding: '8px 10px' }}>Tested SNF %</th>
+                  <th style={{ padding: '8px 10px' }}>QC Status</th>
+                  <th style={{ padding: '8px 10px' }}>CIP Cleaned</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tankers.map((t) => {
+                  const qc = t.stage_data?.qc_completed;
+                  const cip = t.stage_data?.cip_completed;
+                  const isSel = t.id === activeTanker?.id;
+                  const isRej = t.journey?.isQcRejected || qc?.qc_status === 'rejected';
+                  const isAcc = qc?.qc_status === 'accepted';
+                  const isCipDone = cip?.cip_status === 'pass';
+
+                  return (
+                    <tr
+                      key={t.id}
+                      style={{
+                        borderBottom: '1px solid #f1f5f9',
+                        background: isSel ? '#f0fdf4' : 'transparent',
+                        fontWeight: isSel ? 600 : 400,
+                      }}
+                    >
+                      <td style={{ padding: '8px 10px', color: '#0f172a', fontWeight: 700 }}>
+                        {t.tanker_number}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: '#0284c7', fontWeight: 600 }}>
+                        #{t.dc_number || t.stage_data?.dc_number || t.stage_data?.vehicle_entered?.dc_number || '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: '#334155' }}>
+                        {t.units?.name || 'BMC'}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: '#0f172a' }}>
+                        {formatLitres(t.quantity_dispatched)}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: qc?.received_fat_pct ? '#047857' : '#94a3b8' }}>
+                        {qc?.received_fat_pct != null ? `${Number(qc.received_fat_pct).toFixed(2)}%` : '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: qc?.received_snf_pct ? '#047857' : '#94a3b8' }}>
+                        {qc?.received_snf_pct != null ? `${Number(qc.received_snf_pct).toFixed(2)}%` : '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        {isRej ? (
+                          <span style={{ background: '#fee2e2', color: '#991b1b', padding: '2px 6px', borderRadius: 4, fontWeight: 700, fontSize: '0.72rem' }}>
+                            REJECTED
+                          </span>
+                        ) : isAcc ? (
+                          <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 6px', borderRadius: 4, fontWeight: 700, fontSize: '0.72rem' }}>
+                            ACCEPTED
+                          </span>
+                        ) : (
+                          <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: 4, fontWeight: 600, fontSize: '0.72rem' }}>
+                            {t.journey?.waitingTeam === 'qc' ? 'WAITING QC' : t.journey?.tripStatusLabel}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        {isCipDone ? (
+                          <span style={{ color: '#0891b2', fontWeight: 700 }}>✓ Done</span>
+                        ) : (
+                          <span style={{ color: '#94a3b8' }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTankerId(t.id);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className={isSel ? 'btn-primary' : 'btn-secondary'}
+                          style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                        >
+                          {isSel ? 'Selected' : 'Select'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

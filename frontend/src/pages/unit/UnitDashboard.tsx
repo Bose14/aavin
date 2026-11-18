@@ -18,6 +18,7 @@ import type { CollectionTrendDatum } from '../../components/CollectionCharts';
 import { DailyProfitLossChart } from '../../components/ProfitLossChart';
 import type { DailyProfitDatum } from '../../components/ProfitLossChart';
 import { ChartSkeleton, ErrorBanner, StatsGridSkeleton, StatusBadge } from '../../components/UiPrimitives';
+import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
 
 interface Stats {
   quantity: number;
@@ -60,6 +61,9 @@ export default function UnitDashboard() {
 
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [trend, setTrend] = useState<TrendPoint[]>([]);
+  const [tankers, setTankers] = useState<any[]>([]);
+  const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -72,12 +76,14 @@ export default function UnitDashboard() {
         params.from = appliedCustom.from;
         params.to = appliedCustom.to;
       }
-      const [s, tr] = await Promise.all([
+      const [s, tr, tk] = await Promise.all([
         api.get<SummaryResponse>('/analytics/summary', { params }),
         api.get<TrendPoint[]>('/analytics/trend', { params }),
+        api.get<any[]>('/tanker', { params: { status: 'all' } }).catch(() => ({ data: [] })),
       ]);
       setSummary(s.data);
       setTrend(tr.data);
+      setTankers(tk.data || []);
     } catch (err: unknown) {
       setError((err as Error)?.message || 'Failed to load dashboard metrics. Please check your connection.');
     } finally {
@@ -287,6 +293,149 @@ export default function UnitDashboard() {
             ) : null}
           </div>
 
+          {/* Outward Tanker Dispatches & Live Plant Status */}
+          <div
+            className="card"
+            style={{
+              marginTop: '16px',
+              marginBottom: '16px',
+              padding: '16px 20px',
+              backgroundColor: '#ffffff',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>🥛</span> Outward Tanker Dispatches &amp; Live Plant Status ({tankers.length})
+                </h2>
+                <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                  Track your dispatched milk tankers, DC delivery challans, and real-time dairy reception stages
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-primary btn-sm"
+                onClick={() => navigate('/unit/tanker')}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px' }}
+              >
+                <span>+</span> Dispatch Tanker
+              </button>
+            </div>
+
+            {tankers.length === 0 ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                No tankers dispatched yet during this period.{' '}
+                <button
+                  type="button"
+                  onClick={() => navigate('/unit/tanker')}
+                  style={{ background: 'none', border: 'none', color: '#0284c7', fontWeight: 600, cursor: 'pointer', padding: 0 }}
+                >
+                  Create first tanker dispatch
+                </button>
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', textAlign: 'left', color: '#475569' }}>
+                      <th style={{ padding: '8px 10px' }}>Date</th>
+                      <th style={{ padding: '8px 10px' }}>Tanker / Lorry</th>
+                      <th style={{ padding: '8px 10px' }}>DC No</th>
+                      <th style={{ padding: '8px 10px' }}>Dispatched Litres</th>
+                      <th style={{ padding: '8px 10px' }}>Compartments</th>
+                      <th style={{ padding: '8px 10px' }}>Driver</th>
+                      <th style={{ padding: '8px 10px' }}>Destination</th>
+                      <th style={{ padding: '8px 10px' }}>Plant Stage</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right' }}>Dossier</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tankers.slice(0, 10).map((t) => {
+                      const j = t.journey;
+                      const isRej = j?.isQcRejected || t.qc_status === 'rejected';
+                      const dc = t.dc_number || t.stage_data?.dc_number || t.stage_data?.vehicle_entered?.dc_number || '—';
+                      const comps = t.compartments || j?.compartments || t.stage_data?.compartments || [];
+                      const compCount = comps.length > 0 ? comps.length : 1;
+
+                      return (
+                        <tr
+                          key={t.id}
+                          style={{
+                            borderBottom: '1px solid #f1f5f9',
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => {
+                            setSelectedTrip(t);
+                            setDrawerOpen(true);
+                          }}
+                        >
+                          <td style={{ padding: '8px 10px', color: '#64748b' }}>
+                            {formatDateDDMMYYYY(t.date)}
+                          </td>
+                          <td style={{ padding: '8px 10px', color: '#0f172a', fontWeight: 700 }}>
+                            {t.tanker_number}
+                          </td>
+                          <td style={{ padding: '8px 10px', color: '#0284c7', fontWeight: 600 }}>
+                            #{dc}
+                          </td>
+                          <td style={{ padding: '8px 10px', color: '#0f172a', fontWeight: 600 }}>
+                            {formatLitres(t.quantity_dispatched)}
+                          </td>
+                          <td style={{ padding: '8px 10px', color: '#475569' }}>
+                            {compCount} {compCount === 1 ? 'comp' : 'comps'}
+                          </td>
+                          <td style={{ padding: '8px 10px', color: '#334155' }}>
+                            {t.driver_name || 'Driver'}
+                          </td>
+                          <td style={{ padding: '8px 10px', color: '#475569' }}>
+                            {t.destination || 'Salem Dairy'}
+                          </td>
+                          <td style={{ padding: '8px 10px' }}>
+                            {isRej ? (
+                              <span style={{ background: '#fee2e2', color: '#991b1b', padding: '2px 6px', borderRadius: 4, fontWeight: 700, fontSize: '0.72rem' }}>
+                                QC REJECTED
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  background: j?.stageColor?.badgeBg || '#e0f2fe',
+                                  color: j?.stageColor?.badgeText || '#0369a1',
+                                  border: `1px solid ${j?.stageColor?.border || '#bae6fd'}`,
+                                  padding: '2px 6px',
+                                  borderRadius: 4,
+                                  fontWeight: 600,
+                                  fontSize: '0.72rem',
+                                }}
+                              >
+                                {j?.tripStatusLabel || 'Dispatched'}
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedTrip(t);
+                                setDrawerOpen(true);
+                              }}
+                            >
+                              View Dossier
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           <MilkCollectionTrendChart
             data={trend}
             mode="unit"
@@ -312,6 +461,15 @@ export default function UnitDashboard() {
           )}
         </>
       ) : null}
+
+      {/* Tanker Dossier Drawer for BMC staff */}
+      <TankerDetailDrawer
+        isOpen={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        trip={selectedTrip}
+        onTripUpdated={fetchData}
+        isAdmin={false}
+      />
     </div>
   );
 }

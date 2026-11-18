@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import api from '../../lib/api';
 import { useZoneSettings } from '../../hooks/useZoneSettings';
@@ -22,7 +22,12 @@ interface Unit {
 export default function AdminUnits() {
   const { settings } = useZoneSettings();
   const [units, setUnits] = useState<Unit[]>([]);
+  const [tankersTodayCount, setTankersTodayCount] = useState(0);
   const [loadingList, setLoadingList] = useState(true);
+
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'pending' | 'submitted' | 'inactive'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [name, setName] = useState('');
   const [unitCode, setUnitCode] = useState('');
@@ -40,18 +45,24 @@ export default function AdminUnits() {
   const [toggleTarget, setToggleTarget] = useState<Unit | null>(null);
   const [toggling, setToggling] = useState(false);
 
+  const todayISO = getLocalTodayIso();
+
   const fetchUnits = useCallback(async () => {
     setLoadingList(true);
     setError('');
     try {
-      const res = await api.get<Unit[]>('/units');
-      setUnits(res.data);
+      const [resUnits, resTankers] = await Promise.all([
+        api.get<Unit[]>('/units'),
+        api.get<any[]>('/tanker', { params: { date: todayISO } }).catch(() => ({ data: [] })),
+      ]);
+      setUnits(resUnits.data);
+      setTankersTodayCount((resTankers.data || []).length);
     } catch (err: unknown) {
       setError((err as Error)?.message || 'Failed to load units');
     } finally {
       setLoadingList(false);
     }
-  }, []);
+  }, [todayISO]);
 
   useEffect(() => {
     void fetchUnits();
@@ -119,8 +130,27 @@ export default function AdminUnits() {
     }
   };
 
-  const todayISO = getLocalTodayIso();
-  const missingTodayCount = units.filter(u => u.is_active && !u.submitted_today).length;
+  const totalBMCs = units.length;
+  const activeBMCs = units.filter(u => u.is_active).length;
+  const submittedTodayCount = units.filter(u => u.is_active && u.submitted_today).length;
+  const pendingTodayCount = activeBMCs - submittedTodayCount;
+
+  const filteredUnits = useMemo(() => {
+    return units.filter((u) => {
+      if (statusFilter === 'active' && !u.is_active) return false;
+      if (statusFilter === 'inactive' && u.is_active) return false;
+      if (statusFilter === 'submitted' && (!u.is_active || !u.submitted_today)) return false;
+      if (statusFilter === 'pending' && (!u.is_active || u.submitted_today)) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchName = u.name.toLowerCase().includes(q);
+        const matchCode = u.unit_code.toLowerCase().includes(q);
+        const matchLoc = (u.location || '').toLowerCase().includes(q);
+        if (!matchName && !matchCode && !matchLoc) return false;
+      }
+      return true;
+    });
+  }, [units, statusFilter, searchQuery]);
 
   const columns: DataColumn<Unit>[] = [
     {
@@ -179,72 +209,217 @@ export default function AdminUnits() {
 
   return (
     <div className="page">
-      <div className="page-header">
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1>Manage BMCs</h1>
+          <h1>BMC Administration Dashboard</h1>
           <p className="page-subtitle">
-            Create, edit, and monitor Bulk Milk Chilling Centres (BMCs) in your zone
-            {missingTodayCount > 0 && ` · ${missingTodayCount} active BMC(s) pending today`}
+            Monitor Bulk Milk Chilling Centres (BMCs), daily procurement reporting, and outward tanker dispatches
           </p>
         </div>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={() => setShowAddForm(v => !v)}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          <span>{showAddForm ? '✕ Close Form' : '+ Add New BMC'}</span>
+        </button>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={fetchUnits} />}
 
-      <div className="card form-card">
-        <h2>Add New BMC</h2>
-        <form onSubmit={handleCreate} className="entry-form">
-          <div className="form-row">
-            <div className="form-group">
-              <label>BMC Name</label>
-              <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Rasipuram" required />
-            </div>
-            <div className="form-group">
-              <label>BMC Code</label>
-              <input value={unitCode} onChange={e => setUnitCode(e.target.value)} placeholder="e.g. RNK-001" required />
-            </div>
+      {/* 4 Top KPI Dashboard Cards */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+          gap: '12px',
+          marginBottom: '16px',
+        }}
+      >
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #0284c7', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+          <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
+            Total Registered BMCs
           </div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#0284c7', marginTop: '4px' }}>
+            {totalBMCs}
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+            Bulk milk chilling centres
+          </div>
+        </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label>Location (Taluk / Village)</label>
-              <select value={location} onChange={e => setLocation(e.target.value)}>
-                {settings.locations.map(loc => (
-                  <option key={loc} value={loc}>{loc}</option>
-                ))}
-                <option value="__custom__">Other (specify below)…</option>
-              </select>
-            </div>
-            {location === '__custom__' && (
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #16a34a', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+          <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
+            Active BMCs
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#16a34a', marginTop: '4px' }}>
+            {activeBMCs} <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>({totalBMCs > 0 ? Math.round((activeBMCs / totalBMCs) * 100) : 0}%)</span>
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+            Operational units in zone
+          </div>
+        </div>
+
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #f59e0b', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+          <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
+            Submitted Milk Today
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: pendingTodayCount > 0 ? '#d97706' : '#16a34a', marginTop: '4px' }}>
+            {submittedTodayCount} of {activeBMCs}
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+            {pendingTodayCount > 0 ? `${pendingTodayCount} BMC(s) pending today` : 'All BMCs reported today!'}
+          </div>
+        </div>
+
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #8b5cf6', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+          <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
+            Tankers Dispatched Today
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#8b5cf6', marginTop: '4px' }}>
+            {tankersTodayCount}
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+            Dispatched to plant gates
+          </div>
+        </div>
+      </div>
+
+      {/* Collapsible Add New BMC Form */}
+      {showAddForm && (
+        <div className="card form-card" style={{ marginBottom: '16px' }}>
+          <h2>Add New Bulk Milk Chilling Centre (BMC)</h2>
+          <form onSubmit={handleCreate} className="entry-form">
+            <div className="form-row">
               <div className="form-group">
-                <label>Custom Village / Taluk</label>
-                <input
-                  value={customLocation}
-                  onChange={e => setCustomLocation(e.target.value)}
-                  placeholder="Enter village or taluk name"
-                  required
-                />
+                <label>BMC Name *</label>
+                <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Rasipuram BMC" required />
               </div>
-            )}
+              <div className="form-group">
+                <label>BMC Code *</label>
+                <input value={unitCode} onChange={e => setUnitCode(e.target.value)} placeholder="e.g. RNK-001" required />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Location (Taluk / Village)</label>
+                <select value={location} onChange={e => setLocation(e.target.value)}>
+                  {settings.locations.map(loc => (
+                    <option key={loc} value={loc}>{loc}</option>
+                  ))}
+                  <option value="__custom__">Other (specify below)…</option>
+                </select>
+              </div>
+              {location === '__custom__' && (
+                <div className="form-group">
+                  <label>Custom Village / Taluk</label>
+                  <input
+                    value={customLocation}
+                    onChange={e => setCustomLocation(e.target.value)}
+                    placeholder="Enter village or taluk name"
+                    required
+                  />
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="submit" disabled={saving} className="btn-primary">
+                {saving ? 'Creating…' : 'Create BMC'}
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => setShowAddForm(false)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Filter and Search Bar */}
+      <div className="card" style={{ padding: '12px 16px', marginBottom: '16px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginRight: '4px' }}>Filter:</span>
+            <button
+              type="button"
+              className={statusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}
+              style={{ fontSize: '12px', padding: '4px 10px' }}
+              onClick={() => setStatusFilter('all')}
+            >
+              All ({units.length})
+            </button>
+            <button
+              type="button"
+              className={statusFilter === 'active' ? 'btn-primary' : 'btn-secondary'}
+              style={{ fontSize: '12px', padding: '4px 10px' }}
+              onClick={() => setStatusFilter('active')}
+            >
+              Active ({activeBMCs})
+            </button>
+            <button
+              type="button"
+              className={statusFilter === 'pending' ? 'btn-primary' : 'btn-secondary'}
+              style={{ fontSize: '12px', padding: '4px 10px' }}
+              onClick={() => setStatusFilter('pending')}
+            >
+              Pending Today ({pendingTodayCount})
+            </button>
+            <button
+              type="button"
+              className={statusFilter === 'submitted' ? 'btn-primary' : 'btn-secondary'}
+              style={{ fontSize: '12px', padding: '4px 10px' }}
+              onClick={() => setStatusFilter('submitted')}
+            >
+              Submitted Today ({submittedTodayCount})
+            </button>
+            <button
+              type="button"
+              className={statusFilter === 'inactive' ? 'btn-primary' : 'btn-secondary'}
+              style={{ fontSize: '12px', padding: '4px 10px' }}
+              onClick={() => setStatusFilter('inactive')}
+            >
+              Inactive ({units.length - activeBMCs})
+            </button>
           </div>
 
-          <button type="submit" disabled={saving} className="btn-primary">
-            {saving ? 'Creating…' : 'Create Unit'}
-          </button>
-        </form>
+          <div style={{ minWidth: '220px' }}>
+            <input
+              type="search"
+              placeholder="🔍 Search BMC name, code, village…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '6px 10px',
+                fontSize: '12px',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+              }}
+            />
+          </div>
+        </div>
       </div>
 
       <div className="card table-card">
-        <h2>All BMCs in Your Zone</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <h2 style={{ margin: 0, fontSize: '16px' }}>All BMCs in Your Zone ({filteredUnits.length})</h2>
+          {pendingTodayCount > 0 && (
+            <span style={{ fontSize: '12px', color: '#d97706', fontWeight: 600 }}>
+              ⚠️ {pendingTodayCount} active BMC(s) have not submitted today's milk procurement
+            </span>
+          )}
+        </div>
         {loadingList ? (
           <TableSkeleton rows={4} cols={7} />
         ) : (
           <DataTable
-            rows={units}
+            rows={filteredUnits}
             columns={columns}
             getRowKey={u => u.id}
             getRowClassName={u => (u.is_active && !u.submitted_today ? 'row-warn' : '')}
-            emptyMessage="No BMCs created yet. Add your first bulk milk chilling centre above."
+            emptyMessage="No BMCs found matching your filter or search."
           />
         )}
       </div>
