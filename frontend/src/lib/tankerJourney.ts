@@ -101,6 +101,19 @@ export interface AutoFlagBadge {
   tone: 'amber' | 'red';
 }
 
+export interface CompartmentDetail {
+  compartment_no: number;
+  compartment_name: string;
+  quantity_litres: number;
+  capacity_litres?: number | null;
+  fat_pct?: number | null;
+  snf_pct?: number | null;
+  dipstick_cm?: number | null;
+  seal_number?: string | null;
+  milk_type?: string | null;
+  temperature?: number | null;
+}
+
 export interface DerivedTankerJourney {
   tripStatus: TripStatus;
   tripStatusLabel: string;
@@ -116,6 +129,7 @@ export interface DerivedTankerJourney {
   qcRejectionReason: string | null;
   timelineSteps: DerivedTimelineStep[];
   completedStepsCount: number;
+  compartments?: CompartmentDetail[];
   calculated: {
     gross_weight_kg: number | null;
     tare_weight_kg: number | null;
@@ -146,6 +160,7 @@ export interface TankerTripInput {
   receipt_time?: string | null;
   received_fat_pct?: number | null;
   received_snf_pct?: number | null;
+  compartments?: CompartmentDetail[];
   trip_status?: TripStatus;
   stage_data?: Record<string, unknown>;
   stages?: StageRecordItem[];
@@ -616,6 +631,12 @@ export function deriveTankerJourneyState(
   const waitingTeamLabel = waitingTeam === 'gate' ? 'Gate' : waitingTeam === 'qc' ? 'QC Lab' : waitingTeam === 'unloading' ? 'Unloading' : waitingTeam === 'transit' ? 'On the way' : 'None';
   const currentIdx = TANKER_STAGES.findIndex(s => s.key === currentStageKey);
 
+  const compartments =
+    (trip.compartments as CompartmentDetail[]) ||
+    ((trip.stage_data as any)?.compartments as CompartmentDetail[]) ||
+    ((trip.stage_data as any)?.vehicle_entered?.compartments as CompartmentDetail[]) ||
+    [];
+
   return {
     tripStatus,
     tripStatusLabel: stageColor.label,
@@ -631,6 +652,7 @@ export function deriveTankerJourneyState(
     qcRejectionReason,
     timelineSteps,
     completedStepsCount: completedCount,
+    compartments: compartments.length > 0 ? compartments : undefined,
     calculated,
     autoFlags,
   };

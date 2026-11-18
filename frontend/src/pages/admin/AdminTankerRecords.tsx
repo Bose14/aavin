@@ -428,12 +428,31 @@ export default function AdminTankerRecords() {
         key: 'tanker',
         header: 'Tanker / Seal',
         sortValue: (r) => r.tanker_number,
-        searchValue: (r) => `${r.tanker_number} ${r.seal_number} ${r.dc_number || r.stage_data?.dc_number || ''}`,
+        searchValue: (r) => `${r.tanker_number} ${r.driver_name || ''} ${r.seal_number || ''} ${r.dc_number || r.stage_data?.dc_number || ''}`,
         render: (r) => {
           const dcNo = r.dc_number || r.stage_data?.dc_number || r.stage_data?.vehicle_entered?.dc_number;
+          const comps = r.compartments || r.journey?.compartments || r.stage_data?.compartments;
           return (
             <div>
-              <div style={{ fontWeight: 700, color: '#0f172a' }}>{r.tanker_number}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontWeight: 700, color: '#0f172a' }}>{r.tanker_number}</span>
+                {comps && comps.length > 0 && (
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      backgroundColor: '#dcfce7',
+                      color: '#15803d',
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      border: '1px solid #bbf7d0',
+                    }}
+                    title={comps.map((c: any) => `${c.compartment_name || 'Comp'}: ${c.quantity_litres}L`).join(', ')}
+                  >
+                    {comps.length} Comp
+                  </span>
+                )}
+              </div>
               {dcNo && (
                 <div style={{ fontSize: '11px', color: '#0284c7', fontWeight: 600 }}>
                   DC #{dcNo}

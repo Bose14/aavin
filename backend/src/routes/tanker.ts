@@ -118,6 +118,12 @@ function enrichTankerRow(row: Record<string, unknown>, stages?: StageRecordItem[
     (stages?.find((s) => s.stage_name === 'vehicle_entered')?.stage_data as any)?.dc_number ||
     null;
 
+  const compartments =
+    (row.compartments as any[]) ||
+    (row.stage_data as any)?.compartments ||
+    (row.stage_data as any)?.vehicle_entered?.compartments ||
+    [];
+
   const tripInput: TankerTripInput = {
     id: String(row.id),
     date: String(row.date),
@@ -142,6 +148,7 @@ function enrichTankerRow(row: Record<string, unknown>, stages?: StageRecordItem[
     stages: stages || [],
     created_at: (row.created_at as string) || undefined,
     dc_number: dcNumber,
+    compartments,
   };
 
   const journey = deriveTankerJourneyState(tripInput, settings);
@@ -162,6 +169,7 @@ function enrichTankerRow(row: Record<string, unknown>, stages?: StageRecordItem[
   return {
     ...row,
     dc_number: dcNumber,
+    compartments,
     stages: journey.timelineSteps,
     journey,
     transit_loss_qty: transitLoss,
@@ -613,10 +621,39 @@ router.post('/', async (req, res) => {
     destination?: string;
     dispatch_fat_pct?: number;
     dispatch_snf_pct?: number;
+    compartments?: any[];
+    driver_phone?: string;
   };
 
-  if (!date || !tanker_number || !quantity_dispatched || Number(quantity_dispatched) <= 0) {
-    res.status(400).json({ error: 'date, tanker_number and positive quantity_dispatched required' });
+  const rawCompartments = (req.body as any).compartments;
+  const compartments = Array.isArray(rawCompartments) ? rawCompartments : [];
+
+  let computedQty = Number(quantity_dispatched || 0);
+  if ((!computedQty || computedQty <= 0) && compartments.length > 0) {
+    computedQty = compartments.reduce((sum: number, c: any) => sum + Number(c.quantity_litres || 0), 0);
+  }
+
+  let computedFat = dispatch_fat_pct != null && String(dispatch_fat_pct) !== '' ? Number(dispatch_fat_pct) : null;
+  let computedSnf = dispatch_snf_pct != null && String(dispatch_snf_pct) !== '' ? Number(dispatch_snf_pct) : null;
+
+  if (computedFat == null && compartments.length > 0) {
+    const totalWithFat = compartments.reduce((sum: number, c: any) => sum + (c.fat_pct != null ? Number(c.quantity_litres || 0) : 0), 0);
+    if (totalWithFat > 0) {
+      const sumFat = compartments.reduce((sum: number, c: any) => sum + (c.fat_pct != null ? Number(c.quantity_litres || 0) * Number(c.fat_pct) : 0), 0);
+      computedFat = +(sumFat / totalWithFat).toFixed(2);
+    }
+  }
+
+  if (computedSnf == null && compartments.length > 0) {
+    const totalWithSnf = compartments.reduce((sum: number, c: any) => sum + (c.snf_pct != null ? Number(c.quantity_litres || 0) : 0), 0);
+    if (totalWithSnf > 0) {
+      const sumSnf = compartments.reduce((sum: number, c: any) => sum + (c.snf_pct != null ? Number(c.quantity_litres || 0) * Number(c.snf_pct) : 0), 0);
+      computedSnf = +(sumSnf / totalWithSnf).toFixed(2);
+    }
+  }
+
+  if (!date || !tanker_number || !computedQty || Number(computedQty) <= 0) {
+    res.status(400).json({ error: 'date, tanker_number and positive quantity_dispatched (or compartment quantities) required' });
     return;
   }
 
@@ -629,8 +666,8 @@ router.post('/', async (req, res) => {
   let stockWarning: string | null = null;
   try {
     const stock = await computeAvailableStock(req.profile.zone_id, unit_id);
-    if (Number(quantity_dispatched) > stock.available_stock_qty) {
-      stockWarning = `Dispatched quantity (${Number(quantity_dispatched).toFixed(1)} L) exceeds available stock (${stock.available_stock_qty.toFixed(1)} L).`;
+    if (Number(computedQty) > stock.available_stock_qty) {
+      stockWarning = `Dispatched quantity (${Number(computedQty).toFixed(1)} L) exceeds available stock (${stock.available_stock_qty.toFixed(1)} L).`;
     }
   } catch {
     // non-fatal check
@@ -638,6 +675,13 @@ router.post('/', async (req, res) => {
 
   const dcNo = ((req.body as any).dc_number || (req.body as any).dc_no)?.trim() || null;
   const shouldRecordEntry = Boolean((req.body as any).record_vehicle_entered);
+
+  const stageData: Record<string, any> = {
+    ...(dcNo ? { dc_number: dcNo } : {}),
+    ...(compartments.length > 0 ? { compartments } : {}),
+    ...((req.body as any).driver_phone ? { driver_phone: String((req.body as any).driver_phone).trim() } : {}),
+    ...((req.body as any).dispatch_ampm ? { dispatch_ampm: (req.body as any).dispatch_ampm } : {}),
+  };
 
   const extendedInsert = {
     unit_id,
@@ -647,13 +691,13 @@ router.post('/', async (req, res) => {
     driver_name: driver_name?.trim() || null,
     seal_number: seal_number?.trim() || null,
     dispatch_time: dispatch_time || null,
-    quantity_dispatched: +Number(quantity_dispatched).toFixed(2),
+    quantity_dispatched: +Number(computedQty).toFixed(2),
     destination: destination?.trim() || null,
-    dispatch_fat_pct: dispatch_fat_pct != null && String(dispatch_fat_pct) !== '' ? +Number(dispatch_fat_pct).toFixed(2) : null,
-    dispatch_snf_pct: dispatch_snf_pct != null && String(dispatch_snf_pct) !== '' ? +Number(dispatch_snf_pct).toFixed(2) : null,
+    dispatch_fat_pct: computedFat != null && String(computedFat) !== '' ? +Number(computedFat).toFixed(2) : null,
+    dispatch_snf_pct: computedSnf != null && String(computedSnf) !== '' ? +Number(computedSnf).toFixed(2) : null,
     trip_status: shouldRecordEntry ? 'vehicle_entered' : 'on_the_way',
     dc_number: dcNo,
-    stage_data: dcNo ? { dc_number: dcNo } : {},
+    stage_data: stageData,
     created_by: req.user.id,
   };
 
@@ -707,6 +751,7 @@ router.post('/', async (req, res) => {
           time_difference: (req.body as any).time_difference || null,
           receiving_dairy: (req.body as any).receiving_dairy || 'SALEM DAIRY',
           seal_verified: true,
+          compartments: compartments.length > 0 ? compartments : undefined,
         },
         done_by: req.user.id,
         done_by_name: req.profile.full_name ?? req.user.email ?? 'Gate Operator',

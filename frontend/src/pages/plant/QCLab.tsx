@@ -229,6 +229,51 @@ export default function QCLab() {
             </div>
           </div>
 
+          {/* Lorry Compartment Summary if present */}
+          {(() => {
+            const comps =
+              activeTanker.compartments ||
+              journey.compartments ||
+              activeTanker.stage_data?.compartments ||
+              [];
+            if (!comps || comps.length === 0) return null;
+            return (
+              <div
+                style={{
+                  marginBottom: '1rem',
+                  padding: '8px 12px',
+                  borderRadius: 6,
+                  backgroundColor: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  fontSize: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <strong style={{ color: '#166534' }}>🥛 Lorry Compartments ({comps.length}):</strong>
+                {comps.map((c: any, i: number) => (
+                  <span
+                    key={i}
+                    style={{
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #86efac',
+                      borderRadius: 4,
+                      padding: '2px 6px',
+                      color: '#15803d',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {c.compartment_name || `Comp ${i + 1}`}: {c.quantity_litres} L
+                    {c.fat_pct ? ` (Fat: ${c.fat_pct}%, SNF: ${c.snf_pct}%)` : ''}
+                    {c.seal_number ? ` [Seal: ${c.seal_number}]` : ''}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
+
           {/* QC Action Form depending on journey state */}
           <div
             className="card"

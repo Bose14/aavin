@@ -265,6 +265,87 @@ export function TankerDetailDrawer({
 
         {/* Body Content - Stage Timeline with calculations */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+          {/* Compartment Details Section if present */}
+          {(() => {
+            const compartments =
+              (trip.compartments as any[]) ||
+              journey.compartments ||
+              (trip.stage_data as any)?.compartments ||
+              (trip.stage_data as any)?.vehicle_entered?.compartments ||
+              [];
+
+            if (!compartments || compartments.length === 0) return null;
+
+            return (
+              <div
+                style={{
+                  marginBottom: '16px',
+                  padding: '12px 14px',
+                  borderRadius: '8px',
+                  backgroundColor: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#166534', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>🥛</span>
+                    <span>Lorry Compartment Details ({compartments.length} Compartments)</span>
+                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#15803d' }}>
+                    Total: {formatLitres(trip.quantity_dispatched)}
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
+                  {compartments.map((comp: any, idx: number) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '6px',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #dcfce7',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>
+                          {comp.compartment_name || `Compartment ${comp.compartment_no || idx + 1}`}
+                        </span>
+                        <strong style={{ fontSize: '13px', color: '#16a34a' }}>
+                          {formatLitres(comp.quantity_litres)}
+                        </strong>
+                      </div>
+
+                      <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        {(comp.fat_pct != null || comp.snf_pct != null) && (
+                          <div>
+                            Quality: <strong>Fat {comp.fat_pct ?? '—'}% · SNF {comp.snf_pct ?? '—'}%</strong>
+                          </div>
+                        )}
+                        {comp.dipstick_cm != null && (
+                          <div>
+                            Dipstick Level: <strong>{comp.dipstick_cm} cm</strong>
+                          </div>
+                        )}
+                        {comp.seal_number && (
+                          <div style={{ color: '#15803d' }}>
+                            Top Seal: <strong>{comp.seal_number}</strong> ✓
+                          </div>
+                        )}
+                        {comp.milk_type && (
+                          <div style={{ color: '#475569' }}>
+                            Milk Type: {comp.milk_type}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           <TankerTimeline journey={journey} variant="full" />
         </div>
 

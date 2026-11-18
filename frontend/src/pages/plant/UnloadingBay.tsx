@@ -279,6 +279,49 @@ export default function UnloadingBay() {
                 </div>
               </div>
             </div>
+
+            {/* Lorry Compartment Summary if present */}
+            {(() => {
+              const comps =
+                activeTanker.compartments ||
+                journey.compartments ||
+                activeTanker.stage_data?.compartments ||
+                [];
+              if (!comps || comps.length === 0) return null;
+              return (
+                <div
+                  style={{
+                    marginTop: '12px',
+                    paddingTop: '10px',
+                    borderTop: '1px dashed #e2e8f0',
+                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <strong style={{ color: '#0369a1' }}>🥛 Discharged Compartments ({comps.length}):</strong>
+                  {comps.map((c: any, i: number) => (
+                    <span
+                      key={i}
+                      style={{
+                        backgroundColor: '#f0f9ff',
+                        border: '1px solid #bae6fd',
+                        borderRadius: 4,
+                        padding: '2px 8px',
+                        color: '#0284c7',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {c.compartment_name || `Comp ${i + 1}`}: {c.quantity_litres} L
+                      {c.dipstick_cm ? ` (Dip: ${c.dipstick_cm}cm)` : ''}
+                      {c.seal_number ? ` [Seal: ${c.seal_number}]` : ''}
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Action / Guard Form */}

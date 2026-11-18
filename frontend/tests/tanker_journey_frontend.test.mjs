@@ -251,3 +251,28 @@ test('Frontend Plant Teams & Admin DC No integration (Gate, QC, Unloading, Admin
   assert.ok(drawerSrc.includes('DC No:'), 'Admin tanker detail drawer header displays DC No');
 });
 
+test('Frontend BMC Dispatch Form: Lorry num, driver name, and compartment details with instant admin reflection', () => {
+  const dispatchSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/unit/TankerDispatch.tsx'), 'utf8');
+  const drawerSrc = fs.readFileSync(path.resolve(__dirname, '../src/components/TankerDetailDrawer.tsx'), 'utf8');
+  const recordsSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/admin/AdminTankerRecords.tsx'), 'utf8');
+
+  // 1. TankerDispatch form inputs
+  assert.ok(dispatchSrc.includes('Lorry / Tanker Number'), 'BMC dispatch has Lorry Number input');
+  assert.ok(dispatchSrc.includes('Driver Name'), 'BMC dispatch has Driver Name input');
+  assert.ok(dispatchSrc.includes('DC No (Delivery Challan / Invoice No)'), 'BMC dispatch has DC No input');
+  assert.ok(dispatchSrc.includes('LORRY COMPARTMENT DETAILS'), 'BMC dispatch has Compartment Details section');
+  assert.ok(dispatchSrc.includes('Quantity (Litres)'), 'BMC dispatch has Compartment Quantity field');
+  assert.ok(dispatchSrc.includes('Dipstick Level (cm)'), 'BMC dispatch has Dipstick field');
+  assert.ok(dispatchSrc.includes('Top Seal No'), 'BMC dispatch has Top Seal No field');
+  assert.ok(dispatchSrc.includes('setPresetCompartments'), 'BMC dispatch has quick presets for compartments');
+
+  // 2. TankerDetailDrawer displays Lorry Compartment Details breakdown
+  assert.ok(drawerSrc.includes('Lorry Compartment Details'), 'Drawer has Lorry Compartment Details section');
+  assert.ok(drawerSrc.includes('Dipstick'), 'Drawer displays dipstick level');
+  assert.ok(drawerSrc.includes('Top Seal:'), 'Drawer displays top seal number');
+
+  // 3. Admin Tanker Records displays compartment count badge
+  assert.ok(recordsSrc.includes('Comp'), 'Admin table has compartment count badge');
+});
+
+
