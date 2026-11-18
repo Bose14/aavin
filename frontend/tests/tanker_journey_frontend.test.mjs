@@ -315,9 +315,10 @@ test('Frontend Feature Verification: 8-Feature Suite (User Creation, Gate/QC/Unl
   assert.ok(adminUnitsSrc.includes('Tankers Dispatched Today'), 'Feature 6: Admin BMC has Dispatched Tankers Today KPI');
 
   // Feature 7: Export data of this tanker details
-  assert.ok(drawerSrc.includes('handleExportDossier'), 'Feature 7: Drawer has handleExportDossier function');
-  assert.ok(drawerSrc.includes('/export/tanker/'), 'Feature 7: Drawer triggers single tanker export endpoint');
-  assert.ok(drawerSrc.includes('Export Dossier (.xlsx)'), 'Feature 7: Drawer has Export Dossier (.xlsx) button');
+  assert.ok(adminRecordsSrc.includes('/export/tanker'), 'Feature 7: Admin Tanker Records triggers tanker export endpoint');
+  assert.ok(adminRecordsSrc.includes('handleExport'), 'Feature 7: Admin Tanker Records has handleExport');
+  assert.ok(adminRecordsSrc.includes('Excel'), 'Feature 7: Admin Tanker Records has Excel export button');
+  assert.ok(adminRecordsSrc.includes('CSV'), 'Feature 7: Admin Tanker Records has CSV export button');
 
   // Feature 8: Create excel daily report as per requested format
   assert.ok(adminRecordsSrc.includes('handleExportDailyReport'), 'Feature 8: Admin Tanker Records has handleExportDailyReport');
