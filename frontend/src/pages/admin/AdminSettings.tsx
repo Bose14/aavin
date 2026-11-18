@@ -4,14 +4,11 @@ import { supabase } from '../../supabase';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from '../../context/LanguageContext';
-import { useZoneSettings } from '../../hooks/useZoneSettings';
 import { ErrorBanner, StatusBadge } from '../../components/UiPrimitives';
-import type { ZoneSettings } from '../../lib/format';
 
 export default function AdminSettings() {
   const { user, profile, refreshProfile, signOut } = useAuth();
   const { lang, setLang } = useTranslation();
-  const { settings, reload: reloadZoneSettings } = useZoneSettings();
 
   // Password change state
   const [newPassword, setNewPassword] = useState('');
@@ -27,22 +24,11 @@ export default function AdminSettings() {
   const [profileSuccess, setProfileSuccess] = useState('');
   const [profileError, setProfileError] = useState('');
 
-  // Collapsible Advanced Settings
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [advancedForm, setAdvancedForm] = useState<ZoneSettings>(settings);
-  const [savingAdvanced, setSavingAdvanced] = useState(false);
-  const [advancedSuccess, setAdvancedSuccess] = useState('');
-  const [advancedError, setAdvancedError] = useState('');
-
   useEffect(() => {
     if (profile?.full_name) {
       setFullName(profile.full_name);
     }
   }, [profile?.full_name]);
-
-  useEffect(() => {
-    setAdvancedForm(settings);
-  }, [settings]);
 
   // Handle password change
   const handleChangePassword = async (e: FormEvent) => {
@@ -123,29 +109,8 @@ export default function AdminSettings() {
     }
   };
 
-  // Handle advanced zone settings save
-  const handleSaveAdvanced = async (e: FormEvent) => {
-    e.preventDefault();
-    setAdvancedError('');
-    setAdvancedSuccess('');
-    setSavingAdvanced(true);
-
-    try {
-      await api.put('/settings', advancedForm);
-      await reloadZoneSettings();
-      setAdvancedSuccess('Advanced operations thresholds and SLA rules updated.');
-    } catch (err: unknown) {
-      setAdvancedError(
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-          'Failed to save advanced settings'
-      );
-    } finally {
-      setSavingAdvanced(false);
-    }
-  };
-
   return (
-    <div className="page" style={{ maxWidth: '960px', margin: '0 auto' }}>
+    <div className="page" style={{ maxWidth: '880px', margin: '0 auto' }}>
       {/* Page Header */}
       <div className="page-header" style={{ marginBottom: '1.5rem' }}>
         <div>
@@ -160,7 +125,7 @@ export default function AdminSettings() {
         </div>
       </div>
 
-      {/* 1. PASSWORD & SECURITY (Simple, direct, user-friendly) */}
+      {/* 1. PASSWORD & SECURITY */}
       <div
         className="card"
         style={{
@@ -573,133 +538,6 @@ export default function AdminSettings() {
             ⏻ Sign Out of Session
           </button>
         </div>
-      </div>
-
-      {/* 4. ADVANCED OPERATIONS SETTINGS (Collapsible accordion for zone thresholds if needed) */}
-      <div
-        className="card"
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-          padding: '16px 24px',
-          marginBottom: '20px',
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setShowAdvanced((v) => !v)}
-          style={{
-            width: '100%',
-            background: 'none',
-            border: 'none',
-            padding: 0,
-            cursor: 'pointer',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            textAlign: 'left',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '16px' }}>⚙️</span>
-            <span style={{ fontSize: '15px', fontWeight: 600, color: '#334155' }}>
-              Advanced Plant Operations &amp; SLA Rules
-            </span>
-          </div>
-          <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 600 }}>
-            {showAdvanced ? '▲ Hide Advanced' : '▼ Show Advanced'}
-          </span>
-        </button>
-
-        {showAdvanced && (
-          <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
-            <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#64748b' }}>
-              Optional configuration for tanker stage SLAs, rejection thresholds, and dairy rate formulas.
-            </p>
-
-            {advancedError && (
-              <div style={{ marginBottom: '12px' }}>
-                <ErrorBanner message={advancedError} />
-              </div>
-            )}
-            {advancedSuccess && (
-              <div style={{ padding: '8px 12px', background: '#f0fdf4', color: '#166534', borderRadius: 6, fontSize: '13px', marginBottom: '12px' }}>
-                {advancedSuccess}
-              </div>
-            )}
-
-            <form onSubmit={handleSaveAdvanced}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '16px' }}>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
-                    Rejection Payment Rule
-                  </label>
-                  <select
-                    value={advancedForm.rejection_payment_rule}
-                    onChange={(e) =>
-                      setAdvancedForm({
-                        ...advancedForm,
-                        rejection_payment_rule: e.target.value as 'net' | 'gross',
-                      })
-                    }
-                    style={{ width: '100%', height: '36px', borderRadius: '6px', border: '1px solid #cbd5e1', padding: '0 8px', fontSize: '13px' }}
-                  >
-                    <option value="net">NET quantity (pay only accepted milk)</option>
-                    <option value="gross">GROSS quantity (track rejection separately)</option>
-                  </select>
-                </div>
-
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
-                    Standard Milk Density (kg/L)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={advancedForm.milk_density_kg_per_litre ?? 1.03}
-                    onChange={(e) =>
-                      setAdvancedForm({
-                        ...advancedForm,
-                        milk_density_kg_per_litre: parseFloat(e.target.value) || 1.03,
-                      })
-                    }
-                    style={{ width: '100%', height: '36px', borderRadius: '6px', border: '1px solid #cbd5e1', padding: '0 8px', fontSize: '13px' }}
-                  />
-                </div>
-
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
-                    Transit Loss Alert Limit (%)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={advancedForm.transit_loss_warn_pct ?? 1.0}
-                    onChange={(e) =>
-                      setAdvancedForm({
-                        ...advancedForm,
-                        transit_loss_warn_pct: parseFloat(e.target.value) || 1.0,
-                      })
-                    }
-                    style={{ width: '100%', height: '36px', borderRadius: '6px', border: '1px solid #cbd5e1', padding: '0 8px', fontSize: '13px' }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button
-                  type="submit"
-                  disabled={savingAdvanced}
-                  className="btn btn-secondary btn-sm"
-                  style={{ width: 'auto', height: '34px', padding: '0 14px' }}
-                >
-                  {savingAdvanced ? 'Saving…' : 'Save Advanced Rules'}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
       </div>
     </div>
   );
