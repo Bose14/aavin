@@ -22,7 +22,6 @@ interface Unit {
 export default function AdminUnits() {
   const { settings } = useZoneSettings();
   const [units, setUnits] = useState<Unit[]>([]);
-  const [tankersTodayCount, setTankersTodayCount] = useState(0);
   const [loadingList, setLoadingList] = useState(true);
 
   const [showAddForm, setShowAddForm] = useState(false);
@@ -51,18 +50,14 @@ export default function AdminUnits() {
     setLoadingList(true);
     setError('');
     try {
-      const [resUnits, resTankers] = await Promise.all([
-        api.get<Unit[]>('/units'),
-        api.get<any[]>('/tanker', { params: { date: todayISO } }).catch(() => ({ data: [] })),
-      ]);
+      const resUnits = await api.get<Unit[]>('/units');
       setUnits(resUnits.data);
-      setTankersTodayCount((resTankers.data || []).length);
     } catch (err: unknown) {
       setError((err as Error)?.message || 'Failed to load units');
     } finally {
       setLoadingList(false);
     }
-  }, [todayISO]);
+  }, []);
 
   useEffect(() => {
     void fetchUnits();
@@ -228,11 +223,11 @@ export default function AdminUnits() {
 
       {error && <ErrorBanner message={error} onRetry={fetchUnits} />}
 
-      {/* 4 Top KPI Dashboard Cards */}
+      {/* Top KPI Dashboard Cards */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
           gap: '12px',
           marginBottom: '16px',
         }}
@@ -258,30 +253,6 @@ export default function AdminUnits() {
           </div>
           <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
             Operational units in zone
-          </div>
-        </div>
-
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #f59e0b', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
-            Submitted Milk Today
-          </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: pendingTodayCount > 0 ? '#d97706' : '#16a34a', marginTop: '4px' }}>
-            {submittedTodayCount} of {activeBMCs}
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            {pendingTodayCount > 0 ? `${pendingTodayCount} BMC(s) pending today` : 'All BMCs reported today!'}
-          </div>
-        </div>
-
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #8b5cf6', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
-            Tankers Dispatched Today
-          </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#8b5cf6', marginTop: '4px' }}>
-            {tankersTodayCount}
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            Dispatched to plant gates
           </div>
         </div>
       </div>

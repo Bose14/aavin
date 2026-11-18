@@ -311,8 +311,7 @@ test('Frontend Feature Verification: 8-Feature Suite (User Creation, Gate/QC/Unl
   // Feature 6: BMC Admin Dashboard
   assert.ok(adminUnitsSrc.includes('BMC Administration Dashboard'), 'Feature 6: Admin BMC has BMC Administration Dashboard');
   assert.ok(adminUnitsSrc.includes('Total Registered BMCs'), 'Feature 6: Admin BMC has Total Registered BMCs KPI');
-  assert.ok(adminUnitsSrc.includes('Submitted Milk Today'), 'Feature 6: Admin BMC has Submitted Today KPI');
-  assert.ok(adminUnitsSrc.includes('Tankers Dispatched Today'), 'Feature 6: Admin BMC has Dispatched Tankers Today KPI');
+  assert.ok(adminUnitsSrc.includes('Active BMCs'), 'Feature 6: Admin BMC has Active BMCs KPI');
 
   // Feature 7: Export data of this tanker details
   assert.ok(adminRecordsSrc.includes('/export/tanker'), 'Feature 7: Admin Tanker Records triggers tanker export endpoint');
