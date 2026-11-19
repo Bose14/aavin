@@ -375,7 +375,7 @@ test('10. Tanker Dossier & Daily Reconciliation Export structure', async () => {
   const wbDaily = XLSX.utils.book_new();
   const summaryRows = [
     { Header: 'TAMIL NADU CO-OPERATIVE MILK PRODUCERS FEDERATION (AAVIN)' },
-    { Header: 'Receiving Dairy: SALEM DAIRY PLANT | Report Date: 18-11-2026' },
+    { Header: 'Receiving Dairy: NAMAKKAL DAIRY PLANT | Report Date: 18-11-2026' },
   ];
   const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
   XLSX.utils.book_append_sheet(wbDaily, wsSummary, 'Summary Header');
@@ -406,5 +406,49 @@ test('10. Tanker Dossier & Daily Reconciliation Export structure', async () => {
   const bufDaily = XLSX.write(wbDaily, { type: 'buffer', bookType: 'xlsx' });
   assert.ok(Buffer.isBuffer(bufDaily) && bufDaily.length > 100, 'Daily report workbook generates binary XLSX buffer');
 });
+
+test('11. Tanker dispatch reflection from BMC to Gate, QC, and Unloading preserves all metadata', async () => {
+  const { saveTankerDispatchMetadata, getTankerDispatchMetadata } = await import('../dist/lib/settingsStore.js');
+
+  const mockMeta = {
+    id: 'test-tanker-uuid-reflection-1',
+    tanker_number: 'TN69AX2529',
+    unit_id: 'unit-rasipuram-1',
+    zone_id: 'zone-namakkal-1',
+    date: '2026-11-19',
+    driver_name: 'S. Raman',
+    driver_phone: '9876543210',
+    dc_number: 'DC-2026-9041',
+    seal_number: 'SL-9941',
+    dispatch_time: '09:00 AM',
+    dispatch_ampm: 'AM',
+    dispatch_fat_pct: 4.35,
+    dispatch_snf_pct: 8.45,
+    quantity_dispatched: 9000,
+    destination: 'Namakkal Dairy',
+    compartments: [
+      { compartment_no: 1, compartment_name: 'Front Compartment (Comp 1)', quantity_litres: 4500, fat_pct: 4.30, snf_pct: 8.45, seal_number: 'CMP-1-789' },
+      { compartment_no: 2, compartment_name: 'Rear Compartment (Comp 2)', quantity_litres: 4500, fat_pct: 4.40, snf_pct: 8.45, seal_number: 'CMP-2-790' },
+    ],
+  };
+
+  saveTankerDispatchMetadata(mockMeta);
+
+  // Lookup by ID
+  const retrievedById = getTankerDispatchMetadata(mockMeta.id);
+  assert.ok(retrievedById, 'Metadata retrieved by trip ID');
+  assert.strictEqual(retrievedById.driver_name, 'S. Raman');
+  assert.strictEqual(retrievedById.dc_number, 'DC-2026-9041');
+  assert.strictEqual(retrievedById.seal_number, 'SL-9941');
+  assert.strictEqual(retrievedById.compartments.length, 2);
+
+  // Lookup by Tanker Number
+  const retrievedByNum = getTankerDispatchMetadata('tn69ax2529');
+  assert.ok(retrievedByNum, 'Metadata retrieved by tanker number case-insensitively');
+  assert.strictEqual(retrievedByNum.driver_name, 'S. Raman');
+  assert.strictEqual(retrievedByNum.driver_phone, '9876543210');
+  assert.strictEqual(retrievedByNum.dc_number, 'DC-2026-9041');
+});
+
 
 

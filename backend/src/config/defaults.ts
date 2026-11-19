@@ -79,7 +79,7 @@ export const DEFAULT_ASSUMPTIONS = {
   showUnitProfitToStaff: false,
   destinations: [
     'Namakkal Dairy',
-    'Salem Chilling Plant',
+    'Namakkal Chilling Plant',
     'Erode Dairy',
     'Coimbatore Main Dairy',
   ],

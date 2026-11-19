@@ -20,7 +20,7 @@ create table if not exists zone_settings (
   rejection_payment_rule text not null default 'net' check (rejection_payment_rule in ('net', 'gross')),
   edit_lock_hours integer not null default 24 check (edit_lock_hours >= 1),
   show_unit_profit boolean not null default false,
-  destinations text[] not null default array['Namakkal Dairy', 'Salem Chilling Plant', 'Erode Dairy', 'Coimbatore Main Dairy'],
+  destinations text[] not null default array['Namakkal Dairy', 'Namakkal Chilling Plant', 'Erode Dairy', 'Coimbatore Main Dairy'],
   locations text[] not null default array['Rasipuram', 'Namakkal', 'Tiruchengode', 'Paramathi Velur', 'Sendamangalam', 'Kolli Hills', 'Komarapalayam', 'Mohanur', 'Vennandur', 'Puduchatram', 'Other'],
   updated_at timestamptz default now()
 );

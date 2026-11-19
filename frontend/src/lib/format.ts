@@ -73,7 +73,7 @@ export const DEFAULT_ZONE_SETTINGS: ZoneSettings = {
   rejection_payment_rule: 'net',
   edit_lock_hours: 24,
   show_unit_profit: false,
-  destinations: ['Namakkal Dairy', 'Salem Chilling Plant', 'Erode Dairy', 'Coimbatore Main Dairy'],
+  destinations: ['Namakkal Dairy', 'Namakkal Chilling Plant', 'Erode Dairy', 'Coimbatore Main Dairy'],
   locations: [
     'Rasipuram',
     'Namakkal',

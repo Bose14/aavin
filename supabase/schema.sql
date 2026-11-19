@@ -20,7 +20,6 @@ create table if not exists zones (
 insert into zones (name) values
   ('Namakkal'),
   ('Erode'),
-  ('Salem'),
   ('Tiruchirappalli'),
   ('Coimbatore'),
   ('Dharmapuri'),

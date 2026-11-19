@@ -21,7 +21,6 @@ create table if not exists zones (
 insert into zones (name) values
   ('Namakkal'),
   ('Erode'),
-  ('Salem'),
   ('Tiruchirappalli'),
   ('Coimbatore'),
   ('Dharmapuri'),
@@ -167,8 +166,13 @@ create table if not exists tanker_dispatches (
 -- Ensure all operational & stage progression columns exist
 alter table tanker_dispatches add column if not exists dc_number text;
 alter table tanker_dispatches add column if not exists driver_name text;
+alter table tanker_dispatches add column if not exists driver_phone text;
 alter table tanker_dispatches add column if not exists seal_number text;
 alter table tanker_dispatches add column if not exists dispatch_time text;
+alter table tanker_dispatches add column if not exists dispatch_ampm text;
+alter table tanker_dispatches add column if not exists dispatch_fat_pct decimal(5,2);
+alter table tanker_dispatches add column if not exists dispatch_snf_pct decimal(5,2);
+alter table tanker_dispatches add column if not exists compartments jsonb default '[]'::jsonb;
 alter table tanker_dispatches add column if not exists receipt_time text;
 alter table tanker_dispatches add column if not exists trip_status text default 'on_the_way';
 alter table tanker_dispatches add column if not exists current_stage text default 'vehicle_entered';
@@ -183,6 +187,7 @@ alter table tanker_dispatches add column if not exists unloaded_litres decimal(1
 alter table tanker_dispatches add column if not exists received_qty decimal(10,2);
 alter table tanker_dispatches add column if not exists received_fat_pct decimal(5,2);
 alter table tanker_dispatches add column if not exists received_snf_pct decimal(5,2);
+alter table tanker_dispatches add column if not exists received_by uuid references auth.users(id);
 alter table tanker_dispatches add column if not exists unloading_bay text;
 alter table tanker_dispatches add column if not exists weighbridge_gross_ticket text;
 alter table tanker_dispatches add column if not exists weighbridge_tare_ticket text;

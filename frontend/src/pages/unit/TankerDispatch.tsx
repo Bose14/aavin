@@ -23,7 +23,7 @@ interface CompartmentFormItem {
   capacity_litres: string;
   fat_pct: string;
   snf_pct: string;
-  dipstick_cm: string;
+  dipstick_cm?: string;
   seal_number: string;
   milk_type: string;
   temperature: string;
@@ -75,31 +75,40 @@ export default function TankerDispatch() {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   });
   const [dispatchAmPm, setDispatchAmPm] = useState<'AM' | 'PM'>('AM');
-  const [destination, setDestination] = useState(settings.destinations[0] ?? 'Salem Dairy');
+  const [destination, setDestination] = useState(settings.destinations[0] ?? 'Namakkal Dairy');
 
-  // Multi-Compartment Form State
+  // Multi-Compartment Form State (Default 3 compartments)
   const [compartments, setCompartments] = useState<CompartmentFormItem[]>([
     {
       compartment_no: 1,
       compartment_name: 'Front Compartment (Comp 1)',
-      quantity_litres: '4500',
+      quantity_litres: '3000',
       capacity_litres: '5000',
       fat_pct: '4.30',
       snf_pct: '8.45',
-      dipstick_cm: '132.5',
       seal_number: 'CMP-1-789',
       milk_type: 'Raw Cow Milk',
       temperature: '4.0',
     },
     {
       compartment_no: 2,
-      compartment_name: 'Rear Compartment (Comp 2)',
-      quantity_litres: '4500',
+      compartment_name: 'Middle Compartment (Comp 2)',
+      quantity_litres: '3000',
+      capacity_litres: '5000',
+      fat_pct: '4.25',
+      snf_pct: '8.42',
+      seal_number: 'CMP-2-790',
+      milk_type: 'Raw Cow Milk',
+      temperature: '4.0',
+    },
+    {
+      compartment_no: 3,
+      compartment_name: 'Rear Compartment (Comp 3)',
+      quantity_litres: '3000',
       capacity_litres: '5000',
       fat_pct: '4.20',
       snf_pct: '8.40',
-      dipstick_cm: '131.0',
-      seal_number: 'CMP-2-790',
+      seal_number: 'CMP-3-791',
       milk_type: 'Raw Cow Milk',
       temperature: '4.0',
     },
@@ -136,25 +145,28 @@ export default function TankerDispatch() {
     void fetchAll();
   }, [fetchAll]);
 
-  // Compartment Quick Presets
+  // Compartment Quick Presets (1, 2, or 3 compartments)
   const setPresetCompartments = (count: number) => {
+    const defaultLitres = count === 1 ? '9000' : count === 2 ? '4500' : '3000';
     const names = [
       'Front Compartment (Comp 1)',
       'Middle Compartment (Comp 2)',
       'Rear Compartment (Comp 3)',
-      'Auxiliary Compartment (Comp 4)',
     ];
+    if (count === 2) {
+      names[1] = 'Rear Compartment (Comp 2)';
+    }
     const newItems: CompartmentFormItem[] = [];
-    for (let i = 1; i <= count; i++) {
+    const validCount = Math.min(Math.max(count, 1), 3);
+    for (let i = 1; i <= validCount; i++) {
       newItems.push({
         compartment_no: i,
         compartment_name: names[i - 1] || `Compartment ${i}`,
-        quantity_litres: '',
+        quantity_litres: defaultLitres,
         capacity_litres: '5000',
-        fat_pct: '4.20',
-        snf_pct: '8.40',
-        dipstick_cm: '',
-        seal_number: '',
+        fat_pct: (4.30 - (i - 1) * 0.05).toFixed(2),
+        snf_pct: (8.45 - (i - 1) * 0.02).toFixed(2),
+        seal_number: `CMP-${i}-78${8 + i}`,
         milk_type: 'Raw Cow Milk',
         temperature: '4.0',
       });
@@ -163,31 +175,48 @@ export default function TankerDispatch() {
   };
 
   const addCompartment = () => {
-    const nextNo = compartments.length + 1;
-    setCompartments((prev) => [
-      ...prev,
-      {
-        compartment_no: nextNo,
-        compartment_name: `Compartment ${nextNo}`,
-        quantity_litres: '',
-        capacity_litres: '5000',
-        fat_pct: '4.20',
-        snf_pct: '8.40',
-        dipstick_cm: '',
-        seal_number: '',
-        milk_type: 'Raw Cow Milk',
-        temperature: '4.0',
-      },
-    ]);
+    setCompartments((prev) => {
+      const nextNo = prev.length + 1;
+      const names = [
+        'Front Compartment (Comp 1)',
+        'Middle Compartment (Comp 2)',
+        'Rear Compartment (Comp 3)',
+        'Auxiliary Compartment (Comp 4)',
+        'Rear Auxiliary Compartment (Comp 5)',
+      ];
+      return [
+        ...prev,
+        {
+          compartment_no: nextNo,
+          compartment_name: names[nextNo - 1] || `Compartment ${nextNo}`,
+          quantity_litres: '3000',
+          capacity_litres: '5000',
+          fat_pct: '4.20',
+          snf_pct: '8.40',
+          seal_number: `CMP-${nextNo}-79${nextNo}`,
+          milk_type: 'Raw Cow Milk',
+          temperature: '4.0',
+        },
+      ];
+    });
   };
 
   const removeCompartment = (index: number) => {
     if (compartments.length <= 1) return;
     setCompartments((prev) => {
       const updated = prev.filter((_, idx) => idx !== index);
+      const names = [
+        'Front Compartment (Comp 1)',
+        'Middle Compartment (Comp 2)',
+        'Rear Compartment (Comp 3)',
+      ];
+      if (updated.length === 2) {
+        names[1] = 'Rear Compartment (Comp 2)';
+      }
       return updated.map((item, idx) => ({
         ...item,
         compartment_no: idx + 1,
+        compartment_name: names[idx] || `Compartment ${idx + 1}`,
       }));
     });
   };
@@ -290,7 +319,7 @@ export default function TankerDispatch() {
         quantity_dispatched: totalCompartmentLitres,
         dispatch_fat_pct: weightedFat > 0 ? weightedFat : undefined,
         dispatch_snf_pct: weightedSnf > 0 ? weightedSnf : undefined,
-        destination: destination || 'Salem Dairy',
+        destination: destination || 'Namakkal Dairy',
         compartments: structuredCompartments,
       });
 
@@ -306,7 +335,7 @@ export default function TankerDispatch() {
       setDriverPhone('');
       setDcNumber('');
       setOutletSealNo('');
-      setPresetCompartments(2);
+      setPresetCompartments(3);
 
       await fetchAll();
     } catch (err: unknown) {
@@ -425,7 +454,7 @@ export default function TankerDispatch() {
       key: 'dest',
       header: t('destination'),
       sortValue: (r) => r.destination ?? '',
-      render: (r) => <span>{r.destination || 'Salem Dairy'}</span>,
+      render: (r) => <span>{r.destination || 'Namakkal Dairy'}</span>,
     },
     {
       key: 'progress',
@@ -548,6 +577,24 @@ export default function TankerDispatch() {
         </div>
       )}
       {warningMsg && <div className="warning-banner" style={{ marginBottom: '16px' }}><span>⚠ {warningMsg}</span></div>}
+
+      {/* Recent Dispatches Table (Placed above Dispatch Entry Form) */}
+      <div className="card table-card" style={{ padding: '20px', marginBottom: '24px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+        <h2 style={{ margin: '0 0 12px 0', fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
+          Recent Tanker Dispatches
+        </h2>
+        {listLoading ? (
+          <TableSkeleton rows={4} cols={7} />
+        ) : (
+          <DataTable
+            rows={dispatches}
+            columns={columns}
+            getRowKey={(r) => r.id}
+            emptyMessage="No tanker dispatches recorded yet."
+            showTotalsRow
+          />
+        )}
+      </div>
 
       {/* Main Dispatch Form Card */}
       <div className="card form-card" style={{ padding: '20px', marginBottom: '24px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
@@ -703,10 +750,10 @@ export default function TankerDispatch() {
                 </span>
               </div>
 
-              {/* Quick Presets & Add */}
+              {/* Quick Presets & Add (Max 3 compartments) */}
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                 <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Presets:</span>
-                {[1, 2, 3, 4].map((count) => (
+                {[1, 2, 3].map((count) => (
                   <button
                     key={count}
                     type="button"
@@ -728,7 +775,14 @@ export default function TankerDispatch() {
                   type="button"
                   onClick={addCompartment}
                   className="btn btn-secondary btn-sm"
-                  style={{ fontSize: '11px', padding: '3px 8px', color: '#16a34a', fontWeight: 700 }}
+                  style={{
+                    fontSize: '11px',
+                    padding: '3px 8px',
+                    color: '#16a34a',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                  title="Add compartment"
                 >
                   + Add
                 </button>
@@ -801,20 +855,6 @@ export default function TankerDispatch() {
                         onChange={(e) => updateCompartment(idx, 'quantity_litres', e.target.value)}
                         required
                         style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '13px' }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '3px' }}>
-                        Dipstick Level (cm)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        placeholder="e.g. 132.5"
-                        value={comp.dipstick_cm}
-                        onChange={(e) => updateCompartment(idx, 'dipstick_cm', e.target.value)}
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}
                       />
                     </div>
 
@@ -932,24 +972,6 @@ export default function TankerDispatch() {
             {loading ? 'Dispatching Tanker…' : '🚛 Confirm & Dispatch Tanker to Dairy Plant'}
           </button>
         </form>
-      </div>
-
-      {/* Recent Dispatches Table */}
-      <div className="card table-card" style={{ padding: '20px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-        <h2 style={{ margin: '0 0 12px 0', fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
-          Recent Tanker Dispatches
-        </h2>
-        {listLoading ? (
-          <TableSkeleton rows={4} cols={7} />
-        ) : (
-          <DataTable
-            rows={dispatches}
-            columns={columns}
-            getRowKey={(r) => r.id}
-            emptyMessage="No tanker dispatches recorded yet."
-            showTotalsRow
-          />
-        )}
       </div>
 
       <ConfirmDialog

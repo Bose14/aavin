@@ -602,7 +602,7 @@ router.get('/tanker/daily-report', async (req, res) => {
   // Overview Sheet
   const overviewRows = [
     { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': 'TAMIL NADU CO-OPERATIVE MILK PRODUCERS FEDERATION (AAVIN)' },
-    { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': `Receiving Dairy: SALEM DAIRY PLANT | Report Date: ${targetDate ? formatDateDDMMYYYY(targetDate) : buildRangeTag(from, to).replace(/_/g, ' ')}` },
+    { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': `Receiving Dairy: NAMAKKAL DAIRY PLANT | Report Date: ${targetDate ? formatDateDDMMYYYY(targetDate) : buildRangeTag(from, to).replace(/_/g, ' ')}` },
     { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': `Generated At: ${formatDateDDMMYYYY(new Date().toISOString().slice(0, 10))} ${new Date().toLocaleTimeString('en-IN')}` },
     { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': '------------------------------------------------------------------------------------------------------------------------' },
     { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': `Total Tankers: ${tableRows.length} | Dispatched Volume: ${totalDispatchedL.toLocaleString('en-IN')} L | Unloaded Volume: ${totalReceivedL.toLocaleString('en-IN')} L` },
@@ -643,7 +643,15 @@ router.get('/tanker/:id', async (req, res) => {
     .eq('id', id)
     .maybeSingle();
 
-  if (resT.error && isMissingSchemaError(resT.error)) {
+  if (resT.error) {
+    resT = await supabase
+      .from('tanker_dispatches')
+      .select('*, units(name, unit_code)')
+      .eq('id', id)
+      .maybeSingle();
+  }
+
+  if (resT.error) {
     resT = await supabase
       .from('tanker_dispatches')
       .select('id, date, tanker_number, quantity_dispatched, destination, units(name, unit_code)')
@@ -657,34 +665,43 @@ router.get('/tanker/:id', async (req, res) => {
   }
 
   const r = resT.data as Record<string, unknown>;
-  const { getTankerStagesForTrips } = await import('../lib/settingsStore');
+  const { getTankerStagesForTrips, getTankerDispatchMetadata } = await import('../lib/settingsStore');
   const { deriveTankerJourneyState } = await import('../lib/tankerJourney');
   const stageMap = await getTankerStagesForTrips([id]);
   const stages = stageMap[id] ?? [];
   const stageData = (r.stage_data as Record<string, any>) || {};
+  const fbMeta = getTankerDispatchMetadata(id) || (r.tanker_number ? getTankerDispatchMetadata(String(r.tanker_number)) : null);
+
+  const drvName = (r.driver_name as string) || stageData.driver_name || fbMeta?.driver_name || null;
+  const sealNo = (r.seal_number as string) || stageData.seal_number || fbMeta?.seal_number || null;
+  const resolvedDcNo = (r.dc_number as string) || stageData.dc_number || fbMeta?.dc_number || null;
+  const dispatchTime = (r.dispatch_time as string) || stageData.dispatch_time || fbMeta?.dispatch_time || null;
+  const comps = (r.compartments as any[]) || stageData.compartments || fbMeta?.compartments || [];
 
   const journey = deriveTankerJourneyState({
     id,
     date: String(r.date),
     tanker_number: String(r.tanker_number ?? ''),
-    driver_name: (r.driver_name as string) || null,
-    seal_number: (r.seal_number as string) || null,
-    dispatch_time: (r.dispatch_time as string) || null,
+    driver_name: drvName,
+    seal_number: sealNo,
+    dispatch_time: dispatchTime,
     quantity_dispatched: Number(r.quantity_dispatched ?? 0),
-    destination: (r.destination as string) || null,
-    dispatch_fat_pct: r.dispatch_fat_pct != null ? Number(r.dispatch_fat_pct) : null,
-    dispatch_snf_pct: r.dispatch_snf_pct != null ? Number(r.dispatch_snf_pct) : null,
-    received_qty: r.received_qty != null ? Number(r.received_qty) : null,
+    destination: (r.destination as string) || fbMeta?.destination || null,
+    dispatch_fat_pct: r.dispatch_fat_pct != null ? Number(r.dispatch_fat_pct) : fbMeta?.dispatch_fat_pct != null ? Number(fbMeta.dispatch_fat_pct) : null,
+    dispatch_snf_pct: r.dispatch_snf_pct != null ? Number(r.dispatch_snf_pct) : fbMeta?.dispatch_snf_pct != null ? Number(fbMeta.dispatch_snf_pct) : null,
+    received_qty: r.received_qty != null ? Number(r.received_qty) : fbMeta?.received_qty != null ? Number(fbMeta.received_qty) : null,
     receipt_time: (r.receipt_time as string) || null,
     received_fat_pct: r.received_fat_pct != null ? Number(r.received_fat_pct) : null,
     received_snf_pct: r.received_snf_pct != null ? Number(r.received_snf_pct) : null,
-    gross_weight_kg: r.gross_weight_kg != null ? Number(r.gross_weight_kg) : null,
-    tare_weight_kg: r.tare_weight_kg != null ? Number(r.tare_weight_kg) : null,
+    gross_weight_kg: r.gross_weight_kg != null ? Number(r.gross_weight_kg) : fbMeta?.gross_weight_kg != null ? Number(fbMeta.gross_weight_kg) : null,
+    tare_weight_kg: r.tare_weight_kg != null ? Number(r.tare_weight_kg) : fbMeta?.tare_weight_kg != null ? Number(fbMeta.tare_weight_kg) : null,
     net_weight_kg: r.net_weight_kg != null ? Number(r.net_weight_kg) : null,
-    qc_status: (r.qc_status as string) || null,
-    trip_status: (r.trip_status as any) || undefined,
-    stage_data: stageData,
+    qc_status: (r.qc_status as string) || fbMeta?.qc_status || null,
+    trip_status: (r.trip_status as any) || fbMeta?.trip_status || undefined,
+    stage_data: { ...stageData, ...(fbMeta?.stage_data || {}), dc_number: resolvedDcNo, driver_name: drvName, seal_number: sealNo, compartments: comps },
     stages,
+    dc_number: resolvedDcNo,
+    compartments: comps,
   } as any, settings);
 
   const u = r.units as { name: string; unit_code: string } | null;
@@ -705,7 +722,7 @@ router.get('/tanker/:id', async (req, res) => {
     { 'Field': 'Tanker / Vehicle Number', 'Value': r.tanker_number || '' },
     { 'Field': 'Delivery Challan No (DC No)', 'Value': dcNo },
     { 'Field': 'Source BMC Unit', 'Value': `${u?.name || 'BMC'} (${u?.unit_code || '—'})` },
-    { 'Field': 'Destination Dairy', 'Value': r.destination || 'Salem Dairy' },
+    { 'Field': 'Destination Dairy', 'Value': r.destination || 'Namakkal Dairy' },
     { 'Field': 'Driver Name', 'Value': r.driver_name || '—' },
     { 'Field': 'Outlet Valve Seal Number', 'Value': r.seal_number || '—' },
     { 'Field': 'Dispatch Date & Time', 'Value': `${formatDateDDMMYYYY(String(r.date))} ${r.dispatch_time || ''}` },

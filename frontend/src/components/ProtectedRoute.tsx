@@ -14,7 +14,7 @@ export function roleHome(role: string) {
   if (r === 'gate') return '/gate';
   if (r === 'qc') return '/qc';
   if (r === 'unloading') return '/unloading';
-  return '/unit';
+  return '/unit/tanker';
 }
 
 export default function ProtectedRoute({ children, role, allowPasswordChange = false }: Props) {

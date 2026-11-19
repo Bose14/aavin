@@ -109,7 +109,13 @@ export default function UnloadingBay() {
   const diffPct = dispatchedQty && currentUnloaded ? +((diffLitres / dispatchedQty) * 100).toFixed(2) : 0;
 
   // Extract DC No and QC values
-  const dcNo = activeTanker?.dc_number || activeTanker?.stage_data?.dc_number || activeTanker?.stage_data?.vehicle_entered?.dc_number || '—';
+  const dcNo =
+    activeTanker?.dc_number ||
+    activeTanker?.stage_data?.dc_number ||
+    activeTanker?.stage_data?.dc_no ||
+    activeTanker?.stage_data?.vehicle_entered?.dc_number ||
+    activeTanker?.journey?.dc_number ||
+    '—';
   const qcData = activeTanker?.stage_data?.qc_completed || {};
   const testedFat = qcData.received_fat_pct ?? activeTanker?.received_fat_pct ?? '—';
   const testedSnf = qcData.received_snf_pct ?? activeTanker?.received_snf_pct ?? '—';
@@ -339,8 +345,12 @@ export default function UnloadingBay() {
 
               <div>
                 <div style={{ color: '#64748b', fontSize: '11px', fontWeight: 600 }}>DRIVER &amp; SEAL</div>
-                <div style={{ fontWeight: 700, color: '#1e293b' }}>{activeTanker.driver_name || 'Driver'}</div>
-                <div style={{ fontSize: '11px', color: '#16a34a' }}>Seal: {activeTanker.seal_number || 'OK'} ✓</div>
+                <div style={{ fontWeight: 700, color: '#1e293b' }}>
+                  {activeTanker.driver_name || activeTanker.stage_data?.driver_name || activeTanker.stage_data?.vehicle_entered?.driver_name || 'Driver'}
+                </div>
+                <div style={{ fontSize: '11px', color: '#16a34a' }}>
+                  Seal: {activeTanker.seal_number || activeTanker.stage_data?.seal_number || activeTanker.stage_data?.outlet_seal_no || activeTanker.stage_data?.vehicle_entered?.seal_number || 'OK'} ✓
+                </div>
               </div>
 
               <div>
@@ -369,6 +379,7 @@ export default function UnloadingBay() {
                 activeTanker.compartments ||
                 journey.compartments ||
                 activeTanker.stage_data?.compartments ||
+                activeTanker.stage_data?.vehicle_entered?.compartments ||
                 [];
               if (!comps || comps.length === 0) return null;
               return (

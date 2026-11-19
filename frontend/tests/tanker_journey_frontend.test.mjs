@@ -230,11 +230,11 @@ test('Frontend Plant Teams & Admin DC No integration (Gate, QC, Unloading, Admin
 
   // Gate form contains authentic Aavin IDMS layout fields
   assert.ok(gateSrc.includes('No.Of Vehicles In Today :'), 'Gate page has No.Of Vehicles In Today');
-  assert.ok(gateSrc.includes('Create New Tanker'), 'Gate page has Create New Tanker action');
+  assert.ok(!gateSrc.includes('Create New Tanker'), 'Gate page does not have Create New Tanker (outward dispatch is exclusively BMC)');
   assert.ok(gateSrc.includes('VEHICLE ENTRY DETAILS'), 'Gate page has VEHICLE ENTRY DETAILS heading');
   assert.ok(gateSrc.includes('DC No'), 'Gate form has DC No input');
   assert.ok(gateSrc.includes('Time Difference Between Dispatch And Entry(HH.MM)'), 'Gate form has Time Difference');
-  assert.ok(gateSrc.includes('SALEM DAIRY'), 'Gate form displays Receiving Dairy SALEM DAIRY');
+  assert.ok(gateSrc.includes('NAMAKKAL DAIRY'), 'Gate form displays Receiving Dairy NAMAKKAL DAIRY');
 
   // QC form displays DC No and quality inputs
   assert.ok(qcSrc.includes('DC #'), 'QC page displays DC No');
@@ -262,13 +262,14 @@ test('Frontend BMC Dispatch Form: Lorry num, driver name, and compartment detail
   assert.ok(dispatchSrc.includes('DC No (Delivery Challan / Invoice No)'), 'BMC dispatch has DC No input');
   assert.ok(dispatchSrc.includes('LORRY COMPARTMENT DETAILS'), 'BMC dispatch has Compartment Details section');
   assert.ok(dispatchSrc.includes('Quantity (Litres)'), 'BMC dispatch has Compartment Quantity field');
-  assert.ok(dispatchSrc.includes('Dipstick Level (cm)'), 'BMC dispatch has Dipstick field');
+  assert.ok(!dispatchSrc.includes('Dipstick Level (cm)'), 'BMC dispatch has Dipstick field removed per requirements');
+  assert.ok(!dispatchSrc.includes('4 Comp'), '4th compartment removed; capped at 3');
   assert.ok(dispatchSrc.includes('Top Seal No'), 'BMC dispatch has Top Seal No field');
   assert.ok(dispatchSrc.includes('setPresetCompartments'), 'BMC dispatch has quick presets for compartments');
 
   // 2. TankerDetailDrawer displays Lorry Compartment Details breakdown
   assert.ok(drawerSrc.includes('Lorry Compartment Details'), 'Drawer has Lorry Compartment Details section');
-  assert.ok(drawerSrc.includes('Dipstick'), 'Drawer displays dipstick level');
+  assert.ok(!drawerSrc.includes('Dipstick Level:'), 'Drawer has dipstick level removed');
   assert.ok(drawerSrc.includes('Top Seal:'), 'Drawer displays top seal number');
 
   // 3. Admin Tanker Records displays compartment count badge
@@ -311,8 +312,7 @@ test('Frontend Feature Verification: 8-Feature Suite (User Creation, Gate/QC/Unl
   // Feature 6: BMC Admin Dashboard
   assert.ok(adminUnitsSrc.includes('BMC Administration Dashboard'), 'Feature 6: Admin BMC has BMC Administration Dashboard');
   assert.ok(adminUnitsSrc.includes('Total Registered BMCs'), 'Feature 6: Admin BMC has Total Registered BMCs KPI');
-  assert.ok(adminUnitsSrc.includes('Submitted Milk Today'), 'Feature 6: Admin BMC has Submitted Today KPI');
-  assert.ok(adminUnitsSrc.includes('Tankers Dispatched Today'), 'Feature 6: Admin BMC has Dispatched Tankers Today KPI');
+  assert.ok(adminUnitsSrc.includes('Active BMCs'), 'Feature 6: Admin BMC has Active BMCs KPI');
 
   // Feature 7: Export data of this tanker details
   assert.ok(adminRecordsSrc.includes('/export/tanker'), 'Feature 7: Admin Tanker Records triggers tanker export endpoint');
@@ -325,6 +325,74 @@ test('Frontend Feature Verification: 8-Feature Suite (User Creation, Gate/QC/Unl
   assert.ok(adminRecordsSrc.includes('/export/tanker/daily-report'), 'Feature 8: Admin Tanker Records triggers daily report endpoint');
   assert.ok(adminRecordsSrc.includes('Daily Reception Report (.xlsx)'), 'Feature 8: Admin Tanker Records has Daily Reception Report button');
 });
+
+test('Sidebar NavLink enforces exact matching (end prop) to prevent multiple simultaneous active selections', () => {
+  const layoutSrc = fs.readFileSync(path.resolve(__dirname, '../src/components/Layout.tsx'), 'utf8');
+  assert.ok(layoutSrc.includes('<NavLink'), 'Layout renders NavLink');
+  assert.ok(layoutSrc.includes('end\n') || layoutSrc.includes('end '), 'Layout uses end prop for exact route matching on nav items');
+  assert.ok(!layoutSrc.includes(".includes(item.to)"), 'Layout does not use incomplete whitelist for end prop');
+});
+
+test('GateOperations renders authentic Aavin IDMS VEHICLE GROSS WEIGHT DETAILS form matching user photo', () => {
+  const gateSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/GateOperations.tsx'), 'utf8');
+  assert.ok(gateSrc.includes('VEHICLE GROSS WEIGHT DETAILS'), 'Must render VEHICLE GROSS WEIGHT DETAILS section header');
+  assert.ok(gateSrc.includes('Received From :'), 'Must render Received From label');
+  assert.ok(gateSrc.includes('Number of Cells'), 'Must render Number of Cells input');
+  assert.ok(gateSrc.includes('Gross Weight Date'), 'Must render Gross Weight Date input');
+  assert.ok(gateSrc.includes('Entry Time(HHMM)[12 hour format]'), 'Must render Entry Time 12 hour format input');
+  assert.ok(gateSrc.includes('Dispatch Quantity(Ltrs)'), 'Must render Dispatch Quantity Ltrs input');
+  assert.ok(gateSrc.includes('Gross Weight(Kgs)'), 'Must render Gross Weight Kgs input');
+  assert.ok(gateSrc.includes('Dispatch Quality'), 'Must render Dispatch Quality section');
+  assert.ok(gateSrc.includes('CC/BMC'), 'Must render CC/BMC column/label in Dispatch Quality');
+  assert.ok(gateSrc.includes('Gross Weight Report'), 'Must render Gross Weight Report action button');
+  assert.ok(gateSrc.includes('Milk Receipt Entry'), 'Must render Milk Receipt Entry sub tab');
+  assert.ok(gateSrc.includes('Gross Weight Entry'), 'Must render Gross Weight Entry sub tab');
+});
+
+test('QCLab renders authentic Aavin IDMS QUALITY CONTROL DETAILS form matching user photos', () => {
+  const qcSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/QCLab.tsx'), 'utf8');
+  assert.ok(qcSrc.includes('QUALITY CONTROL DETAILS'), 'Must render QUALITY CONTROL DETAILS section header');
+  assert.ok(qcSrc.includes('Vehicle No'), 'Must render Vehicle No label');
+  assert.ok(qcSrc.includes('Received From :'), 'Must render Received From label with BMC badges');
+  assert.ok(qcSrc.includes('DC NO:'), 'Must render DC NO: label');
+  assert.ok(qcSrc.includes('Dispatch Date'), 'Must render Dispatch Date input');
+  assert.ok(qcSrc.includes('Dispatch Time(HHMM)[12 hour format]'), 'Must render Dispatch Time in 12hr format');
+  assert.ok(qcSrc.includes('QC Date'), 'Must render QC Date input');
+  assert.ok(qcSrc.includes('QC Time(HHMM)[12 hour format]'), 'Must render QC Time in 12hr format');
+  assert.ok(qcSrc.includes('Dispatch Quality'), 'Must render Dispatch Quality section');
+  assert.ok(qcSrc.includes('Received Quality'), 'Must render Received Quality section');
+  assert.ok(qcSrc.includes('Qc Manual Entry Reason'), 'Must render Qc Manual Entry Reason field');
+  assert.ok(qcSrc.includes('Select Test'), 'Must render Select Test section');
+  assert.ok(qcSrc.includes('Test Type For FC') || qcSrc.includes('Test Type For'), 'Must render Test Type dropdowns');
+  assert.ok(qcSrc.includes('Tests Completed'), 'Must render Tests Completed indicators');
+  assert.ok(qcSrc.includes('Remarks'), 'Must render Remarks multiline textarea');
+  assert.ok(qcSrc.includes('Update'), 'Must render Update submit button');
+  assert.ok(qcSrc.includes('REJECT'), 'Must render REJECT button');
+  assert.ok(qcSrc.includes('Confirm Tanker Milk Rejection'), 'Must render rejection confirmation dialog');
+});
+
+test('QCLab renders authentic Aavin IDMS CIP DETAILS form matching user photo', () => {
+  const qcSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/QCLab.tsx'), 'utf8');
+  assert.ok(qcSrc.includes('CIP DETAILS'), 'Must render CIP DETAILS section header banner');
+  assert.ok(qcSrc.includes('CIP Details'), 'Must render CIP Details tab button');
+  assert.ok(qcSrc.includes('Milk Receipt Entry ▾'), 'Must render Milk Receipt Entry dropdown tab');
+  assert.ok(qcSrc.includes('Vehicle No'), 'Must render Vehicle No');
+  assert.ok(qcSrc.includes('Received From :'), 'Must render Received From with BMC tags');
+  assert.ok(qcSrc.includes('DC NO:'), 'Must render DC NO:');
+  assert.ok(qcSrc.includes('Dispatch Date'), 'Must render Dispatch Date');
+  assert.ok(qcSrc.includes('Dispatch Time(HHMM)[12 hour format]'), 'Must render Dispatch Time in 12hr format');
+  assert.ok(qcSrc.includes('CIP Date'), 'Must render CIP Date');
+  assert.ok(qcSrc.includes('CIP Time(HHMM)[12 hour format]'), 'Must render CIP Time in 12hr format');
+  assert.ok(qcSrc.includes('CIP Operator'), 'Must render CIP Operator input');
+  assert.ok(qcSrc.includes('QC Inspection'), 'Must render QC Inspection dropdown');
+  assert.ok(qcSrc.includes('CIP Clean Types'), 'Must render CIP Clean Types options');
+  assert.ok(qcSrc.includes('Automatic Test'), 'Must render Automatic Test checkbox option');
+  assert.ok(qcSrc.includes('Manual Test'), 'Must render Manual Test checkbox option');
+  assert.ok(qcSrc.includes('Is CIP Checked'), 'Must render Is CIP Checked checkbox');
+});
+
+
+
 
 
 

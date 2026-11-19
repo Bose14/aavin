@@ -44,7 +44,7 @@ async function computeWaitingTankersPerTeam(zoneId: string): Promise<Record<stri
   try {
     const { data, error } = await supabase
       .from('tanker_dispatches')
-      .select('id, date, tanker_number, driver_name, seal_number, quantity_dispatched, trip_status, current_stage, waiting_team, stage_data, created_at')
+      .select('*')
       .eq('zone_id', zoneId)
       .neq('trip_status', 'exited');
 
@@ -421,7 +421,7 @@ router.post('/users', requireRole('admin', 'superadmin'), async (req, res) => {
   const shift = ['Morning', 'Evening', 'General'].includes(rawShift) ? rawShift : 'General';
   const role = teamCode.toLowerCase();
   const teamObj = await getTeamByCode(teamCode);
-  const tempPassword = rawPassword && rawPassword.trim().length >= 8
+  const tempPassword = rawPassword && rawPassword.trim().length >= 6
     ? rawPassword.trim()
     : 'PlantUser@' + Math.floor(1000 + Math.random() * 9000);
 

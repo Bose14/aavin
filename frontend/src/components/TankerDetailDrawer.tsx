@@ -125,6 +125,13 @@ export function TankerDetailDrawer({
               </strong>{' '}
               · Dispatched: {formatLitres(trip.quantity_dispatched)} on {formatDateDDMMYYYY(trip.date)}
             </div>
+            <div style={{ fontSize: '12px', color: '#475569', marginTop: '3px' }}>
+              Driver: <strong style={{ color: '#0f172a' }}>{trip.driver_name || trip.stage_data?.driver_name || trip.stage_data?.vehicle_entered?.driver_name || '—'}</strong>
+              {(trip.driver_phone || trip.stage_data?.driver_phone) && (
+                <span> ({trip.driver_phone || trip.stage_data?.driver_phone})</span>
+              )}
+              {' '}· Seal: <strong style={{ color: '#0f172a' }}>{trip.seal_number || trip.stage_data?.seal_number || '—'}</strong>
+            </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
@@ -229,11 +236,7 @@ export function TankerDetailDrawer({
                             Quality: <strong>Fat {comp.fat_pct ?? '—'}% · SNF {comp.snf_pct ?? '—'}%</strong>
                           </div>
                         )}
-                        {comp.dipstick_cm != null && (
-                          <div>
-                            Dipstick Level: <strong>{comp.dipstick_cm} cm</strong>
-                          </div>
-                        )}
+
                         {comp.seal_number && (
                           <div style={{ color: '#15803d' }}>
                             Top Seal: <strong>{comp.seal_number}</strong> ✓

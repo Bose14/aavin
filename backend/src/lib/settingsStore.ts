@@ -50,6 +50,35 @@ export const DEFAULT_TEAMS: TeamRow[] = [
   { id: '33333333-3333-4333-8333-333333333333', code: 'UNLOADING', name: 'Milk Unloading Team', active: true },
 ];
 
+export interface TankerDispatchMetadata {
+  id: string;
+  tanker_number: string;
+  unit_id?: string | null;
+  zone_id?: string | null;
+  date?: string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  dc_number?: string | null;
+  seal_number?: string | null;
+  dispatch_time?: string | null;
+  dispatch_ampm?: string | null;
+  dispatch_fat_pct?: number | null;
+  dispatch_snf_pct?: number | null;
+  quantity_dispatched?: number | null;
+  destination?: string | null;
+  compartments?: any[];
+  stage_data?: Record<string, any>;
+  created_at?: string;
+  gross_weight_kg?: number | null;
+  tare_weight_kg?: number | null;
+  qc_status?: string | null;
+  received_qty?: number | null;
+  received_fat_pct?: number | null;
+  received_snf_pct?: number | null;
+  trip_status?: string | null;
+  [key: string]: any;
+}
+
 interface FallbackStoreData {
   zoneSettings: Record<string, ZoneSettings>;
   sellingRates: Record<string, SellingRateRule[]>;
@@ -57,6 +86,8 @@ interface FallbackStoreData {
   correctionRequests: CorrectionRequest[];
   tankerStages: Record<string, any[]>;
   teams?: Record<string, TeamRow>;
+  tankerDispatches?: Record<string, TankerDispatchMetadata>;
+  tankerDispatchesByNumber?: Record<string, TankerDispatchMetadata>;
 }
 
 const FALLBACK_DIR = path.resolve(__dirname, '../../.data');
@@ -190,6 +221,8 @@ function readFallback(): FallbackStoreData {
         correctionRequests: Array.isArray(parsed.correctionRequests) ? parsed.correctionRequests : [],
         tankerStages: parsed.tankerStages && typeof parsed.tankerStages === 'object' ? parsed.tankerStages : {},
         teams,
+        tankerDispatches: parsed.tankerDispatches && typeof parsed.tankerDispatches === 'object' ? parsed.tankerDispatches : {},
+        tankerDispatchesByNumber: parsed.tankerDispatchesByNumber && typeof parsed.tankerDispatchesByNumber === 'object' ? parsed.tankerDispatchesByNumber : {},
       };
     }
   } catch {
@@ -197,12 +230,63 @@ function readFallback(): FallbackStoreData {
   }
   const teams: Record<string, TeamRow> = {};
   for (const def of DEFAULT_TEAMS) teams[def.code] = { ...def };
-  return { zoneSettings: {}, sellingRates: {}, auditLogs: [], correctionRequests: [], tankerStages: {}, teams };
+  return {
+    zoneSettings: {},
+    sellingRates: {},
+    auditLogs: [],
+    correctionRequests: [],
+    tankerStages: {},
+    teams,
+    tankerDispatches: {},
+    tankerDispatchesByNumber: {},
+  };
 }
 
 function writeFallback(data: FallbackStoreData): void {
   fs.mkdirSync(FALLBACK_DIR, { recursive: true });
   fs.writeFileSync(FALLBACK_FILE, JSON.stringify(data, null, 2), 'utf8');
+}
+
+export function saveTankerDispatchMetadata(meta: TankerDispatchMetadata): void {
+  try {
+    const store = readFallback();
+    if (!store.tankerDispatches) store.tankerDispatches = {};
+    if (!store.tankerDispatchesByNumber) store.tankerDispatchesByNumber = {};
+
+    const idKey = meta.id || '';
+    const numKey = meta.tanker_number ? meta.tanker_number.toUpperCase().trim() : '';
+
+    const existing: any = (idKey ? store.tankerDispatches[idKey] : null) || (numKey ? store.tankerDispatchesByNumber[numKey] : null) || {};
+    const merged: TankerDispatchMetadata = {
+      ...existing,
+      ...meta,
+      stage_data: {
+        ...(existing.stage_data || {}),
+        ...(meta.stage_data || {}),
+      },
+    };
+
+    if (idKey) store.tankerDispatches[idKey] = merged;
+    if (numKey) store.tankerDispatchesByNumber[numKey] = merged;
+
+    writeFallback(store);
+  } catch (err) {
+    console.warn('[settingsStore] Could not save tanker fallback metadata:', err);
+  }
+}
+
+export function getTankerDispatchMetadata(idOrNumber: string): TankerDispatchMetadata | null {
+  try {
+    if (!idOrNumber) return null;
+    const store = readFallback();
+    const idHit = store.tankerDispatches?.[idOrNumber];
+    if (idHit) return idHit;
+    const numHit = store.tankerDispatchesByNumber?.[idOrNumber.toUpperCase().trim()];
+    if (numHit) return numHit;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export async function getZoneSettings(zoneId: string): Promise<ZoneSettings> {
@@ -556,6 +640,29 @@ export async function recordTankerStageInDb(stage: TankerStageRecordRow): Promis
       return row;
     }
 
+    // Automatically update fallback metadata store with stage data
+    if (stage.stage_data && typeof stage.stage_data === 'object') {
+      const sd = stage.stage_data as Record<string, any>;
+      saveTankerDispatchMetadata({
+        id: stage.trip_id,
+        tanker_number: sd.tanker_number || '',
+        driver_name: sd.driver_name,
+        driver_phone: sd.driver_phone,
+        dc_number: sd.dc_number || sd.dc_no,
+        seal_number: sd.seal_number || sd.outlet_seal_no,
+        dispatch_time: sd.dispatch_time,
+        dispatch_ampm: sd.dispatch_ampm,
+        compartments: sd.compartments,
+        gross_weight_kg: sd.gross_weight_kg,
+        tare_weight_kg: sd.tare_weight_kg,
+        qc_status: sd.qc_status,
+        received_qty: sd.unloaded_litres,
+        received_fat_pct: sd.received_fat_pct,
+        received_snf_pct: sd.received_snf_pct,
+        stage_data: { [stage.stage_name]: stage.stage_data },
+      });
+    }
+
     return data as TankerStageRecordRow;
   } catch {
     const store = readFallback();
@@ -572,6 +679,29 @@ export async function recordTankerStageInDb(stage: TankerStageRecordRow): Promis
     if (existingIdx >= 0) list[existingIdx] = row;
     else list.push(row);
     writeFallback(store);
+
+    if (stage.stage_data && typeof stage.stage_data === 'object') {
+      const sd = stage.stage_data as Record<string, any>;
+      saveTankerDispatchMetadata({
+        id: stage.trip_id,
+        tanker_number: sd.tanker_number || '',
+        driver_name: sd.driver_name,
+        driver_phone: sd.driver_phone,
+        dc_number: sd.dc_number || sd.dc_no,
+        seal_number: sd.seal_number || sd.outlet_seal_no,
+        dispatch_time: sd.dispatch_time,
+        dispatch_ampm: sd.dispatch_ampm,
+        compartments: sd.compartments,
+        gross_weight_kg: sd.gross_weight_kg,
+        tare_weight_kg: sd.tare_weight_kg,
+        qc_status: sd.qc_status,
+        received_qty: sd.unloaded_litres,
+        received_fat_pct: sd.received_fat_pct,
+        received_snf_pct: sd.received_snf_pct,
+        stage_data: { [stage.stage_name]: stage.stage_data },
+      });
+    }
+
     return row;
   }
 }
