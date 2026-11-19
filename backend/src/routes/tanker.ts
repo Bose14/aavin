@@ -1274,6 +1274,13 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
     }
     stageData.gross_weight_kg = grossKg;
     stageData.weighbridge_slip_no = payload.weighbridge_slip_no || null;
+    if (payload.number_of_cells != null) stageData.number_of_cells = Number(payload.number_of_cells);
+    if (payload.gross_date) stageData.gross_date = payload.gross_date;
+    if (payload.entry_time) stageData.entry_time = payload.entry_time;
+    if (payload.dispatch_quantity != null) stageData.dispatch_quantity = Number(payload.dispatch_quantity);
+    if (payload.dispatch_quality) stageData.dispatch_quality = payload.dispatch_quality;
+    if (payload.received_from) stageData.received_from = payload.received_from;
+    if (payload.dc_number) stageData.dc_number = payload.dc_number;
     updateTripFields.gross_weight_kg = grossKg;
     updateTripFields.trip_status = 'gross_done';
   } else if (stageKey === 'qc_completed') {

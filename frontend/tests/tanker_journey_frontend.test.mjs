@@ -333,6 +333,22 @@ test('Sidebar NavLink enforces exact matching (end prop) to prevent multiple sim
   assert.ok(!layoutSrc.includes(".includes(item.to)"), 'Layout does not use incomplete whitelist for end prop');
 });
 
+test('GateOperations renders authentic Aavin IDMS VEHICLE GROSS WEIGHT DETAILS form matching user photo', () => {
+  const gateSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/GateOperations.tsx'), 'utf8');
+  assert.ok(gateSrc.includes('VEHICLE GROSS WEIGHT DETAILS'), 'Must render VEHICLE GROSS WEIGHT DETAILS section header');
+  assert.ok(gateSrc.includes('Received From :'), 'Must render Received From label');
+  assert.ok(gateSrc.includes('Number of Cells'), 'Must render Number of Cells input');
+  assert.ok(gateSrc.includes('Gross Weight Date'), 'Must render Gross Weight Date input');
+  assert.ok(gateSrc.includes('Entry Time(HHMM)[12 hour format]'), 'Must render Entry Time 12 hour format input');
+  assert.ok(gateSrc.includes('Dispatch Quantity(Ltrs)'), 'Must render Dispatch Quantity Ltrs input');
+  assert.ok(gateSrc.includes('Gross Weight(Kgs)'), 'Must render Gross Weight Kgs input');
+  assert.ok(gateSrc.includes('Dispatch Quality'), 'Must render Dispatch Quality section');
+  assert.ok(gateSrc.includes('CC/BMC'), 'Must render CC/BMC column/label in Dispatch Quality');
+  assert.ok(gateSrc.includes('Gross Weight Report'), 'Must render Gross Weight Report action button');
+  assert.ok(gateSrc.includes('Milk Receipt Entry'), 'Must render Milk Receipt Entry sub tab');
+  assert.ok(gateSrc.includes('Gross Weight Entry'), 'Must render Gross Weight Entry sub tab');
+});
+
 
 
 
