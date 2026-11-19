@@ -1,9 +1,40 @@
 import { useEffect, useState } from 'react';
 import api from '../../lib/api';
 import { TankerTimeline } from '../../components/TankerTimeline';
-import { formatFatSnf, formatLitres } from '../../lib/format';
+import { formatFatSnf, formatLitres, getLocalTodayIso } from '../../lib/format';
 import { ErrorBanner } from '../../components/UiPrimitives';
 import { useTranslation } from '../../context/LanguageContext';
+
+export interface QcDispatchQuality {
+  cell: string; // 'FC' | 'BC' | 'MC'
+  fat: string;
+  snf: string;
+  clr: string;
+  acidity: string;
+  temp: string;
+  milkType: string;
+  qty: string;
+}
+
+export interface QcReceivedQuality {
+  cell: string; // 'FC' | 'BC' | 'MC'
+  purpose: string;
+  cps: string;
+  fat: string;
+  snf: string;
+  clr: string;
+  acidity: string;
+  temp: string;
+  seal: string;
+  mbrt: string;
+  sampleDate: string;
+  sampleTime: string;
+  spGr: string;
+  cob: 'Negative' | 'Positive';
+  milkType: string;
+  cellRejected: boolean;
+  qty?: string;
+}
 
 export default function QCLab() {
   const { lang } = useTranslation();
@@ -13,16 +44,37 @@ export default function QCLab() {
   const [successMsg, setSuccessMsg] = useState('');
   const [selectedTankerId, setSelectedTankerId] = useState<string>('');
 
-  // QC Form States (Step 3)
-  const [qcDecision, setQcDecision] = useState<'accepted' | 'rejected'>('accepted');
-  const [receivedFat, setReceivedFat] = useState('');
-  const [receivedSnf, setReceivedSnf] = useState('');
-  const [milkTemperature, setMilkTemperature] = useState('4.0');
-  const [organoleptic, setOrganoleptic] = useState('normal');
-  const [mbrtMin, setMbrtMin] = useState('45');
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [qcRemarks, setQcRemarks] = useState('');
+  // Sub-navigation tab: Quality Control Details vs CIP Sanitization
+  const [qcSubTab, setQcSubTab] = useState<'qc' | 'cip' | null>(null);
 
+  // Quality Control Form States (Matching authentic Aavin IDMS QC photo)
+  const [qcVehicleNo, setQcVehicleNo] = useState('');
+  const [qcReceivedFromList, setQcReceivedFromList] = useState<string[]>([]);
+  const [qcDcNo, setQcDcNo] = useState('');
+  const [qcDispatchDate, setQcDispatchDate] = useState('');
+  const [qcDispatchTime, setQcDispatchTime] = useState('01:00');
+  const [qcDispatchAmPm, setQcDispatchAmPm] = useState<'AM' | 'PM'>('PM');
+  const [qcDate, setQcDate] = useState(() => {
+    const d = new Date();
+    const day = String(d.getDate()).padStart(2, '0');
+    const mon = String(d.getMonth() + 1).padStart(2, '0');
+    return `${day}/${mon}/${d.getFullYear()}`;
+  });
+  const [qcTime, setQcTime] = useState('02:33');
+  const [qcTimeAmPm, setQcTimeAmPm] = useState<'AM' | 'PM'>('PM');
+
+  // Dispatch Quality per cell
+  const [dispatchQualityList, setDispatchQualityList] = useState<QcDispatchQuality[]>([]);
+
+  // Received Quality per cell
+  const [receivedQualityList, setReceivedQualityList] = useState<QcReceivedQuality[]>([]);
+
+  // Meta & Tests
+  const [manualEntryReason, setManualEntryReason] = useState('');
+  const [testTypes, setTestTypes] = useState<Record<string, string>>({});
+  const [qcRemarks, setQcRemarks] = useState('');
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
   // CIP Form States (Step 6)
   const [cipStatus, setCipStatus] = useState<'pass' | 'fail'>('pass');
   const [chemicalUsed, setChemicalUsed] = useState('Caustic Soda 1.5%');
@@ -60,17 +112,215 @@ export default function QCLab() {
   const journey = activeTanker?.journey;
   const currentStageKey = journey?.currentStageKey;
 
-  // Pre-fill fat and snf from dispatch when active tanker changes
+  // Pre-fill QC details when active tanker changes
   useEffect(() => {
     if (activeTanker) {
-      setReceivedFat(activeTanker.dispatch_fat_pct != null ? String(activeTanker.dispatch_fat_pct) : '4.50');
-      setReceivedSnf(activeTanker.dispatch_snf_pct != null ? String(activeTanker.dispatch_snf_pct) : '8.40');
+      setQcVehicleNo(activeTanker.tanker_number || '');
+
+      const resolvedDc =
+        activeTanker.dc_number ||
+        activeTanker.stage_data?.dc_number ||
+        activeTanker.stage_data?.dc_no ||
+        activeTanker.stage_data?.gross_weight?.dc_number ||
+        activeTanker.stage_data?.vehicle_entered?.dc_number ||
+        activeTanker.journey?.dc_number ||
+        '106451';
+      setQcDcNo(resolvedDc);
+
+      const bmcName = activeTanker.units?.name || 'KRISHANAMPUDUR';
+      const bmcCode = activeTanker.units?.unit_code || 'CC_BMC87';
+      const primaryBmcTag = `${bmcName} [${bmcCode}]`;
+      const storedReceived =
+        activeTanker.stage_data?.gross_weight?.received_from ||
+        activeTanker.stage_data?.qc_completed?.received_from;
+
+      if (Array.isArray(storedReceived) && storedReceived.length > 0) {
+        setQcReceivedFromList(storedReceived);
+      } else {
+        setQcReceivedFromList([
+          primaryBmcTag,
+          'ADAIYUR BMC [17218]',
+          'CHITHOOR BMC [17193]',
+        ]);
+      }
+
+      // Dispatch date & time
+      const rawDispDate =
+        activeTanker.date ||
+        activeTanker.stage_data?.vehicle_entered?.dispatch_date ||
+        getLocalTodayIso();
+      const dParts = rawDispDate.split('-');
+      setQcDispatchDate(dParts.length === 3 ? `${dParts[2]}/${dParts[1]}/${dParts[0]}` : rawDispDate);
+
+      const rawDispTime =
+        activeTanker.dispatch_time ||
+        activeTanker.stage_data?.dispatch_time ||
+        activeTanker.stage_data?.vehicle_entered?.dispatch_time ||
+        '01:00 PM';
+      if (rawDispTime) {
+        const isPm = rawDispTime.toUpperCase().includes('PM');
+        const isAm = rawDispTime.toUpperCase().includes('AM');
+        const cleanT = rawDispTime.replace(/(AM|PM)/gi, '').trim();
+        const tParts = cleanT.split(':');
+        const h = parseInt(tParts[0], 10) || 1;
+        const m = tParts[1] || '00';
+        setQcDispatchTime(`${String(h > 12 ? h - 12 : h === 0 ? 12 : h).padStart(2, '0')}:${m}`);
+        setQcDispatchAmPm(isPm ? 'PM' : isAm ? 'AM' : (h >= 12 ? 'PM' : 'AM'));
+      }
+
+      // QC date & time
+      const todayIso = getLocalTodayIso();
+      const tParts2 = todayIso.split('-');
+      setQcDate(tParts2.length === 3 ? `${tParts2[2]}/${tParts2[1]}/${tParts2[0]}` : todayIso);
+
+      const now = new Date();
+      let nowH = now.getHours();
+      const nowAmPm = nowH >= 12 ? 'PM' : 'AM';
+      if (nowH > 12) nowH -= 12;
+      if (nowH === 0) nowH = 12;
+      setQcTime(`${String(nowH).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+      setQcTimeAmPm(nowAmPm);
+
+      // Compartments
+      const comps =
+        activeTanker.compartments ||
+        activeTanker.stage_data?.compartments ||
+        activeTanker.stage_data?.gross_weight?.dispatch_quality ||
+        activeTanker.journey?.compartments ||
+        [];
+
+      const numCells = comps.length > 0 ? comps.length : 2;
+      const cellLabels = numCells === 1 ? ['FC'] : numCells === 2 ? ['FC', 'BC'] : numCells === 3 ? ['FC', 'MC', 'BC'] : ['FC', 'MC 1', 'MC 2', 'BC'];
+
+      const dispList: QcDispatchQuality[] = [];
+      const recList: QcReceivedQuality[] = [];
+
+      for (let i = 0; i < numCells; i++) {
+        const c = comps[i] || {};
+        const cell = cellLabels[i] || `C${i + 1}`;
+        const fatVal = c.fat_percentage != null ? String(c.fat_percentage) : (activeTanker.dispatch_fat_pct ? String(activeTanker.dispatch_fat_pct) : (i === 0 ? '4.25' : '4.15'));
+        const snfVal = c.snf_percentage != null ? String(c.snf_percentage) : (activeTanker.dispatch_snf_pct ? String(activeTanker.dispatch_snf_pct) : (i === 0 ? '8.1' : '8.05'));
+        const clrVal = c.clr != null ? String(c.clr) : (i === 0 ? '27.56' : '27.44');
+        const acidityVal = c.acidity != null ? String(c.acidity) : '0';
+        const tempVal = c.temperature != null ? String(c.temperature) : '4';
+        const milkTypeVal = c.milk_type || 'MIXED MILK';
+        const qtyVal = c.quantity_litres != null ? String(c.quantity_litres) : (i === 0 ? '6378' : '5098');
+        const sealVal = c.seal_number || (i === 0 ? '018168' : '018167');
+
+        dispList.push({
+          cell,
+          fat: fatVal,
+          snf: snfVal,
+          clr: clrVal,
+          acidity: acidityVal,
+          temp: tempVal,
+          milkType: milkTypeVal,
+          qty: String(qtyVal),
+        });
+
+        recList.push({
+          cell,
+          purpose: 'SELECT',
+          cps: 'SELECT',
+          fat: fatVal,
+          snf: snfVal,
+          clr: clrVal,
+          acidity: acidityVal,
+          temp: tempVal,
+          seal: sealVal,
+          mbrt: '45',
+          sampleDate: tParts2.length === 3 ? `${tParts2[2]}/${tParts2[1]}/${tParts2[0]}` : todayIso,
+          sampleTime: `${String(nowH).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+          spGr: '1.030',
+          cob: 'Negative',
+          milkType: milkTypeVal,
+          cellRejected: false,
+          qty: String(qtyVal),
+        });
+      }
+
+      setDispatchQualityList(dispList);
+      setReceivedQualityList(recList);
+      setManualEntryReason(activeTanker.stage_data?.qc_completed?.manual_entry_reason || '');
+      setQcRemarks(activeTanker.stage_data?.qc_completed?.remarks || '');
       setRejectionReason('');
-      setQcDecision('accepted');
-      setMilkTemperature('4.0');
-      setQcRemarks('');
     }
   }, [activeTanker]);
+
+  const updateDispatchQuality = (idx: number, field: keyof QcDispatchQuality, value: string) => {
+    setDispatchQualityList((prev) =>
+      prev.map((item, i) => (i === idx ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const updateReceivedQuality = (idx: number, field: keyof QcReceivedQuality, value: any) => {
+    setReceivedQualityList((prev) =>
+      prev.map((item, i) => (i === idx ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const handleUpdateQc = async () => {
+    if (!activeTanker) return;
+
+    // Check if any compartment was marked rejected
+    const hasCellRejected = receivedQualityList.some((r) => r.cellRejected);
+    if (hasCellRejected) {
+      setShowRejectModal(true);
+      return;
+    }
+
+    let sumFat = 0;
+    let sumSnf = 0;
+    let sumQty = 0;
+    for (const r of receivedQualityList) {
+      const q = Number(r.qty) || 1;
+      const f = parseFloat(r.fat);
+      const s = parseFloat(r.snf);
+      if (!isNaN(f) && !isNaN(s) && f > 0 && s > 0) {
+        sumQty += q;
+        sumFat += f * q;
+        sumSnf += s * q;
+      }
+    }
+
+    const avgFat = sumQty > 0 ? Number((sumFat / sumQty).toFixed(2)) : (parseFloat(receivedQualityList[0]?.fat) || 4.25);
+    const avgSnf = sumQty > 0 ? Number((sumSnf / sumQty).toFixed(2)) : (parseFloat(receivedQualityList[0]?.snf) || 8.1);
+    const avgTemp = parseFloat(receivedQualityList[0]?.temp || '4.0');
+
+    await handleRecordStage('qc_completed', {
+      qc_status: 'accepted',
+      accepted: true,
+      received_fat_pct: avgFat,
+      received_snf_pct: avgSnf,
+      temperature: avgTemp,
+      dispatch_quality: dispatchQualityList,
+      received_quality: receivedQualityList,
+      qc_date: qcDate,
+      qc_time: `${qcTime} ${qcTimeAmPm}`,
+      manual_entry_reason: manualEntryReason.trim() || undefined,
+      remarks: qcRemarks.trim() || undefined,
+      test_types: testTypes,
+      dc_number: qcDcNo,
+      received_from: qcReceivedFromList,
+    });
+  };
+
+  const handleConfirmRejection = async () => {
+    if (!activeTanker) return;
+    const finalReason = rejectionReason.trim() || 'Quality parameters failed / Below standard';
+
+    await handleRecordStage('qc_completed', {
+      qc_status: 'rejected',
+      accepted: false,
+      rejection_reason: finalReason,
+      dispatch_quality: dispatchQualityList,
+      received_quality: receivedQualityList,
+      remarks: qcRemarks.trim() || undefined,
+      qc_date: qcDate,
+      qc_time: `${qcTime} ${qcTimeAmPm}`,
+    });
+    setShowRejectModal(false);
+  };
 
   const handleRecordStage = async (stageKey: string, payload: Record<string, any>) => {
     if (!activeTanker) return;
@@ -334,273 +584,713 @@ export default function QCLab() {
             );
           })()}
 
-          {/* QC Action Form depending on journey state */}
+          {/* Sub Navigation Bar matching Aavin IDMS header */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              backgroundColor: '#0284c7',
+              padding: '6px 10px 0 10px',
+              borderRadius: '8px 8px 0 0',
+              borderBottom: '2px solid #0369a1',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setQcSubTab('qc')}
+              style={{
+                backgroundColor: (qcSubTab === 'qc' || (!qcSubTab && currentStageKey !== 'cip_completed')) ? '#ffffff' : 'transparent',
+                color: (qcSubTab === 'qc' || (!qcSubTab && currentStageKey !== 'cip_completed')) ? '#0369a1' : '#f0f9ff',
+                border: 'none',
+                borderRadius: '4px 4px 0 0',
+                padding: '6px 16px',
+                fontSize: '0.85rem',
+                fontWeight: (qcSubTab === 'qc' || (!qcSubTab && currentStageKey !== 'cip_completed')) ? 700 : 500,
+                cursor: 'pointer',
+              }}
+            >
+              Quality Control Details
+            </button>
+            <button
+              type="button"
+              onClick={() => setQcSubTab('cip')}
+              style={{
+                backgroundColor: (qcSubTab === 'cip' || (!qcSubTab && currentStageKey === 'cip_completed')) ? '#ffffff' : 'transparent',
+                color: (qcSubTab === 'cip' || (!qcSubTab && currentStageKey === 'cip_completed')) ? '#0369a1' : '#f0f9ff',
+                border: 'none',
+                borderRadius: '4px 4px 0 0',
+                padding: '6px 16px',
+                fontSize: '0.85rem',
+                fontWeight: (qcSubTab === 'cip' || (!qcSubTab && currentStageKey === 'cip_completed')) ? 700 : 500,
+                cursor: 'pointer',
+              }}
+            >
+              CIP Sanitization &amp; Release
+            </button>
+          </div>
+
+          {/* QC Action Form */}
           <div
             className="card"
             style={{
               backgroundColor: '#ffffff',
-              borderRadius: 8,
+              borderRadius: '0 0 8px 8px',
               border: '1px solid #cbd5e1',
+              borderTop: 'none',
               boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
               overflow: 'hidden',
             }}
           >
-            {/* STEP 3: QC TESTING */}
-            {currentStageKey === 'qc_completed' && (
+            {/* 1. QUALITY CONTROL DETAILS (Matching user photo 1 & 2) */}
+            {(qcSubTab === 'qc' || (!qcSubTab && currentStageKey !== 'cip_completed')) && (
               <div>
                 <div
                   style={{
-                    backgroundColor: '#d97706',
+                    backgroundColor: '#52525b',
                     color: '#ffffff',
-                    padding: '0.65rem 1rem',
-                    fontSize: '0.9rem',
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.88rem',
                     fontWeight: 700,
                     letterSpacing: '0.04em',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
+                    textTransform: 'uppercase',
                   }}
                 >
-                  <span>STEP 3: RAW MILK QUALITY TESTING & VERIFICATION</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 500 }}>QC Testing Laboratory</span>
+                  QUALITY CONTROL DETAILS
                 </div>
 
-                <div style={{ padding: '1.25rem' }}>
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      if (qcDecision === 'accepted') {
-                        void handleRecordStage('qc_completed', {
-                          qc_status: 'accepted',
-                          received_fat_pct: parseFloat(receivedFat),
-                          received_snf_pct: parseFloat(receivedSnf),
-                          temperature: parseFloat(milkTemperature),
-                          organoleptic_status: organoleptic,
-                          mbrt_minutes: parseInt(mbrtMin, 10) || 45,
-                          remarks: qcRemarks.trim() || undefined,
-                        });
-                      } else {
-                        void handleRecordStage('qc_completed', {
-                          qc_status: 'rejected',
-                          accepted: false,
-                          rejection_reason: rejectionReason.trim(),
-                          remarks: qcRemarks.trim() || undefined,
-                        });
-                      }
-                    }}
-                    className="entry-form"
-                  >
-                    {/* Decision Selector */}
-                    <div style={{ marginBottom: '1.25rem' }}>
-                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '0.5rem' }}>
-                        Quality Assessment Decision *
+                <div style={{ padding: '1.25rem 1.5rem' }}>
+                  <form onSubmit={(e) => { e.preventDefault(); void handleUpdateQc(); }}>
+                    {/* Vehicle No */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Vehicle No
                       </label>
-                      <div style={{ display: 'flex', gap: '0.75rem' }}>
-                        <button
-                          type="button"
-                          onClick={() => setQcDecision('accepted')}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          value={qcVehicleNo}
+                          onChange={(e) => setQcVehicleNo(e.target.value.toUpperCase())}
                           style={{
-                            flex: 1,
-                            padding: '0.75rem',
-                            borderRadius: 8,
-                            border: `2px solid ${qcDecision === 'accepted' ? '#16a34a' : '#cbd5e1'}`,
-                            background: qcDecision === 'accepted' ? '#f0fdf4' : '#ffffff',
-                            color: qcDecision === 'accepted' ? '#15803d' : '#475569',
+                            width: 150,
+                            height: 28,
+                            padding: '2px 8px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                            fontWeight: 600,
+                          }}
+                        />
+                        <span
+                          style={{
+                            backgroundColor: '#fef9c3',
+                            border: '1px solid #fde047',
+                            padding: '2px 8px',
+                            borderRadius: 3,
                             fontWeight: 700,
-                            fontSize: '0.92rem',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.5rem',
+                            fontSize: '0.85rem',
+                            color: '#1e293b',
                           }}
                         >
-                          <span style={{ fontSize: '1.1rem' }}>✓</span>
-                          <span>Accept Milk (Pass Quality)</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setQcDecision('rejected')}
-                          style={{
-                            flex: 1,
-                            padding: '0.75rem',
-                            borderRadius: 8,
-                            border: `2px solid ${qcDecision === 'rejected' ? '#dc2626' : '#cbd5e1'}`,
-                            background: qcDecision === 'rejected' ? '#fef2f2' : '#ffffff',
-                            color: qcDecision === 'rejected' ? '#b91c1c' : '#475569',
-                            fontWeight: 700,
-                            fontSize: '0.92rem',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.5rem',
-                          }}
-                        >
-                          <span style={{ fontSize: '1.1rem' }}>⚠️</span>
-                          <span>Reject Milk (Fail Quality)</span>
-                        </button>
+                          {qcVehicleNo || activeTanker.tanker_number}
+                        </span>
                       </div>
                     </div>
 
-                    {qcDecision === 'accepted' ? (
-                      <>
-                        {/* Row: Fat & SNF */}
-                        <div className="form-row">
-                          <div className="form-group">
-                            <label style={{ fontWeight: 600 }}>
-                              Received Fat % <span style={{ color: '#dc2626' }}>*</span>
-                            </label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              placeholder="e.g. 4.45"
-                              value={receivedFat}
-                              onChange={(e) => setReceivedFat(e.target.value)}
-                              required
-                              style={{ fontWeight: 700, fontSize: '1.05rem' }}
-                            />
-                            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                              BMC Dispatched Fat: {formatFatSnf(activeTanker.dispatch_fat_pct, true)}
-                            </span>
-                          </div>
+                    {/* Received From : */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem', paddingTop: '2px' }}>
+                        Received From :
+                      </label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        {qcReceivedFromList.map((bmc, idx) => (
+                          <span
+                            key={idx}
+                            style={{
+                              backgroundColor: '#fef9c3',
+                              border: '1px solid #fde047',
+                              padding: '1px 8px',
+                              borderRadius: 2,
+                              fontWeight: 600,
+                              fontSize: '0.82rem',
+                              color: '#1e293b',
+                              width: 'fit-content',
+                            }}
+                          >
+                            {bmc}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
 
-                          <div className="form-group">
-                            <label style={{ fontWeight: 600 }}>
-                              Received SNF % <span style={{ color: '#dc2626' }}>*</span>
-                            </label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              placeholder="e.g. 8.35"
-                              value={receivedSnf}
-                              onChange={(e) => setReceivedSnf(e.target.value)}
-                              required
-                              style={{ fontWeight: 700, fontSize: '1.05rem' }}
-                            />
-                            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                              BMC Dispatched SNF: {formatFatSnf(activeTanker.dispatch_snf_pct, true)}
-                            </span>
-                          </div>
-                        </div>
+                    {/* DC NO: */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        DC NO:
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <input
+                          value={qcDcNo}
+                          onChange={(e) => setQcDcNo(e.target.value.toUpperCase())}
+                          style={{
+                            width: 150,
+                            height: 28,
+                            padding: '2px 8px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                            fontWeight: 600,
+                          }}
+                        />
+                        <span style={{ color: '#ef4444', fontWeight: 700 }}>*</span>
+                      </div>
+                    </div>
 
-                        {/* Row: Temperature & Tests */}
-                        <div className="form-row">
-                          <div className="form-group">
-                            <label style={{ fontWeight: 600 }}>
-                              Milk Temperature (°C) <span style={{ color: '#dc2626' }}>*</span>
-                            </label>
-                            <input
-                              type="number"
-                              step="0.1"
-                              placeholder="4.0"
-                              value={milkTemperature}
-                              onChange={(e) => setMilkTemperature(e.target.value)}
-                              required
-                              style={{ fontWeight: 600 }}
-                            />
-                          </div>
+                    {/* Dispatch Date */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Dispatch Date
+                      </label>
+                      <input
+                        type="text"
+                        value={qcDispatchDate}
+                        onChange={(e) => setQcDispatchDate(e.target.value)}
+                        placeholder="DD/MM/YYYY"
+                        style={{
+                          width: 150,
+                          height: 28,
+                          padding: '2px 8px',
+                          border: '1px solid #94a3b8',
+                          borderRadius: 3,
+                        }}
+                      />
+                    </div>
 
-                          <div className="form-group">
-                            <label style={{ fontWeight: 600 }}>Organoleptic &amp; Acidity Test</label>
-                            <select value={organoleptic} onChange={(e) => setOrganoleptic(e.target.value)}>
-                              <option value="normal">Normal (Clean taste, good smell, normal acidity)</option>
-                              <option value="acceptable">Acceptable (Pass)</option>
+                    {/* Dispatch Time(HHMM)[12 hour format] */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Dispatch Time(HHMM)[12 hour format]
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input
+                          value={qcDispatchTime}
+                          onChange={(e) => setQcDispatchTime(e.target.value)}
+                          placeholder="01:00"
+                          style={{
+                            width: 90,
+                            height: 28,
+                            padding: '2px 8px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                          }}
+                        />
+                        <select
+                          value={qcDispatchAmPm}
+                          onChange={(e) => setQcDispatchAmPm(e.target.value as any)}
+                          style={{
+                            width: 60,
+                            height: 28,
+                            padding: '2px 4px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                          }}
+                        >
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* QC Date */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        QC Date
+                      </label>
+                      <input
+                        type="text"
+                        value={qcDate}
+                        onChange={(e) => setQcDate(e.target.value)}
+                        placeholder="DD/MM/YYYY"
+                        style={{
+                          width: 150,
+                          height: 28,
+                          padding: '2px 8px',
+                          border: '1px solid #94a3b8',
+                          borderRadius: 3,
+                        }}
+                      />
+                    </div>
+
+                    {/* QC Time(HHMM)[12 hour format] */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.25rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        QC Time(HHMM)[12 hour format]
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input
+                          value={qcTime}
+                          onChange={(e) => setQcTime(e.target.value)}
+                          placeholder="02:33"
+                          style={{
+                            width: 90,
+                            height: 28,
+                            padding: '2px 8px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                          }}
+                        />
+                        <select
+                          value={qcTimeAmPm}
+                          onChange={(e) => setQcTimeAmPm(e.target.value as any)}
+                          style={{
+                            width: 60,
+                            height: 28,
+                            padding: '2px 4px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                          }}
+                        >
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Dispatch Quality Section (Matching photo) */}
+                    <div style={{ marginTop: '1.25rem', marginBottom: '1.25rem' }}>
+                      <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', fontWeight: 700, color: '#334155' }}>
+                        Dispatch Quality
+                      </h4>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {dispatchQualityList.map((row, idx) => (
+                          <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', fontSize: '0.85rem' }}>
+                              <strong style={{ minWidth: 28, fontSize: '0.9rem', color: '#0f172a' }}>{row.cell}</strong>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ fontWeight: 600, color: '#334155' }}>Fat%</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={row.fat}
+                                  onChange={(e) => updateDispatchQuality(idx, 'fat', e.target.value)}
+                                  style={{ width: 55, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                />
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ fontWeight: 600, color: '#334155' }}>SNF%</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={row.snf}
+                                  onChange={(e) => updateDispatchQuality(idx, 'snf', e.target.value)}
+                                  style={{ width: 55, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                />
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ fontWeight: 600, color: '#334155' }}>CLR</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={row.clr}
+                                  onChange={(e) => updateDispatchQuality(idx, 'clr', e.target.value)}
+                                  style={{ width: 60, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                />
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ fontWeight: 600, color: '#334155' }}>Acidity%</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={row.acidity}
+                                  onChange={(e) => updateDispatchQuality(idx, 'acidity', e.target.value)}
+                                  style={{ width: 50, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                />
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ fontWeight: 600, color: '#334155' }}>Temp</span>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={row.temp}
+                                  onChange={(e) => updateDispatchQuality(idx, 'temp', e.target.value)}
+                                  style={{ width: 45, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                />
+                                <span style={{ color: '#64748b' }}>°C</span>
+                              </div>
+                            </div>
+
+                            {/* Second line: Milk Type & Quantity */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginLeft: '42px', fontSize: '0.85rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ fontWeight: 600, color: '#334155' }}>Milk Type</span>
+                                <span style={{ backgroundColor: '#fef9c3', border: '1px solid #fde047', padding: '1px 8px', borderRadius: 2, fontWeight: 700, fontSize: '0.78rem', color: '#1e293b' }}>
+                                  {row.milkType}
+                                </span>
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ fontWeight: 600, color: '#334155' }}>Quantity</span>
+                                <input
+                                  type="number"
+                                  step="1"
+                                  value={row.qty}
+                                  onChange={(e) => updateDispatchQuality(idx, 'qty', e.target.value)}
+                                  style={{ width: 75, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Received Quality Section (Matching photo 1 & 2) */}
+                    <div style={{ marginTop: '1.5rem', marginBottom: '1.25rem' }}>
+                      <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', fontWeight: 700, color: '#334155' }}>
+                        Received Quality
+                      </h4>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                        {receivedQualityList.map((r, idx) => (
+                          <div key={idx} style={{ padding: '0.85rem 1rem', background: '#f8fafc', border: `1px solid ${r.cellRejected ? '#fca5a5' : '#e2e8f0'}`, borderRadius: 6 }}>
+                            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a', marginBottom: '0.5rem' }}>
+                              {r.cell}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                              {/* Left Column: Purpose & C/P/S */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 180 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ fontWeight: 600, color: '#334155', width: 70, fontSize: '0.85rem' }}>Purpose</span>
+                                  <select
+                                    value={r.purpose}
+                                    onChange={(e) => updateReceivedQuality(idx, 'purpose', e.target.value)}
+                                    style={{ width: 120, height: 26, padding: '1px 6px', border: '1px solid #94a3b8', borderRadius: 2, fontSize: '0.82rem' }}
+                                  >
+                                    <option value="SELECT">SELECT</option>
+                                    <option value="Processing">Processing</option>
+                                    <option value="Sales">Sales</option>
+                                    <option value="Product Making">Product Making</option>
+                                    <option value="Standardization">Standardization</option>
+                                    <option value="General">General</option>
+                                  </select>
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ fontWeight: 600, color: '#334155', width: 70, fontSize: '0.85rem' }}>C/P/S</span>
+                                  <select
+                                    value={r.cps}
+                                    onChange={(e) => updateReceivedQuality(idx, 'cps', e.target.value)}
+                                    style={{ width: 120, height: 26, padding: '1px 6px', border: '1px solid #94a3b8', borderRadius: 2, fontSize: '0.82rem' }}
+                                  >
+                                    <option value="SELECT">SELECT</option>
+                                    <option value="Chilled">Chilled</option>
+                                    <option value="Raw">Raw</option>
+                                    <option value="Silo">Silo</option>
+                                    <option value="Pasteurized">Pasteurized</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              {/* Right Grid: 3 Rows */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+                                {/* Grid Row 1: Fat%, SNF%, CLR, Acidity%, Temp */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', fontSize: '0.85rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ fontWeight: 600, color: '#334155', minWidth: 42 }}>Fat%</span>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={r.fat}
+                                      onChange={(e) => updateReceivedQuality(idx, 'fat', e.target.value)}
+                                      style={{ width: 55, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                    />
+                                  </div>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ fontWeight: 600, color: '#334155', minWidth: 45 }}>SNF%</span>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={r.snf}
+                                      onChange={(e) => updateReceivedQuality(idx, 'snf', e.target.value)}
+                                      style={{ width: 55, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                    />
+                                  </div>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ fontWeight: 600, color: '#334155', minWidth: 35 }}>CLR</span>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={r.clr}
+                                      onChange={(e) => updateReceivedQuality(idx, 'clr', e.target.value)}
+                                      style={{ width: 55, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                    />
+                                  </div>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ fontWeight: 600, color: '#334155', minWidth: 55 }}>Acidity%</span>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={r.acidity}
+                                      onChange={(e) => updateReceivedQuality(idx, 'acidity', e.target.value)}
+                                      style={{ width: 50, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                    />
+                                  </div>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ fontWeight: 600, color: '#334155', minWidth: 40 }}>Temp</span>
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      value={r.temp}
+                                      onChange={(e) => updateReceivedQuality(idx, 'temp', e.target.value)}
+                                      style={{ width: 50, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                    />
+                                    <span style={{ color: '#64748b' }}>°C</span>
+                                  </div>
+                                </div>
+
+                                {/* Grid Row 2: Seal, MBRT, Sample Date, Sample Time, Sp Gr */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', fontSize: '0.85rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ fontWeight: 600, color: '#334155', minWidth: 42 }}>Seal</span>
+                                    <input
+                                      value={r.seal}
+                                      onChange={(e) => updateReceivedQuality(idx, 'seal', e.target.value)}
+                                      style={{ width: 65, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                    />
+                                  </div>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ fontWeight: 600, color: '#334155', minWidth: 45 }}>MBRT</span>
+                                    <input
+                                      value={r.mbrt}
+                                      onChange={(e) => updateReceivedQuality(idx, 'mbrt', e.target.value)}
+                                      style={{ width: 55, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                    />
+                                  </div>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ fontWeight: 600, color: '#334155', minWidth: 80 }}>Sample Date</span>
+                                    <input
+                                      type="text"
+                                      value={r.sampleDate}
+                                      onChange={(e) => updateReceivedQuality(idx, 'sampleDate', e.target.value)}
+                                      style={{ width: 85, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                    />
+                                  </div>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ fontWeight: 600, color: '#334155', minWidth: 80 }}>Sample Time</span>
+                                    <input
+                                      type="text"
+                                      value={r.sampleTime}
+                                      onChange={(e) => updateReceivedQuality(idx, 'sampleTime', e.target.value)}
+                                      style={{ width: 55, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                    />
+                                  </div>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ fontWeight: 600, color: '#334155', minWidth: 40 }}>Sp Gr</span>
+                                    <input
+                                      value={r.spGr}
+                                      onChange={(e) => updateReceivedQuality(idx, 'spGr', e.target.value)}
+                                      style={{ width: 50, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Grid Row 3: COB, Milk Type, none, REJECT */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', fontSize: '0.85rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ fontWeight: 600, color: '#334155', minWidth: 42 }}>COB</span>
+                                    <select
+                                      value={r.cob}
+                                      onChange={(e) => updateReceivedQuality(idx, 'cob', e.target.value as any)}
+                                      style={{ width: 85, height: 26, padding: '1px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                    >
+                                      <option value="Negative">Negative</option>
+                                      <option value="Positive">Positive</option>
+                                    </select>
+                                  </div>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ fontWeight: 600, color: '#334155', minWidth: 65 }}>Milk Type</span>
+                                    <input
+                                      value={r.milkType}
+                                      onChange={(e) => updateReceivedQuality(idx, 'milkType', e.target.value)}
+                                      style={{ width: 85, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                                    />
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => updateReceivedQuality(idx, 'milkType', '')}
+                                    style={{
+                                      background: '#fef08a',
+                                      border: '1px solid #eab308',
+                                      padding: '1px 6px',
+                                      borderRadius: 3,
+                                      fontSize: '0.72rem',
+                                      cursor: 'pointer',
+                                      fontWeight: 600,
+                                      height: 24,
+                                    }}
+                                  >
+                                    none
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => updateReceivedQuality(idx, 'cellRejected', !r.cellRejected)}
+                                    style={{
+                                      background: r.cellRejected ? '#ef4444' : '#65a30d',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      borderRadius: 3,
+                                      padding: '2px 10px',
+                                      fontWeight: 700,
+                                      fontSize: '0.75rem',
+                                      cursor: 'pointer',
+                                      height: 24,
+                                    }}
+                                  >
+                                    {r.cellRejected ? 'REJECTED' : 'REJECT'}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Qc Manual Entry Reason (Matching photo 2) */}
+                    <div style={{ marginBottom: '1rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '0.25rem' }}>
+                        Qc Manual Entry Reason
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={manualEntryReason}
+                        onChange={(e) => setManualEntryReason(e.target.value)}
+                        style={{ width: '100%', maxWidth: 350, padding: '4px 8px', border: '1px solid #94a3b8', borderRadius: 3, fontSize: '0.85rem' }}
+                        placeholder=""
+                      />
+                    </div>
+
+                    {/* Select Test (Matching photo 2) */}
+                    <div style={{ marginBottom: '1rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '0.35rem' }}>
+                        Select Test
+                      </label>
+                      <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.85rem' }}>
+                        {receivedQualityList.map((r) => (
+                          <div key={r.cell} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontWeight: 600, color: '#334155' }}>Test Type For {r.cell}</span>
+                            <select
+                              value={testTypes[r.cell] || 'SELECT'}
+                              onChange={(e) => setTestTypes((prev) => ({ ...prev, [r.cell]: e.target.value }))}
+                              style={{ width: 130, height: 26, padding: '1px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                            >
+                              <option value="SELECT">SELECT</option>
+                              <option value="Standard Chemical">Standard Chemical</option>
+                              <option value="Adulteration Screen">Adulteration Screen</option>
+                              <option value="Full Microbial">Full Microbial</option>
+                              <option value="Rapid Strip">Rapid Strip</option>
                             </select>
                           </div>
+                        ))}
+                      </div>
+                    </div>
 
-                          <div className="form-group">
-                            <label style={{ fontWeight: 600 }}>MBRT Test (Mins)</label>
-                            <input
-                              type="number"
-                              value={mbrtMin}
-                              onChange={(e) => setMbrtMin(e.target.value)}
-                              placeholder="45"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Remarks */}
-                        <div className="form-group">
-                          <label style={{ fontWeight: 600 }}>QC Lab Remarks</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. Organoleptic tests normal, approved for Silo reception"
-                            value={qcRemarks}
-                            onChange={(e) => setQcRemarks(e.target.value)}
-                          />
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
-                          <button
-                            type="submit"
-                            disabled={submitting || !receivedFat || !receivedSnf}
-                            className="btn-primary"
-                            style={{ minWidth: 220, padding: '0.65rem 1.25rem', fontWeight: 700, background: '#16a34a' }}
+                    {/* Tests Completed (Matching photo 2) */}
+                    <div style={{ marginBottom: '1rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '0.25rem' }}>
+                        Tests Completed
+                      </label>
+                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                        {receivedQualityList.map((r, i) => (
+                          <span
+                            key={r.cell}
+                            style={{
+                              fontWeight: 700,
+                              fontSize: '0.85rem',
+                              color: r.cellRejected ? '#ef4444' : i === 0 ? '#16a34a' : '#d97706',
+                            }}
                           >
-                            {submitting ? 'Submitting…' : '✓ Approve QC & Hand Over to Unloading Bay'}
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        {/* Rejection Form */}
-                        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '1rem', borderRadius: 8, marginBottom: '1rem' }}>
-                          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#991b1b', marginBottom: '0.4rem' }}>
-                            Mandatory Rejection Reason <span style={{ color: '#dc2626' }}>*</span>
-                          </label>
-                          <textarea
-                            value={rejectionReason}
-                            onChange={(e) => setRejectionReason(e.target.value)}
-                            placeholder="Specify detailed reason for rejecting this tanker milk..."
-                            rows={3}
-                            required
-                            style={{ width: '100%', padding: '0.5rem', borderRadius: 6, border: '1px solid #f87171' }}
-                          />
+                            {r.cell}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
 
-                          {/* Quick Chips */}
-                          <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                            {quickRejectionReasons.map((reason) => (
-                              <button
-                                key={reason}
-                                type="button"
-                                onClick={() => setRejectionReason(reason)}
-                                style={{
-                                  background: '#ffffff',
-                                  border: '1px solid #fca5a5',
-                                  color: '#b91c1c',
-                                  borderRadius: 4,
-                                  fontSize: '0.72rem',
-                                  padding: '2px 8px',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                + {reason}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
+                    {/* Remarks (Matching photo 2) */}
+                    <div style={{ marginBottom: '1.25rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '0.25rem' }}>
+                        Remarks
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={qcRemarks}
+                        onChange={(e) => setQcRemarks(e.target.value)}
+                        style={{ width: '100%', maxWidth: 450, padding: '4px 8px', border: '1px solid #94a3b8', borderRadius: 3, fontSize: '0.85rem' }}
+                        placeholder=""
+                      />
+                    </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
-                          <button
-                            type="submit"
-                            disabled={submitting || !rejectionReason.trim()}
-                            className="btn-primary"
-                            style={{ minWidth: 220, padding: '0.65rem 1.25rem', fontWeight: 700, background: '#dc2626', borderColor: '#b91c1c' }}
-                          >
-                            {submitting ? 'Submitting…' : '⚠️ Confirm QC Rejection & Route to Tare'}
-                          </button>
-                        </div>
-                      </>
-                    )}
+                    {/* Action Buttons matching photo */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '0.5rem' }}>
+                      <button
+                        type="submit"
+                        disabled={submitting}
+                        style={{
+                          backgroundColor: '#65a30d',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: 3,
+                          padding: '5px 18px',
+                          fontWeight: 700,
+                          fontSize: '0.85rem',
+                          cursor: submitting ? 'not-allowed' : 'pointer',
+                          opacity: submitting ? 0.7 : 1,
+                        }}
+                      >
+                        {submitting ? 'Updating…' : 'Update'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowRejectModal(true)}
+                        disabled={submitting}
+                        style={{
+                          backgroundColor: '#65a30d',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: 3,
+                          padding: '5px 18px',
+                          fontWeight: 700,
+                          fontSize: '0.85rem',
+                          cursor: submitting ? 'not-allowed' : 'pointer',
+                          opacity: submitting ? 0.7 : 1,
+                        }}
+                      >
+                        REJECT
+                      </button>
+                    </div>
                   </form>
                 </div>
               </div>
             )}
 
             {/* STEP 6: CIP SANITIZATION */}
-            {currentStageKey === 'cip_completed' && (
+            {(qcSubTab === 'cip' || (!qcSubTab && currentStageKey === 'cip_completed')) && (
               <div>
                 <div
                   style={{
@@ -836,6 +1526,133 @@ export default function QCLab() {
           </div>
         )}
       </div>
+
+      {/* Rejection Confirmation Modal */}
+      {showRejectModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '1rem',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: 8,
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
+              maxWidth: 540,
+              width: '100%',
+              padding: '1.5rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#dc2626', marginBottom: '0.75rem' }}>
+              <span style={{ fontSize: '1.5rem' }}>⚠️</span>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#991b1b' }}>
+                Confirm Tanker Milk Rejection
+              </h3>
+            </div>
+
+            <p style={{ fontSize: '0.88rem', color: '#475569', marginBottom: '1rem', lineHeight: 1.4 }}>
+              Are you sure you want to reject milk for Tanker <strong>{activeTanker?.tanker_number}</strong>?
+              This will route the tanker directly to Tare Weighbridge and mark the batch as rejected.
+            </p>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
+                Reason for Rejection:
+              </label>
+              <textarea
+                rows={3}
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="e.g. Clot on boiling positive, sour milk, low Fat/SNF..."
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  borderRadius: 4,
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.85rem',
+                }}
+              />
+            </div>
+
+            {/* Quick chips */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: '0.4rem' }}>
+                Quick Selection:
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {quickRejectionReasons.map((reason) => (
+                  <button
+                    key={reason}
+                    type="button"
+                    onClick={() => setRejectionReason(reason)}
+                    style={{
+                      background: rejectionReason === reason ? '#fee2e2' : '#f1f5f9',
+                      color: rejectionReason === reason ? '#991b1b' : '#334155',
+                      border: rejectionReason === reason ? '1px solid #f87171' : '1px solid #cbd5e1',
+                      borderRadius: 4,
+                      padding: '3px 8px',
+                      fontSize: '0.75rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRejectModal(false);
+                }}
+                disabled={submitting}
+                style={{
+                  background: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
+                  color: '#475569',
+                  padding: '6px 14px',
+                  borderRadius: 4,
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRejection}
+                disabled={submitting}
+                style={{
+                  background: '#dc2626',
+                  border: 'none',
+                  color: '#ffffff',
+                  padding: '6px 16px',
+                  borderRadius: 4,
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: submitting ? 'not-allowed' : 'pointer',
+                  opacity: submitting ? 0.7 : 1,
+                }}
+              >
+                {submitting ? 'Rejecting…' : 'Confirm Rejection'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

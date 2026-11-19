@@ -349,6 +349,29 @@ test('GateOperations renders authentic Aavin IDMS VEHICLE GROSS WEIGHT DETAILS f
   assert.ok(gateSrc.includes('Gross Weight Entry'), 'Must render Gross Weight Entry sub tab');
 });
 
+test('QCLab renders authentic Aavin IDMS QUALITY CONTROL DETAILS form matching user photos', () => {
+  const qcSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/QCLab.tsx'), 'utf8');
+  assert.ok(qcSrc.includes('QUALITY CONTROL DETAILS'), 'Must render QUALITY CONTROL DETAILS section header');
+  assert.ok(qcSrc.includes('Vehicle No'), 'Must render Vehicle No label');
+  assert.ok(qcSrc.includes('Received From :'), 'Must render Received From label with BMC badges');
+  assert.ok(qcSrc.includes('DC NO:'), 'Must render DC NO: label');
+  assert.ok(qcSrc.includes('Dispatch Date'), 'Must render Dispatch Date input');
+  assert.ok(qcSrc.includes('Dispatch Time(HHMM)[12 hour format]'), 'Must render Dispatch Time in 12hr format');
+  assert.ok(qcSrc.includes('QC Date'), 'Must render QC Date input');
+  assert.ok(qcSrc.includes('QC Time(HHMM)[12 hour format]'), 'Must render QC Time in 12hr format');
+  assert.ok(qcSrc.includes('Dispatch Quality'), 'Must render Dispatch Quality section');
+  assert.ok(qcSrc.includes('Received Quality'), 'Must render Received Quality section');
+  assert.ok(qcSrc.includes('Qc Manual Entry Reason'), 'Must render Qc Manual Entry Reason field');
+  assert.ok(qcSrc.includes('Select Test'), 'Must render Select Test section');
+  assert.ok(qcSrc.includes('Test Type For FC') || qcSrc.includes('Test Type For'), 'Must render Test Type dropdowns');
+  assert.ok(qcSrc.includes('Tests Completed'), 'Must render Tests Completed indicators');
+  assert.ok(qcSrc.includes('Remarks'), 'Must render Remarks multiline textarea');
+  assert.ok(qcSrc.includes('Update'), 'Must render Update submit button');
+  assert.ok(qcSrc.includes('REJECT'), 'Must render REJECT button');
+  assert.ok(qcSrc.includes('Confirm Tanker Milk Rejection'), 'Must render rejection confirmation dialog');
+});
+
+
 
 
 

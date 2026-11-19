@@ -1296,8 +1296,30 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
       updateTripFields.qc_status = 'rejected';
       updateTripFields.trip_status = 'qc_rejected';
     } else {
-      const fat = payload.received_fat_pct != null ? Number(payload.received_fat_pct) : null;
-      const snf = payload.received_snf_pct != null ? Number(payload.received_snf_pct) : null;
+      let fat = payload.received_fat_pct != null ? Number(payload.received_fat_pct) : null;
+      let snf = payload.received_snf_pct != null ? Number(payload.received_snf_pct) : null;
+
+      // Calculate weighted averages from received_quality if provided
+      if (Array.isArray(payload.received_quality) && payload.received_quality.length > 0) {
+        let totalQty = 0;
+        let sumFat = 0;
+        let sumSnf = 0;
+        for (const item of payload.received_quality) {
+          const q = Number(item.qty) || 1;
+          const f = Number(item.fat);
+          const s = Number(item.snf);
+          if (!isNaN(f) && !isNaN(s) && f > 0 && s > 0) {
+            totalQty += q;
+            sumFat += f * q;
+            sumSnf += s * q;
+          }
+        }
+        if (totalQty > 0) {
+          if (fat == null) fat = Number((sumFat / totalQty).toFixed(2));
+          if (snf == null) snf = Number((sumSnf / totalQty).toFixed(2));
+        }
+      }
+
       if (fat == null || snf == null) {
         res.status(400).json({ error: 'received_fat_pct and received_snf_pct required for QC approval' });
         return;
@@ -1312,6 +1334,15 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
       updateTripFields.received_snf_pct = snf;
       updateTripFields.trip_status = 'qc_done';
     }
+    if (payload.dispatch_quality) stageData.dispatch_quality = payload.dispatch_quality;
+    if (payload.received_quality) stageData.received_quality = payload.received_quality;
+    if (payload.qc_date) stageData.qc_date = payload.qc_date;
+    if (payload.qc_time) stageData.qc_time = payload.qc_time;
+    if (payload.test_types) stageData.test_types = payload.test_types;
+    if (payload.manual_entry_reason) stageData.manual_entry_reason = payload.manual_entry_reason;
+    if (payload.remarks) stageData.remarks = payload.remarks;
+    if (payload.dc_number) stageData.dc_number = payload.dc_number;
+    if (payload.received_from) stageData.received_from = payload.received_from;
   } else if (stageKey === 'unloaded') {
     const litres = payload.unloaded_litres != null ? Number(payload.unloaded_litres) : Number(trip.quantity_dispatched);
     stageData.silo_or_bay = payload.silo_or_bay || 'Main Bay';
