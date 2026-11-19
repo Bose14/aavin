@@ -716,28 +716,6 @@ export default function QCLab() {
           >
             <button
               type="button"
-              onClick={() => {
-                const el = document.getElementById('qc-register-table');
-                if (el) el.scrollIntoView({ behavior: 'smooth' });
-              }}
-              style={{
-                backgroundColor: 'transparent',
-                color: '#f0f9ff',
-                border: 'none',
-                borderRadius: '4px 4px 0 0',
-                padding: '6px 14px',
-                fontSize: '0.85rem',
-                fontWeight: 500,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-              }}
-            >
-              📊 Dashboard
-            </button>
-            <button
-              type="button"
               onClick={() => setQcSubTab('qc')}
               style={{
                 backgroundColor: (qcSubTab === 'qc' || (!qcSubTab && currentStageKey !== 'cip_completed')) ? '#ffffff' : 'transparent',
