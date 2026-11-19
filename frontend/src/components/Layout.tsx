@@ -159,7 +159,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <NavLink
               key={item.to}
               to={item.to}
-              end={['/admin', '/unit', '/superadmin', '/admin/tanker', '/admin/analytics', '/unit/tanker', '/unit/analytics'].includes(item.to)}
+              end
               onClick={() => setDrawerOpen(false)}
               className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
             >
