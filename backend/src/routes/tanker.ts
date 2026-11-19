@@ -13,6 +13,9 @@ import {
   writeAuditLog,
   saveTankerDispatchMetadata,
   getTankerDispatchMetadata,
+  getRegisteredTankersInDb,
+  saveRegisteredTankerInDb,
+  findRegisteredTankerInDb,
 } from '../lib/settingsStore';
 import {
   deriveTankerJourneyState,
@@ -409,6 +412,68 @@ router.get('/stock', async (req, res) => {
     const unitId = req.profile.role === 'unit' ? req.profile.unit_id : (req.query.unit_id as string | undefined);
     const stock = await computeAvailableStock(req.profile.zone_id, unitId);
     res.json(stock);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// GET /tanker/registered — List all registered tankers
+router.get('/registered', async (_req, res) => {
+  try {
+    const list = await getRegisteredTankersInDb();
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// GET /tanker/registered/:vehicleNumber — Get registered tanker by vehicle number
+router.get('/registered/:vehicleNumber', async (req, res) => {
+  try {
+    const found = await findRegisteredTankerInDb(req.params.vehicleNumber);
+    if (!found) {
+      res.status(404).json({ error: 'Tanker registration not found' });
+      return;
+    }
+    res.json(found);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// POST /tanker/registration — Register or update a tanker
+router.post('/registration', async (req, res) => {
+  try {
+    const {
+      vehicle_number,
+      contractor_name,
+      from_date,
+      vehicle_type,
+      number_of_cells,
+      front_cell_capacity,
+      middle_cell_capacity,
+      back_cell_capacity,
+      supplier_name,
+    } = req.body;
+
+    if (!vehicle_number || !contractor_name || !supplier_name) {
+      res.status(400).json({ error: 'Vehicle number, contractor name, and supplier name are required' });
+      return;
+    }
+
+    const saved = await saveRegisteredTankerInDb({
+      vehicle_number,
+      contractor_name,
+      from_date,
+      vehicle_type,
+      number_of_cells,
+      front_cell_capacity,
+      middle_cell_capacity,
+      back_cell_capacity,
+      supplier_name,
+    });
+
+    res.status(201).json(saved);
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -1343,10 +1408,29 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
     if (payload.remarks) stageData.remarks = payload.remarks;
     if (payload.dc_number) stageData.dc_number = payload.dc_number;
     if (payload.received_from) stageData.received_from = payload.received_from;
+    if (payload.test_categories) stageData.test_categories = payload.test_categories;
+    if (payload.freshness_test) stageData.freshness_test = payload.freshness_test;
+    if (payload.snf_adulteration_test) stageData.snf_adulteration_test = payload.snf_adulteration_test;
+    if (payload.special_test) stageData.special_test = payload.special_test;
+    if (payload.fat_adulteration_test) stageData.fat_adulteration_test = payload.fat_adulteration_test;
+    if (payload.tests_completed) stageData.tests_completed = payload.tests_completed;
   } else if (stageKey === 'unloaded') {
     const litres = payload.unloaded_litres != null ? Number(payload.unloaded_litres) : Number(trip.quantity_dispatched);
-    stageData.silo_or_bay = payload.silo_or_bay || 'Main Bay';
+    stageData.silo_or_bay = payload.silo_or_bay || payload.unloaded_to_silo || 'Main Bay';
     stageData.unloaded_litres = litres;
+    if (payload.unloading_date) stageData.unloading_date = payload.unloading_date;
+    if (payload.unloading_time) stageData.unloading_time = payload.unloading_time;
+    if (payload.seal_number) stageData.seal_number = payload.seal_number;
+    if (payload.unloaded_to_silo) stageData.unloaded_to_silo = payload.unloaded_to_silo;
+    if (payload.unload_operator_name) stageData.unload_operator_name = payload.unload_operator_name;
+    if (payload.line_number) stageData.line_number = payload.line_number;
+    if (payload.gross_weight_kg) stageData.gross_weight_kg = payload.gross_weight_kg;
+    if (payload.unloading_cells) stageData.unloading_cells = payload.unloading_cells;
+    if (payload.dc_details) stageData.dc_details = payload.dc_details;
+    if (payload.is_npd_transfer != null) stageData.is_npd_transfer = payload.is_npd_transfer;
+    if (payload.received_quality) stageData.received_quality = payload.received_quality;
+    if (payload.dc_number) stageData.dc_number = payload.dc_number;
+    if (payload.received_from) stageData.received_from = payload.received_from;
     if (payload.dipstick_start_cm != null && payload.dipstick_start_cm !== '') stageData.dipstick_start_cm = Number(payload.dipstick_start_cm);
     if (payload.dipstick_end_cm != null && payload.dipstick_end_cm !== '') stageData.dipstick_end_cm = Number(payload.dipstick_end_cm);
     if (payload.flowmeter_reading != null && payload.flowmeter_reading !== '') stageData.flowmeter_reading = Number(payload.flowmeter_reading);

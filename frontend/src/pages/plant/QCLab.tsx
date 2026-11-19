@@ -16,6 +16,68 @@ export interface QcDispatchQuality {
   qty: string;
 }
 
+export type AdulterationTestResult = 'Positive' | 'Negative' | 'Not Tested';
+
+export interface QcCellTests {
+  // A. Freshness Test
+  freshnessTemp: string;
+  freshnessOrganoleptic: 'Satisfied' | 'Unsatisfied';
+  freshnessChemist: string;
+
+  // B. SNF Adulteration Test
+  sugarTest: AdulterationTestResult;
+  starchTest: AdulterationTestResult;
+  maltoseTest: AdulterationTestResult;
+  saltTest: AdulterationTestResult;
+  ureaTest: AdulterationTestResult;
+  neutralizersTest: AdulterationTestResult;
+  waterTest: AdulterationTestResult;
+  ammoniumSulphateTest: AdulterationTestResult;
+  abnormalTest: AdulterationTestResult;
+  snfChemist: string;
+
+  // C. Special Test
+  antibioticTest: AdulterationTestResult;
+  aflatoxinTest: AdulterationTestResult;
+  specialChemist: string;
+
+  // D. FAT Adulteration Test
+  freeFattyAcid: string;
+  brReading: string;
+  motTest: AdulterationTestResult;
+  rmValue: string;
+  fatChemist: string;
+}
+
+export function getDefaultCellTests(chemist = 'S. Ramesh (QC Chemist)'): QcCellTests {
+  return {
+    freshnessTemp: '4.0',
+    freshnessOrganoleptic: 'Satisfied',
+    freshnessChemist: chemist,
+
+    sugarTest: 'Negative',
+    starchTest: 'Negative',
+    maltoseTest: 'Negative',
+    saltTest: 'Negative',
+    ureaTest: 'Negative',
+    neutralizersTest: 'Negative',
+    waterTest: 'Negative',
+    ammoniumSulphateTest: 'Negative',
+    abnormalTest: 'Negative',
+    snfChemist: chemist,
+
+    antibioticTest: 'Negative',
+    aflatoxinTest: 'Negative',
+    specialChemist: chemist,
+
+    freeFattyAcid: '0.12',
+    brReading: '41.2',
+    motTest: 'Negative',
+    rmValue: '28.5',
+    fatChemist: chemist,
+  };
+}
+
 export interface QcReceivedQuality {
   cell: string; // 'FC' | 'BC' | 'MC'
   purpose: string;
@@ -75,6 +137,23 @@ export default function QCLab() {
   const [qcRemarks, setQcRemarks] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
+
+  // 3.5 Select Test: 4 test categories separately for FC and BC
+  const [cellTests, setCellTests] = useState<Record<string, QcCellTests>>({
+    FC: getDefaultCellTests(),
+    BC: getDefaultCellTests(),
+  });
+  const [selectedTestCellTab, setSelectedTestCellTab] = useState<string>('FC');
+
+  const updateCellTest = <K extends keyof QcCellTests>(cell: string, field: K, val: QcCellTests[K]) => {
+    setCellTests((prev) => ({
+      ...prev,
+      [cell]: {
+        ...(prev[cell] || getDefaultCellTests()),
+        [field]: val,
+      },
+    }));
+  };
 
   // CIP Details Form States (Matching authentic Aavin IDMS CIP photo)
   const [cipVehicleNo, setCipVehicleNo] = useState('');
@@ -386,6 +465,12 @@ export default function QCLab() {
       temperature: avgTemp,
       dispatch_quality: dispatchQualityList,
       received_quality: receivedQualityList,
+      test_categories: cellTests,
+      freshness_test: cellTests,
+      snf_adulteration_test: cellTests,
+      special_test: cellTests,
+      fat_adulteration_test: cellTests,
+      tests_completed: 'All 4 Categories Tested for FC & BC',
       qc_date: qcDate,
       qc_time: `${qcTime} ${qcTimeAmPm}`,
       manual_entry_reason: manualEntryReason.trim() || undefined,
@@ -470,9 +555,27 @@ export default function QCLab() {
     'Adulteration detected',
   ];
 
-  // QC Dashboard Counters
-  const waitingQcCount = tankers.filter((t) => t.journey?.waitingTeam === 'qc' && t.journey?.currentStageKey === 'qc_completed').length;
-  const waitingCipCount = tankers.filter((t) => t.journey?.waitingTeam === 'qc' && t.journey?.currentStageKey === 'cip_completed').length;
+  // QC Dashboard Counters & Queue Filters
+  // Condition 3: QC queue displays only vehicles for which Gross Weight has been completed
+  const qcEligibleTankers = tankers.filter(
+    (t) => (t.stage_data?.gross_weight != null || t.journey?.completedStageKeys?.includes('gross_weight')) &&
+      !t.stage_data?.qc_completed &&
+      t.journey?.tripStatus !== 'qc_rejected'
+  );
+
+  // Condition 5: CIP queue displays only vehicles for which Tare Weight has been completed
+  const cipEligibleTankers = tankers.filter(
+    (t) => (t.stage_data?.tare_weight != null || t.journey?.completedStageKeys?.includes('tare_weight')) &&
+      !t.stage_data?.cip_completed
+  );
+
+  const isCipActive = qcSubTab === 'cip';
+  const displayedQueue = isCipActive
+    ? (cipEligibleTankers.length > 0 ? cipEligibleTankers : tankers)
+    : (qcEligibleTankers.length > 0 ? qcEligibleTankers : tankers);
+
+  const waitingQcCount = qcEligibleTankers.length || tankers.filter((t) => t.journey?.waitingTeam === 'qc' && t.journey?.currentStageKey === 'qc_completed').length;
+  const waitingCipCount = cipEligibleTankers.length || tankers.filter((t) => t.journey?.waitingTeam === 'qc' && t.journey?.currentStageKey === 'cip_completed').length;
   const passedCount = tankers.filter((t) => t.stage_data?.qc_completed?.qc_status === 'accepted').length;
   const rejectedCount = tankers.filter((t) => t.stage_data?.qc_completed?.qc_status === 'rejected' || t.journey?.tripStatus === 'qc_rejected').length;
 
@@ -563,8 +666,8 @@ export default function QCLab() {
           flexWrap: 'wrap',
         }}
       >
-        <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', minWidth: '180px' }}>
-          Select Tanker in QC Queue:
+        <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', minWidth: '220px' }}>
+          {isCipActive ? 'Vehicles Waiting for CIP (Tare Done):' : 'Vehicles Waiting for QC (Gross Done):'}
         </label>
         <select
           value={activeTanker?.id || ''}
@@ -578,10 +681,14 @@ export default function QCLab() {
             fontWeight: 600,
           }}
         >
-          {tankers.length === 0 ? (
-            <option value="">No tankers currently waiting in plant queue</option>
+          {displayedQueue.length === 0 ? (
+            <option value="">
+              {isCipActive
+                ? 'No vehicles currently waiting for CIP (Condition: Tare Weight completed)'
+                : 'No vehicles currently waiting for QC (Condition: Gross Weight completed)'}
+            </option>
           ) : (
-            tankers.map((t) => (
+            displayedQueue.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.tanker_number} {t.dc_number ? `(DC #${t.dc_number})` : ''} — Stage: {t.journey?.tripStatusLabel} (Waiting on: {t.journey?.waitingTeamLabel?.toUpperCase()}) — BMC: {t.units?.name}
               </option>
@@ -1080,20 +1187,17 @@ export default function QCLab() {
 
                             <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
                               {/* Left Column: Purpose & C/P/S */}
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 180 }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 190 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                   <span style={{ fontWeight: 600, color: '#334155', width: 70, fontSize: '0.85rem' }}>Purpose</span>
                                   <select
                                     value={r.purpose}
                                     onChange={(e) => updateReceivedQuality(idx, 'purpose', e.target.value)}
-                                    style={{ width: 120, height: 26, padding: '1px 6px', border: '1px solid #94a3b8', borderRadius: 2, fontSize: '0.82rem' }}
+                                    style={{ width: 140, height: 26, padding: '1px 6px', border: '1px solid #94a3b8', borderRadius: 2, fontSize: '0.82rem', fontWeight: 600 }}
                                   >
-                                    <option value="SELECT">SELECT</option>
-                                    <option value="Processing">Processing</option>
-                                    <option value="Sales">Sales</option>
-                                    <option value="Product Making">Product Making</option>
-                                    <option value="Standardization">Standardization</option>
-                                    <option value="General">General</option>
+                                    <option value="Purchase">Purchase</option>
+                                    <option value="Inter Unit Transfer">Inter Unit Transfer</option>
+                                    <option value="Conversion">Conversion</option>
                                   </select>
                                 </div>
 
@@ -1102,13 +1206,12 @@ export default function QCLab() {
                                   <select
                                     value={r.cps}
                                     onChange={(e) => updateReceivedQuality(idx, 'cps', e.target.value)}
-                                    style={{ width: 120, height: 26, padding: '1px 6px', border: '1px solid #94a3b8', borderRadius: 2, fontSize: '0.82rem' }}
+                                    style={{ width: 140, height: 26, padding: '1px 6px', border: '1px solid #94a3b8', borderRadius: 2, fontSize: '0.82rem', fontWeight: 600 }}
                                   >
-                                    <option value="SELECT">SELECT</option>
                                     <option value="Chilled">Chilled</option>
-                                    <option value="Raw">Raw</option>
-                                    <option value="Silo">Silo</option>
                                     <option value="Pasteurized">Pasteurized</option>
+                                    <option value="Skim Separated Milk">Skim Separated Milk</option>
+                                    <option value="Condensed Skim Milk">Condensed Skim Milk</option>
                                   </select>
                                 </div>
                               </div>
@@ -1303,47 +1406,279 @@ export default function QCLab() {
                       />
                     </div>
 
-                    {/* Select Test (Matching photo 2) */}
-                    <div style={{ marginBottom: '1rem' }}>
-                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '0.35rem' }}>
+                    {/* 3.5 SELECT TEST: 4 test categories separately for FC and BC */}
+                    <div style={{ marginTop: '1.5rem', marginBottom: '1.25rem' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#475569', marginBottom: '0.5rem' }}>
                         Select Test
-                      </label>
-                      <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.85rem' }}>
-                        {receivedQualityList.map((r) => (
-                          <div key={r.cell} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontWeight: 600, color: '#334155' }}>Test Type For {r.cell}</span>
-                            <select
-                              value={testTypes[r.cell] || 'SELECT'}
-                              onChange={(e) => setTestTypes((prev) => ({ ...prev, [r.cell]: e.target.value }))}
-                              style={{ width: 130, height: 26, padding: '1px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
-                            >
-                              <option value="SELECT">SELECT</option>
-                              <option value="Standard Chemical">Standard Chemical</option>
-                              <option value="Adulteration Screen">Adulteration Screen</option>
-                              <option value="Full Microbial">Full Microbial</option>
-                              <option value="Rapid Strip">Rapid Strip</option>
-                            </select>
-                          </div>
-                        ))}
                       </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '0.85rem', color: '#1e293b' }}>Test Type For FC</span>
+                          <select
+                            value={testTypes['FC'] || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTestTypes((prev) => ({ ...prev, FC: val }));
+                              setSelectedTestCellTab('FC');
+                            }}
+                            style={{ padding: '3px 8px', fontSize: '0.82rem', border: '1px solid #94a3b8', borderRadius: 2, backgroundColor: '#ffffff', minWidth: 110 }}
+                          >
+                            <option value="">SELECT</option>
+                            <option value="ALL">All Tests</option>
+                            <option value="Freshness">Freshness Test</option>
+                            <option value="SNF Adulteration">SNF Adulteration Test</option>
+                            <option value="Special">Special Test</option>
+                            <option value="FAT Adulteration">FAT Adulteration Test</option>
+                          </select>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '0.85rem', color: '#1e293b' }}>Test Type For BC</span>
+                          <select
+                            value={testTypes['BC'] || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTestTypes((prev) => ({ ...prev, BC: val }));
+                              setSelectedTestCellTab('BC');
+                            }}
+                            style={{ padding: '3px 8px', fontSize: '0.82rem', border: '1px solid #94a3b8', borderRadius: 2, backgroundColor: '#ffffff', minWidth: 110 }}
+                          >
+                            <option value="">SELECT</option>
+                            <option value="ALL">All Tests</option>
+                            <option value="Freshness">Freshness Test</option>
+                            <option value="SNF Adulteration">SNF Adulteration Test</option>
+                            <option value="Special">Special Test</option>
+                            <option value="FAT Adulteration">FAT Adulteration Test</option>
+                          </select>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
+                          {(receivedQualityList.length > 0 ? receivedQualityList.map((r) => r.cell) : ['FC', 'BC']).map((cell) => (
+                            <button
+                              key={cell}
+                              type="button"
+                              onClick={() => setSelectedTestCellTab(cell)}
+                              style={{
+                                padding: '3px 10px',
+                                borderRadius: 3,
+                                border: selectedTestCellTab === cell ? '2px solid #0284c7' : '1px solid #cbd5e1',
+                                backgroundColor: selectedTestCellTab === cell ? '#e0f2fe' : '#f8fafc',
+                                color: selectedTestCellTab === cell ? '#0369a1' : '#475569',
+                                fontWeight: 700,
+                                fontSize: '0.8rem',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {cell} {cell === 'FC' ? '(Front Cell)' : cell === 'BC' ? '(Back Cell)' : ''}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Active Compartment Tests Container */}
+                      {(() => {
+                        const activeCell = selectedTestCellTab || 'FC';
+                        const currentTests = cellTests[activeCell] || getDefaultCellTests();
+
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                            {/* A. Freshness Test */}
+                            <div style={{ border: '1px solid #bbf7d0', borderRadius: 6, padding: '10px 12px', backgroundColor: '#f0fdf4' }}>
+                              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#166534', marginBottom: '6px' }}>
+                                A. Freshness Test — {activeCell}
+                              </div>
+                              <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                <div>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', display: 'block' }}>1. Temperature (°C)</label>
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    value={currentTests.freshnessTemp}
+                                    onChange={(e) => updateCellTest(activeCell, 'freshnessTemp', e.target.value)}
+                                    style={{ width: 80, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', display: 'block' }}>2. Organoleptic</label>
+                                  <select
+                                    value={currentTests.freshnessOrganoleptic}
+                                    onChange={(e) => updateCellTest(activeCell, 'freshnessOrganoleptic', e.target.value as any)}
+                                    style={{ height: 26, padding: '1px 6px', border: '1px solid #94a3b8', borderRadius: 3, fontWeight: 600 }}
+                                  >
+                                    <option value="Satisfied">Satisfied</option>
+                                    <option value="Unsatisfied">Unsatisfied</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', display: 'block' }}>3. Chemist Name</label>
+                                  <input
+                                    value={currentTests.freshnessChemist}
+                                    onChange={(e) => updateCellTest(activeCell, 'freshnessChemist', e.target.value)}
+                                    style={{ width: 170, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* B. SNF Adulteration Test */}
+                            <div style={{ border: '1px solid #fef08a', borderRadius: 6, padding: '10px 12px', backgroundColor: '#fefce8' }}>
+                              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#854d0e', marginBottom: '6px' }}>
+                                B. SNF Adulteration Test — {activeCell}
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '8px', marginBottom: '6px' }}>
+                                {[
+                                  { label: '1. Sugar Test', key: 'sugarTest' },
+                                  { label: '2. Starch Test', key: 'starchTest' },
+                                  { label: '3. Maltose Test', key: 'maltoseTest' },
+                                  { label: '4. Salt', key: 'saltTest' },
+                                  { label: '5. Urea', key: 'ureaTest' },
+                                  { label: '6. Neutralizers', key: 'neutralizersTest' },
+                                  { label: '7. Water', key: 'waterTest' },
+                                  { label: '8. Ammonium Sulphate', key: 'ammoniumSulphateTest' },
+                                  { label: '9. Abnormal', key: 'abnormalTest' },
+                                ].map((f) => (
+                                  <div key={f.key}>
+                                    <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#475569', display: 'block' }}>{f.label}</label>
+                                    <select
+                                      value={(currentTests as any)[f.key]}
+                                      onChange={(e) => updateCellTest(activeCell, f.key as any, e.target.value as any)}
+                                      style={{ width: '100%', height: 26, padding: '1px 4px', border: '1px solid #94a3b8', borderRadius: 3, fontSize: '0.78rem' }}
+                                    >
+                                      <option value="Positive">Positive</option>
+                                      <option value="Negative">Negative</option>
+                                      <option value="Not Tested">Not Tested</option>
+                                    </select>
+                                  </div>
+                                ))}
+                              </div>
+                              <div>
+                                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', display: 'block' }}>10. Chemist Name</label>
+                                <input
+                                  value={currentTests.snfChemist}
+                                  onChange={(e) => updateCellTest(activeCell, 'snfChemist', e.target.value)}
+                                  style={{ width: 170, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* C. Special Test */}
+                            <div style={{ border: '1px solid #bfdbfe', borderRadius: 6, padding: '10px 12px', backgroundColor: '#eff6ff' }}>
+                              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e40af', marginBottom: '6px' }}>
+                                C. Special Test — {activeCell}
+                              </div>
+                              <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                <div>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', display: 'block' }}>1. Antibiotic</label>
+                                  <select
+                                    value={currentTests.antibioticTest}
+                                    onChange={(e) => updateCellTest(activeCell, 'antibioticTest', e.target.value as any)}
+                                    style={{ height: 26, padding: '1px 6px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                                  >
+                                    <option value="Positive">Positive</option>
+                                    <option value="Negative">Negative</option>
+                                    <option value="Not Tested">Not Tested</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', display: 'block' }}>2. Aflatoxin Test</label>
+                                  <select
+                                    value={currentTests.aflatoxinTest}
+                                    onChange={(e) => updateCellTest(activeCell, 'aflatoxinTest', e.target.value as any)}
+                                    style={{ height: 26, padding: '1px 6px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                                  >
+                                    <option value="Positive">Positive</option>
+                                    <option value="Negative">Negative</option>
+                                    <option value="Not Tested">Not Tested</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', display: 'block' }}>3. Chemist Name</label>
+                                  <input
+                                    value={currentTests.specialChemist}
+                                    onChange={(e) => updateCellTest(activeCell, 'specialChemist', e.target.value)}
+                                    style={{ width: 170, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* D. FAT Adulteration Test */}
+                            <div style={{ border: '1px solid #e9d5ff', borderRadius: 6, padding: '10px 12px', backgroundColor: '#faf5ff' }}>
+                              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#6b21a8', marginBottom: '6px' }}>
+                                D. FAT Adulteration Test — {activeCell}
+                              </div>
+                              <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                <div>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', display: 'block' }}>1. Free Fatty Acid</label>
+                                  <input
+                                    value={currentTests.freeFattyAcid}
+                                    onChange={(e) => updateCellTest(activeCell, 'freeFattyAcid', e.target.value)}
+                                    style={{ width: 80, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', display: 'block' }}>2. B.R.</label>
+                                  <input
+                                    value={currentTests.brReading}
+                                    onChange={(e) => updateCellTest(activeCell, 'brReading', e.target.value)}
+                                    style={{ width: 80, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', display: 'block' }}>3. MOT</label>
+                                  <select
+                                    value={currentTests.motTest}
+                                    onChange={(e) => updateCellTest(activeCell, 'motTest', e.target.value as any)}
+                                    style={{ height: 26, padding: '1px 6px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                                  >
+                                    <option value="Positive">Positive</option>
+                                    <option value="Negative">Negative</option>
+                                    <option value="Not Tested">Not Tested</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', display: 'block' }}>4. R.M.</label>
+                                  <input
+                                    value={currentTests.rmValue}
+                                    onChange={(e) => updateCellTest(activeCell, 'rmValue', e.target.value)}
+                                    style={{ width: 80, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', display: 'block' }}>5. Chemist Name</label>
+                                  <input
+                                    value={currentTests.fatChemist}
+                                    onChange={(e) => updateCellTest(activeCell, 'fatChemist', e.target.value)}
+                                    style={{ width: 170, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
 
-                    {/* Tests Completed (Matching photo 2) */}
-                    <div style={{ marginBottom: '1rem' }}>
-                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '0.25rem' }}>
-                        Tests Completed
+                    {/* 3.6 QC Completion */}
+                    <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>
+                        Tests Completed:
                       </label>
-                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                         {receivedQualityList.map((r, i) => (
                           <span
                             key={r.cell}
                             style={{
+                              backgroundColor: '#f0fdf4',
+                              border: '1px solid #86efac',
+                              borderRadius: 4,
+                              padding: '2px 8px',
                               fontWeight: 700,
-                              fontSize: '0.85rem',
-                              color: r.cellRejected ? '#ef4444' : i === 0 ? '#16a34a' : '#d97706',
+                              fontSize: '0.82rem',
+                              color: r.cellRejected ? '#dc2626' : i === 0 ? '#16a34a' : '#d97706',
                             }}
                           >
-                            {r.cell}
+                            ✓ {r.cell}: All Tests Verified
                           </span>
                         ))}
                       </div>
@@ -1649,9 +1984,8 @@ export default function QCLab() {
                           fontWeight: 600,
                         }}
                       >
-                        <option value="SATISFIED">SATISFIED</option>
-                        <option value="NOT SATISFIED">NOT SATISFIED</option>
-                        <option value="RE-WASH REQUIRED">RE-WASH REQUIRED</option>
+                        <option value="Satisfied">Satisfied</option>
+                        <option value="Unsatisfied">Unsatisfied</option>
                       </select>
                     </div>
 

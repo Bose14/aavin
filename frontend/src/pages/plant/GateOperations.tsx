@@ -4,6 +4,7 @@ import { TankerTimeline } from '../../components/TankerTimeline';
 import { formatLitres, getLocalTodayIso } from '../../lib/format';
 import { ErrorBanner } from '../../components/UiPrimitives';
 import { useTranslation } from '../../context/LanguageContext';
+import NewTankerRegistrationModal from '../../components/NewTankerRegistrationModal';
 
 export interface GrossQualityRow {
   id: string;
@@ -84,8 +85,11 @@ export default function GateOperations() {
   const [outletSealNo, setOutletSealNo] = useState('');
   const [sealVerified, setSealVerified] = useState(true);
 
+  // Sub-navigation tabs: receipt, gross, tare, exit, register
+  const [gateSubTab, setGateSubTab] = useState<'receipt' | 'gross' | 'tare' | 'exit' | 'register' | null>(null);
+  const [showNewTankerModal, setShowNewTankerModal] = useState(false);
+
   // Step 2: Gross Weight states (Matching Aavin IDMS Gross Weight Entry photo)
-  const [gateSubTab, setGateSubTab] = useState<'receipt' | 'gross' | null>(null);
   const [grossVehicleNo, setGrossVehicleNo] = useState('');
   const [grossReceivedFromList, setGrossReceivedFromList] = useState<string[]>([]);
   const [grossDcNo, setGrossDcNo] = useState('');
@@ -104,12 +108,35 @@ export default function GateOperations() {
   const [grossQualityRows, setGrossQualityRows] = useState<GrossQualityRow[]>([]);
   const [showGrossReportModal, setShowGrossReportModal] = useState(false);
 
-  // Step 5: Tare Weight states
+  // Step 5: Tare Weight states (Requirement 6.2)
+  const [tareVehicleNo, setTareVehicleNo] = useState('');
+  const [tareDcNo, setTareDcNo] = useState('');
+  const [tareDate, setTareDate] = useState(() => {
+    const d = new Date();
+    const day = String(d.getDate()).padStart(2, '0');
+    const mon = String(d.getMonth() + 1).padStart(2, '0');
+    return `${day}/${mon}/${d.getFullYear()}`;
+  });
+  const [tareTime, setTareTime] = useState('03:15');
+  const [tareAmPm, setTareAmPm] = useState<'AM' | 'PM'>('PM');
   const [tareWeightKg, setTareWeightKg] = useState('');
   const [tareSlip, setTareSlip] = useState('');
+  const [tareRemarks, setTareRemarks] = useState('');
 
-  // Step 7: Vehicle Exit states
+  // Step 7: Tanker Out states (Requirement 6.3)
+  const [exitVehicleNo, setExitVehicleNo] = useState('');
+  const [exitDcNo, setExitDcNo] = useState('');
+  const [exitDate, setExitDate] = useState(() => {
+    const d = new Date();
+    const day = String(d.getDate()).padStart(2, '0');
+    const mon = String(d.getMonth() + 1).padStart(2, '0');
+    return `${day}/${mon}/${d.getFullYear()}`;
+  });
+  const [exitTime, setExitTime] = useState('04:00');
+  const [exitAmPm, setExitAmPm] = useState<'AM' | 'PM'>('PM');
   const [gatePassNo, setGatePassNo] = useState('');
+  const [securityGuardName, setSecurityGuardName] = useState('K. Muthu (Security)');
+  const [exitRemarks, setExitRemarks] = useState('');
 
   // Submitting state
   const [submitting, setSubmitting] = useState(false);
@@ -642,7 +669,7 @@ export default function GateOperations() {
                 cursor: 'pointer',
               }}
             >
-              Milk Receipt Entry
+              Milk Receipt Entry ▾
             </button>
             <button
               type="button"
@@ -659,6 +686,55 @@ export default function GateOperations() {
               }}
             >
               Gross Weight Entry
+            </button>
+            <button
+              type="button"
+              onClick={() => setGateSubTab('tare')}
+              style={{
+                backgroundColor: (gateSubTab === 'tare' || (!gateSubTab && currentStageKey === 'tare_weight')) ? '#ffffff' : 'transparent',
+                color: (gateSubTab === 'tare' || (!gateSubTab && currentStageKey === 'tare_weight')) ? '#0369a1' : '#f0f9ff',
+                border: 'none',
+                borderRadius: '4px 4px 0 0',
+                padding: '6px 16px',
+                fontSize: '0.85rem',
+                fontWeight: (gateSubTab === 'tare' || (!gateSubTab && currentStageKey === 'tare_weight')) ? 700 : 500,
+                cursor: 'pointer',
+              }}
+            >
+              Tare Weight Entry
+            </button>
+            <button
+              type="button"
+              onClick={() => setGateSubTab('exit')}
+              style={{
+                backgroundColor: (gateSubTab === 'exit' || (!gateSubTab && currentStageKey === 'vehicle_exit')) ? '#ffffff' : 'transparent',
+                color: (gateSubTab === 'exit' || (!gateSubTab && currentStageKey === 'vehicle_exit')) ? '#0369a1' : '#f0f9ff',
+                border: 'none',
+                borderRadius: '4px 4px 0 0',
+                padding: '6px 16px',
+                fontSize: '0.85rem',
+                fontWeight: (gateSubTab === 'exit' || (!gateSubTab && currentStageKey === 'vehicle_exit')) ? 700 : 500,
+                cursor: 'pointer',
+              }}
+            >
+              Tanker Out
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowNewTankerModal(true)}
+              style={{
+                backgroundColor: 'transparent',
+                color: '#bbf7d0',
+                border: 'none',
+                borderRadius: '4px 4px 0 0',
+                padding: '6px 16px',
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                marginLeft: 'auto',
+              }}
+            >
+              + New Tanker Registration
             </button>
           </div>
 
@@ -886,22 +962,12 @@ export default function GateOperations() {
                     </div>
 
                     {/* Row 6: Receiving Dairy */}
-                    <div className="form-group">
+                    <div className="form-group" style={{ marginBottom: '1.25rem' }}>
                       <label style={{ fontWeight: 600, color: '#475569' }}>Receiving Dairy</label>
                       <div style={{ fontWeight: 700, color: '#1e293b', padding: '0.35rem 0' }}>
                         NAMAKKAL DAIRY
                       </div>
                     </div>
-
-                    {/* Physical Seal Intact Checkbox */}
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', margin: '0.75rem 0 1.25rem', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={sealVerified}
-                        onChange={(e) => setSealVerified(e.target.checked)}
-                      />
-                      <span>Physical seal is intact and matches outlet seal number ({outletSealNo || activeTanker.seal_number || 'SL-xxx'})</span>
-                    </label>
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
                       <button
@@ -1325,149 +1391,560 @@ export default function GateOperations() {
               </div>
             )}
 
-            {/* STAGE 5: TARE WEIGHT (WEIGHBRIDGE) */}
-            {currentStageKey === 'tare_weight' && (
-              <div style={{ padding: '1.25rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                  <span style={{ fontSize: '1.25rem' }}>⚖️</span>
-                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>
-                    Tare Weighbridge Measurement — {activeTanker.tanker_number}
-                  </h3>
-                </div>
-                <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
-                  Tanker milk has been discharged (or rejected by QC). Record empty tare weight.
-                </p>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: '#f8fafc', padding: '0.75rem', borderRadius: 8, marginBottom: '1rem' }}>
-                  <div>Gross Weight: <strong>{journey.calculated?.gross_weight_kg ? `${journey.calculated.gross_weight_kg} kg` : '—'}</strong></div>
-                  <div>Dispatched Milk: <strong>{formatLitres(activeTanker.quantity_dispatched)}</strong></div>
-                </div>
-
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void handleRecordStage('tare_weight', {
-                      tare_weight_kg: Number(tareWeightKg),
-                      tare_slip_no: tareSlip.trim() || undefined,
-                    });
+            {/* STAGE 5: TARE WEIGHT (WEIGHBRIDGE) - Requirement 6.2 */}
+            {(gateSubTab === 'tare' || (!gateSubTab && currentStageKey === 'tare_weight')) && (
+              <div>
+                <div
+                  style={{
+                    backgroundColor: '#52525b',
+                    color: '#ffffff',
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
                   }}
-                  className="entry-form"
                 >
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600 }}>
-                        Tare Weight (kg) <span style={{ color: '#dc2626' }}>*</span>
+                  VEHICLE TARE WEIGHT DETAILS
+                </div>
+
+                <div style={{ padding: '1.25rem 1.5rem' }}>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const kg = Number(tareWeightKg);
+                      if (!kg || kg <= 0) {
+                        setError('Please enter a valid Tare Weight (Kgs)');
+                        return;
+                      }
+                      const slip = tareSlip.trim() || `WB-TARE-${Math.floor(1000 + Math.random() * 9000)}`;
+                      void handleRecordStage('tare_weight', {
+                        tare_weight_kg: kg,
+                        tare_slip_no: slip,
+                        tare_date: tareDate,
+                        tare_time: `${tareTime} ${tareAmPm}`,
+                        remarks: tareRemarks.trim() || undefined,
+                        dc_number: tareDcNo || activeTanker.dc_number,
+                      });
+                    }}
+                  >
+                    {/* 1. Vehicle No */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Vehicle No
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          value={tareVehicleNo || activeTanker.tanker_number || ''}
+                          onChange={(e) => setTareVehicleNo(e.target.value.toUpperCase())}
+                          style={{
+                            width: 150,
+                            height: 28,
+                            padding: '2px 8px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                            fontWeight: 600,
+                          }}
+                        />
+                        <span
+                          style={{
+                            backgroundColor: '#fef9c3',
+                            border: '1px solid #fde047',
+                            padding: '2px 8px',
+                            borderRadius: 3,
+                            fontWeight: 700,
+                            fontSize: '0.85rem',
+                            color: '#1e293b',
+                          }}
+                        >
+                          {tareVehicleNo || activeTanker.tanker_number}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 2. Received From */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem', paddingTop: '2px' }}>
+                        Received From :
+                      </label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        {grossReceivedFromList.map((bmc, idx) => (
+                          <span
+                            key={idx}
+                            style={{
+                              backgroundColor: '#fef9c3',
+                              border: '1px solid #fde047',
+                              padding: '1px 8px',
+                              borderRadius: 2,
+                              fontWeight: 600,
+                              fontSize: '0.82rem',
+                              color: '#1e293b',
+                              width: 'fit-content',
+                            }}
+                          >
+                            {bmc}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 3. DC NO */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        DC NO: <span style={{ color: '#ef4444' }}>*</span>
                       </label>
                       <input
-                        type="number"
-                        placeholder="e.g. 15200"
-                        value={tareWeightKg}
-                        onChange={(e) => setTareWeightKg(e.target.value)}
-                        required
-                        style={{ fontWeight: 700, fontSize: '1.1rem' }}
+                        value={tareDcNo || activeTanker.dc_number || ''}
+                        onChange={(e) => setTareDcNo(e.target.value)}
+                        style={{
+                          width: 150,
+                          height: 28,
+                          padding: '2px 8px',
+                          border: '1px solid #94a3b8',
+                          borderRadius: 3,
+                          fontWeight: 600,
+                        }}
                       />
                     </div>
 
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600 }}>Tare Slip No.</label>
+                    {/* 4. Tare Weight Date */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Tare Weight Date
+                      </label>
                       <input
-                        type="text"
-                        placeholder="e.g. WB-TARE-1002"
-                        value={tareSlip}
-                        onChange={(e) => setTareSlip(e.target.value)}
+                        value={tareDate}
+                        onChange={(e) => setTareDate(e.target.value)}
+                        placeholder="DD/MM/YYYY"
+                        style={{
+                          width: 150,
+                          height: 28,
+                          padding: '2px 8px',
+                          border: '1px solid #94a3b8',
+                          borderRadius: 3,
+                        }}
                       />
                     </div>
-                  </div>
 
-                  {/* Net Weight Preview */}
-                  {grossWeightKg && tareWeightKg && Number(grossWeightKg) > Number(tareWeightKg) && (
-                    <div
-                      style={{
-                        padding: '0.75rem',
-                        background: '#eff6ff',
-                        borderRadius: 6,
-                        border: '1px solid #bfdbfe',
-                        marginBottom: '1rem',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                      }}
-                    >
-                      <div>
-                        Calculated Net Milk Weight: <strong>{Number(grossWeightKg) - Number(tareWeightKg)} kg</strong>
-                      </div>
-                      <div>
-                        Calculated Net Volume: <strong>{((Number(grossWeightKg) - Number(tareWeightKg)) / 1.030).toFixed(1)} L</strong>
+                    {/* 5. Tare Weight Time(HHMM)[12 hour format] */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Tare Weight Time(HHMM)[12 hour format]
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input
+                          value={tareTime}
+                          onChange={(e) => setTareTime(e.target.value)}
+                          placeholder="03:15"
+                          style={{
+                            width: 90,
+                            height: 28,
+                            padding: '2px 8px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                          }}
+                        />
+                        <select
+                          value={tareAmPm}
+                          onChange={(e) => setTareAmPm(e.target.value as any)}
+                          style={{
+                            width: 60,
+                            height: 28,
+                            padding: '2px 4px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                            fontWeight: 600,
+                          }}
+                        >
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
                       </div>
                     </div>
-                  )}
 
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                    <button
-                      type="submit"
-                      disabled={submitting || !tareWeightKg}
-                      className="btn-primary"
-                      style={{ minWidth: 200, padding: '0.6rem 1.25rem', fontWeight: 700 }}
-                    >
-                      {submitting ? 'Recording…' : '✓ Record Tare Weight & Hand Over to QC for CIP'}
-                    </button>
-                  </div>
-                </form>
+                    {/* 6. Gross Weight(Kgs) - Readonly */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Gross Weight(Kgs)
+                      </label>
+                      <input
+                        value={grossWeightKg || activeTanker.gross_weight_kg || journey.calculated?.gross_weight_kg || ''}
+                        readOnly
+                        style={{
+                          width: 150,
+                          height: 28,
+                          padding: '2px 8px',
+                          backgroundColor: '#f1f5f9',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: 3,
+                          fontWeight: 700,
+                          color: '#334155',
+                        }}
+                      />
+                    </div>
+
+                    {/* 7. Tare Weight(Kgs) - Required */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 700, color: '#0f172a', fontSize: '0.92rem' }}>
+                        Tare Weight(Kgs) <span style={{ color: '#ef4444' }}>*</span>
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <input
+                          type="number"
+                          placeholder="e.g. 15200"
+                          value={tareWeightKg}
+                          onChange={(e) => setTareWeightKg(e.target.value)}
+                          required
+                          style={{
+                            width: 150,
+                            height: 32,
+                            padding: '4px 8px',
+                            border: '2px solid #0284c7',
+                            borderRadius: 3,
+                            fontWeight: 700,
+                            fontSize: '1rem',
+                            color: '#0f172a',
+                          }}
+                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: '#64748b' }}>
+                          <span>Tare Slip No:</span>
+                          <input
+                            value={tareSlip}
+                            onChange={(e) => setTareSlip(e.target.value)}
+                            placeholder="e.g. WB-TARE-1002"
+                            style={{
+                              width: 140,
+                              height: 26,
+                              padding: '2px 6px',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: 3,
+                              fontSize: '0.8rem',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 8. Net Milk Weight(Kgs) - Auto Calculated */}
+                    {grossWeightKg && tareWeightKg && Number(grossWeightKg) > Number(tareWeightKg) && (
+                      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                        <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                          Net Milk Weight(Kgs)
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <input
+                            value={Number(grossWeightKg) - Number(tareWeightKg)}
+                            readOnly
+                            style={{
+                              width: 150,
+                              height: 28,
+                              padding: '2px 8px',
+                              backgroundColor: '#f0fdf4',
+                              border: '1px solid #86efac',
+                              borderRadius: 3,
+                              fontWeight: 700,
+                              color: '#15803d',
+                            }}
+                          />
+                          <span style={{ fontSize: '0.82rem', color: '#15803d', fontWeight: 600 }}>
+                            (~{(((Number(grossWeightKg) - Number(tareWeightKg)) / 1.030)).toFixed(1)} L at 1.030 density)
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 9. Remarks */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem', paddingTop: '4px' }}>
+                        Remarks
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={tareRemarks}
+                        onChange={(e) => setTareRemarks(e.target.value)}
+                        placeholder=""
+                        style={{
+                          width: '100%',
+                          maxWidth: 380,
+                          padding: '4px 8px',
+                          border: '1px solid #94a3b8',
+                          borderRadius: 3,
+                          fontSize: '0.85rem',
+                        }}
+                      />
+                    </div>
+
+                    {/* Action Button matching Aavin IDMS */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '0.5rem' }}>
+                      <button
+                        type="submit"
+                        disabled={submitting || !tareWeightKg}
+                        style={{
+                          backgroundColor: '#65a30d',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: 3,
+                          padding: '6px 20px',
+                          fontWeight: 700,
+                          fontSize: '0.88rem',
+                          cursor: submitting || !tareWeightKg ? 'not-allowed' : 'pointer',
+                          opacity: submitting || !tareWeightKg ? 0.7 : 1,
+                        }}
+                      >
+                        {submitting ? 'Updating…' : 'Update'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             )}
 
-            {/* STAGE 7: VEHICLE EXIT */}
-            {currentStageKey === 'vehicle_exit' && (
-              <div style={{ padding: '1.25rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                  <span style={{ fontSize: '1.25rem' }}>🚪</span>
-                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>
-                    Vehicle Exit Authorization & Gate Pass — {activeTanker.tanker_number}
-                  </h3>
-                </div>
-                <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
-                  Post-unloading CIP sanitization is completed. Issue exit gate pass and authorize vehicle exit.
-                </p>
-
-                <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '0.75rem', borderRadius: 8, marginBottom: '1.25rem' }}>
-                  <div style={{ fontWeight: 700, color: '#065f46', marginBottom: '0.25rem' }}>
-                    ✅ Tanker Processing Complete
-                  </div>
-                  <div style={{ fontSize: '0.82rem', color: '#047857' }}>
-                    CIP Certified · Net Litres: {formatLitres(journey.calculated?.net_litres || journey.calculated?.received_litres || activeTanker.quantity_dispatched)} · Turnaround: {journey.calculated?.total_turnaround_min ?? '—'} mins
-                  </div>
-                </div>
-
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void handleRecordStage('vehicle_exit', {
-                      gate_pass_number: gatePassNo.trim() || `GP-${Date.now().toString().slice(-6)}`,
-                    });
+            {/* STAGE 7: TANKER OUT DETAILS - Requirement 6.3 */}
+            {(gateSubTab === 'exit' || (!gateSubTab && currentStageKey === 'vehicle_exit')) && (
+              <div>
+                <div
+                  style={{
+                    backgroundColor: '#52525b',
+                    color: '#ffffff',
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
                   }}
-                  className="entry-form"
                 >
-                  <div className="form-group">
-                    <label style={{ fontWeight: 600 }}>Gate Pass Number</label>
-                    <input
-                      type="text"
-                      placeholder={`GP-${Date.now().toString().slice(-6)}`}
-                      value={gatePassNo}
-                      onChange={(e) => setGatePassNo(e.target.value)}
-                      style={{ fontWeight: 700, fontSize: '1rem' }}
-                    />
-                  </div>
+                  TANKER OUT DETAILS
+                </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="btn-primary"
-                      style={{ minWidth: 200, padding: '0.6rem 1.25rem', fontWeight: 700, background: '#16a34a' }}
-                    >
-                      {submitting ? 'Releasing…' : '✓ Authorize Vehicle Exit'}
-                    </button>
-                  </div>
-                </form>
+                <div style={{ padding: '1.25rem 1.5rem' }}>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void handleRecordStage('vehicle_exit', {
+                        gate_pass_number: gatePassNo.trim() || `GP-${Date.now().toString().slice(-6)}`,
+                        exit_date: exitDate,
+                        exit_time: `${exitTime} ${exitAmPm}`,
+                        security_guard_name: securityGuardName.trim(),
+                        remarks: exitRemarks.trim() || undefined,
+                        dc_number: exitDcNo || activeTanker.dc_number,
+                      });
+                    }}
+                  >
+                    {/* 1. Vehicle No */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Vehicle No
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          value={exitVehicleNo || activeTanker.tanker_number || ''}
+                          onChange={(e) => setExitVehicleNo(e.target.value.toUpperCase())}
+                          style={{
+                            width: 150,
+                            height: 28,
+                            padding: '2px 8px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                            fontWeight: 600,
+                          }}
+                        />
+                        <span
+                          style={{
+                            backgroundColor: '#fef9c3',
+                            border: '1px solid #fde047',
+                            padding: '2px 8px',
+                            borderRadius: 3,
+                            fontWeight: 700,
+                            fontSize: '0.85rem',
+                            color: '#1e293b',
+                          }}
+                        >
+                          {exitVehicleNo || activeTanker.tanker_number}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 2. Received From */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem', paddingTop: '2px' }}>
+                        Received From :
+                      </label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        {grossReceivedFromList.map((bmc, idx) => (
+                          <span
+                            key={idx}
+                            style={{
+                              backgroundColor: '#fef9c3',
+                              border: '1px solid #fde047',
+                              padding: '1px 8px',
+                              borderRadius: 2,
+                              fontWeight: 600,
+                              fontSize: '0.82rem',
+                              color: '#1e293b',
+                              width: 'fit-content',
+                            }}
+                          >
+                            {bmc}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 3. DC NO */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        DC NO: <span style={{ color: '#ef4444' }}>*</span>
+                      </label>
+                      <input
+                        value={exitDcNo || activeTanker.dc_number || ''}
+                        onChange={(e) => setExitDcNo(e.target.value)}
+                        style={{
+                          width: 150,
+                          height: 28,
+                          padding: '2px 8px',
+                          border: '1px solid #94a3b8',
+                          borderRadius: 3,
+                          fontWeight: 600,
+                        }}
+                      />
+                    </div>
+
+                    {/* 4. Exit Date */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Exit Date
+                      </label>
+                      <input
+                        value={exitDate}
+                        onChange={(e) => setExitDate(e.target.value)}
+                        placeholder="DD/MM/YYYY"
+                        style={{
+                          width: 150,
+                          height: 28,
+                          padding: '2px 8px',
+                          border: '1px solid #94a3b8',
+                          borderRadius: 3,
+                        }}
+                      />
+                    </div>
+
+                    {/* 5. Exit Time(HHMM)[12 hour format] */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Exit Time(HHMM)[12 hour format]
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input
+                          value={exitTime}
+                          onChange={(e) => setExitTime(e.target.value)}
+                          placeholder="04:00"
+                          style={{
+                            width: 90,
+                            height: 28,
+                            padding: '2px 8px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                          }}
+                        />
+                        <select
+                          value={exitAmPm}
+                          onChange={(e) => setExitAmPm(e.target.value as any)}
+                          style={{
+                            width: 60,
+                            height: 28,
+                            padding: '2px 4px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                            fontWeight: 600,
+                          }}
+                        >
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* 6. Gate Pass Number */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Gate Pass Number <span style={{ color: '#ef4444' }}>*</span>
+                      </label>
+                      <input
+                        value={gatePassNo}
+                        onChange={(e) => setGatePassNo(e.target.value)}
+                        placeholder="e.g. GP-884920"
+                        style={{
+                          width: 180,
+                          height: 28,
+                          padding: '2px 8px',
+                          border: '1px solid #94a3b8',
+                          borderRadius: 3,
+                          fontWeight: 700,
+                        }}
+                      />
+                    </div>
+
+                    {/* 7. Security Guard Name */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Security Guard Name
+                      </label>
+                      <input
+                        value={securityGuardName}
+                        onChange={(e) => setSecurityGuardName(e.target.value)}
+                        style={{
+                          width: 200,
+                          height: 28,
+                          padding: '2px 8px',
+                          border: '1px solid #94a3b8',
+                          borderRadius: 3,
+                        }}
+                      />
+                    </div>
+
+                    {/* 8. Remarks */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem', paddingTop: '4px' }}>
+                        Remarks
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={exitRemarks}
+                        onChange={(e) => setExitRemarks(e.target.value)}
+                        placeholder=""
+                        style={{
+                          width: '100%',
+                          maxWidth: 380,
+                          padding: '4px 8px',
+                          border: '1px solid #94a3b8',
+                          borderRadius: 3,
+                          fontSize: '0.85rem',
+                        }}
+                      />
+                    </div>
+
+                    {/* Action Button matching Aavin IDMS */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '0.5rem' }}>
+                      <button
+                        type="submit"
+                        disabled={submitting}
+                        style={{
+                          backgroundColor: '#65a30d',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: 3,
+                          padding: '6px 20px',
+                          fontWeight: 700,
+                          fontSize: '0.88rem',
+                          cursor: submitting ? 'not-allowed' : 'pointer',
+                          opacity: submitting ? 0.7 : 1,
+                        }}
+                      >
+                        {submitting ? 'Updating…' : 'Update'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             )}
 
@@ -1716,6 +2193,17 @@ export default function GateOperations() {
             </div>
           </div>
         </div>
+      )}
+
+      {showNewTankerModal && (
+        <NewTankerRegistrationModal
+          isOpen={showNewTankerModal}
+          onClose={() => setShowNewTankerModal(false)}
+          onSuccess={() => {
+            setShowNewTankerModal(false);
+            void fetchTankers();
+          }}
+        />
       )}
     </div>
   );
