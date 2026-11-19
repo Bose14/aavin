@@ -371,6 +371,27 @@ test('QCLab renders authentic Aavin IDMS QUALITY CONTROL DETAILS form matching u
   assert.ok(qcSrc.includes('Confirm Tanker Milk Rejection'), 'Must render rejection confirmation dialog');
 });
 
+test('QCLab renders authentic Aavin IDMS CIP DETAILS form matching user photo', () => {
+  const qcSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/QCLab.tsx'), 'utf8');
+  assert.ok(qcSrc.includes('CIP DETAILS'), 'Must render CIP DETAILS section header banner');
+  assert.ok(qcSrc.includes('CIP Details'), 'Must render CIP Details tab button');
+  assert.ok(qcSrc.includes('Milk Receipt Entry ▾'), 'Must render Milk Receipt Entry dropdown tab');
+  assert.ok(qcSrc.includes('Vehicle No'), 'Must render Vehicle No');
+  assert.ok(qcSrc.includes('Received From :'), 'Must render Received From with BMC tags');
+  assert.ok(qcSrc.includes('DC NO:'), 'Must render DC NO:');
+  assert.ok(qcSrc.includes('Dispatch Date'), 'Must render Dispatch Date');
+  assert.ok(qcSrc.includes('Dispatch Time(HHMM)[12 hour format]'), 'Must render Dispatch Time in 12hr format');
+  assert.ok(qcSrc.includes('CIP Date'), 'Must render CIP Date');
+  assert.ok(qcSrc.includes('CIP Time(HHMM)[12 hour format]'), 'Must render CIP Time in 12hr format');
+  assert.ok(qcSrc.includes('CIP Operator'), 'Must render CIP Operator input');
+  assert.ok(qcSrc.includes('QC Inspection'), 'Must render QC Inspection dropdown');
+  assert.ok(qcSrc.includes('CIP Clean Types'), 'Must render CIP Clean Types options');
+  assert.ok(qcSrc.includes('Automatic Test'), 'Must render Automatic Test checkbox option');
+  assert.ok(qcSrc.includes('Manual Test'), 'Must render Manual Test checkbox option');
+  assert.ok(qcSrc.includes('Is CIP Checked'), 'Must render Is CIP Checked checkbox');
+});
+
+
 
 
 

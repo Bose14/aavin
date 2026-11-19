@@ -1372,8 +1372,21 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
     updateTripFields.net_weight_kg = netKg;
     updateTripFields.trip_status = 'tare_done';
   } else if (stageKey === 'cip_completed') {
-    stageData.cip_status = payload.cip_status || 'pass';
+    stageData.cip_status = payload.cip_status || (payload.qc_inspection === 'SATISFIED' ? 'pass' : 'pass');
     stageData.chemical_used = payload.chemical_used || 'Caustic Soda 1.5%';
+    if (payload.vehicle_no) stageData.vehicle_no = payload.vehicle_no;
+    if (payload.received_from) stageData.received_from = payload.received_from;
+    if (payload.dc_number) stageData.dc_number = payload.dc_number;
+    if (payload.dispatch_date) stageData.dispatch_date = payload.dispatch_date;
+    if (payload.dispatch_time) stageData.dispatch_time = payload.dispatch_time;
+    if (payload.cip_date) stageData.cip_date = payload.cip_date;
+    if (payload.cip_time) stageData.cip_time = payload.cip_time;
+    if (payload.cip_operator) stageData.cip_operator = payload.cip_operator;
+    if (payload.qc_inspection) stageData.qc_inspection = payload.qc_inspection;
+    if (payload.cip_clean_types) stageData.cip_clean_types = payload.cip_clean_types;
+    if (payload.is_cip_checked != null) stageData.is_cip_checked = payload.is_cip_checked;
+    if (payload.remarks) stageData.remarks = payload.remarks;
+    if (payload.ph_test) stageData.ph_test = payload.ph_test;
     updateTripFields.trip_status = 'cip_done';
   } else if (stageKey === 'vehicle_exit') {
     stageData.gate_pass_number = payload.gate_pass_number || `GP-${Date.now().toString().slice(-6)}`;

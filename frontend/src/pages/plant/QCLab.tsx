@@ -75,11 +75,27 @@ export default function QCLab() {
   const [qcRemarks, setQcRemarks] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
-  // CIP Form States (Step 6)
-  const [cipStatus, setCipStatus] = useState<'pass' | 'fail'>('pass');
-  const [chemicalUsed, setChemicalUsed] = useState('Caustic Soda 1.5%');
-  const [phTest, setPhTest] = useState('Neutral (pH 7.2)');
-  const [cipRemarks, setCipRemarks] = useState('');
+
+  // CIP Details Form States (Matching authentic Aavin IDMS CIP photo)
+  const [cipVehicleNo, setCipVehicleNo] = useState('');
+  const [cipReceivedFromList, setCipReceivedFromList] = useState<string[]>([]);
+  const [cipDcNo, setCipDcNo] = useState('');
+  const [cipDispatchDate, setCipDispatchDate] = useState('');
+  const [cipDispatchTime, setCipDispatchTime] = useState('12:05');
+  const [cipDispatchAmPm, setCipDispatchAmPm] = useState<'AM' | 'PM'>('AM');
+  const [cipDate, setCipDate] = useState(() => {
+    const d = new Date();
+    const day = String(d.getDate()).padStart(2, '0');
+    const mon = String(d.getMonth() + 1).padStart(2, '0');
+    return `${day}/${mon}/${d.getFullYear()}`;
+  });
+  const [cipTime, setCipTime] = useState('02:35');
+  const [cipTimeAmPm, setCipTimeAmPm] = useState<'AM' | 'PM'>('PM');
+  const [cipOperator, setCipOperator] = useState('');
+  const [qcInspection, setQcInspection] = useState('SATISFIED');
+  const [cipAutomaticTest, setCipAutomaticTest] = useState(false);
+  const [cipManualTest, setCipManualTest] = useState(false);
+  const [isCipChecked, setIsCipChecked] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const fetchTankers = async () => {
@@ -244,6 +260,81 @@ export default function QCLab() {
       setManualEntryReason(activeTanker.stage_data?.qc_completed?.manual_entry_reason || '');
       setQcRemarks(activeTanker.stage_data?.qc_completed?.remarks || '');
       setRejectionReason('');
+
+      // CIP Details Pre-fill (Matching authentic Aavin IDMS CIP photo)
+      setCipVehicleNo(activeTanker.tanker_number || 'TN28BJ1697');
+
+      const resolvedCipDc =
+        activeTanker.stage_data?.cip_completed?.dc_number ||
+        activeTanker.stage_data?.gross_weight?.dc_number ||
+        activeTanker.stage_data?.qc_completed?.dc_number ||
+        activeTanker.dc_number ||
+        '015991';
+      setCipDcNo(resolvedCipDc);
+
+      const storedCipRec =
+        activeTanker.stage_data?.cip_completed?.received_from ||
+        activeTanker.stage_data?.gross_weight?.received_from ||
+        activeTanker.stage_data?.qc_completed?.received_from;
+
+      if (Array.isArray(storedCipRec) && storedCipRec.length > 0) {
+        setCipReceivedFromList(storedCipRec);
+      } else {
+        const uName = activeTanker.units?.name ? `${activeTanker.units.name} [${activeTanker.units.unit_code || '17210'}]` : 'VANAVASI BMC [17210]';
+        setCipReceivedFromList([
+          uName,
+          'K.KUTTAPATTIYAN TERU BMC [17221]',
+        ]);
+      }
+
+      const rawCipDispDate =
+        activeTanker.stage_data?.cip_completed?.dispatch_date ||
+        activeTanker.date ||
+        activeTanker.stage_data?.vehicle_entered?.dispatch_date ||
+        getLocalTodayIso();
+      const cipDParts = rawCipDispDate.includes('-') ? rawCipDispDate.split('-') : null;
+      setCipDispatchDate(cipDParts && cipDParts.length === 3 ? `${cipDParts[2]}/${cipDParts[1]}/${cipDParts[0]}` : rawCipDispDate);
+
+      const rawCipDispTime =
+        activeTanker.stage_data?.cip_completed?.dispatch_time ||
+        activeTanker.dispatch_time ||
+        activeTanker.stage_data?.vehicle_entered?.dispatch_time ||
+        '12:05 AM';
+      if (rawCipDispTime) {
+        const isPm = rawCipDispTime.toUpperCase().includes('PM');
+        const isAm = rawCipDispTime.toUpperCase().includes('AM');
+        const cleanT = rawCipDispTime.replace(/(AM|PM)/gi, '').trim();
+        const tParts = cleanT.split(':');
+        const h = parseInt(tParts[0], 10) || 12;
+        const m = tParts[1] || '05';
+        setCipDispatchTime(`${String(h > 12 ? h - 12 : h === 0 ? 12 : h).padStart(2, '0')}:${m}`);
+        setCipDispatchAmPm(isPm ? 'PM' : isAm ? 'AM' : (h >= 12 ? 'PM' : 'AM'));
+      }
+
+      const cipTodayParts = getLocalTodayIso().split('-');
+      setCipDate(
+        activeTanker.stage_data?.cip_completed?.cip_date ||
+        (cipTodayParts.length === 3 ? `${cipTodayParts[2]}/${cipTodayParts[1]}/${cipTodayParts[0]}` : '19/11/2026')
+      );
+
+      setCipTime(
+        activeTanker.stage_data?.cip_completed?.cip_time
+          ? activeTanker.stage_data.cip_completed.cip_time.slice(0, 5)
+          : `${String(nowH).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+      );
+      setCipTimeAmPm(
+        activeTanker.stage_data?.cip_completed?.cip_time?.toUpperCase().includes('AM')
+          ? 'AM'
+          : activeTanker.stage_data?.cip_completed?.cip_time?.toUpperCase().includes('PM')
+          ? 'PM'
+          : nowAmPm
+      );
+
+      setCipOperator(activeTanker.stage_data?.cip_completed?.cip_operator || '');
+      setQcInspection(activeTanker.stage_data?.cip_completed?.qc_inspection || 'SATISFIED');
+      setCipAutomaticTest(activeTanker.stage_data?.cip_completed?.cip_clean_types?.automatic_test ?? false);
+      setCipManualTest(activeTanker.stage_data?.cip_completed?.cip_clean_types?.manual_test ?? false);
+      setIsCipChecked(activeTanker.stage_data?.cip_completed?.is_cip_checked ?? false);
     }
   }, [activeTanker]);
 
@@ -320,6 +411,33 @@ export default function QCLab() {
       qc_time: `${qcTime} ${qcTimeAmPm}`,
     });
     setShowRejectModal(false);
+  };
+
+  const handleUpdateCip = async () => {
+    if (!activeTanker) return;
+    if (!isCipChecked) {
+      setError('Please check "Is CIP Checked" before updating');
+      return;
+    }
+
+    await handleRecordStage('cip_completed', {
+      vehicle_no: cipVehicleNo,
+      received_from: cipReceivedFromList,
+      dc_number: cipDcNo,
+      dispatch_date: cipDispatchDate,
+      dispatch_time: `${cipDispatchTime} ${cipDispatchAmPm}`,
+      cip_date: cipDate,
+      cip_time: `${cipTime} ${cipTimeAmPm}`,
+      cip_operator: cipOperator.trim() || undefined,
+      qc_inspection: qcInspection,
+      cip_clean_types: {
+        automatic_test: cipAutomaticTest,
+        manual_test: cipManualTest,
+      },
+      is_cip_checked: isCipChecked,
+      cip_status: qcInspection === 'SATISFIED' ? 'pass' : 'fail',
+      chemical_used: cipAutomaticTest ? 'Automated CIP 5-Step Cycle' : 'Manual Caustic/Acid Sanitization',
+    });
   };
 
   const handleRecordStage = async (stageKey: string, payload: Record<string, any>) => {
@@ -598,6 +716,28 @@ export default function QCLab() {
           >
             <button
               type="button"
+              onClick={() => {
+                const el = document.getElementById('qc-register-table');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }}
+              style={{
+                backgroundColor: 'transparent',
+                color: '#f0f9ff',
+                border: 'none',
+                borderRadius: '4px 4px 0 0',
+                padding: '6px 14px',
+                fontSize: '0.85rem',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+            >
+              📊 Dashboard
+            </button>
+            <button
+              type="button"
               onClick={() => setQcSubTab('qc')}
               style={{
                 backgroundColor: (qcSubTab === 'qc' || (!qcSubTab && currentStageKey !== 'cip_completed')) ? '#ffffff' : 'transparent',
@@ -610,7 +750,7 @@ export default function QCLab() {
                 cursor: 'pointer',
               }}
             >
-              Quality Control Details
+              Milk Receipt Entry ▾
             </button>
             <button
               type="button"
@@ -626,7 +766,7 @@ export default function QCLab() {
                 cursor: 'pointer',
               }}
             >
-              CIP Sanitization &amp; Release
+              CIP Details
             </button>
           </div>
 
@@ -1289,89 +1429,315 @@ export default function QCLab() {
               </div>
             )}
 
-            {/* STEP 6: CIP SANITIZATION */}
+            {/* STEP 6: CIP SANITIZATION (Matching authentic Aavin IDMS CIP photo) */}
             {(qcSubTab === 'cip' || (!qcSubTab && currentStageKey === 'cip_completed')) && (
               <div>
                 <div
                   style={{
-                    backgroundColor: '#0891b2',
+                    backgroundColor: '#52525b',
                     color: '#ffffff',
-                    padding: '0.65rem 1rem',
-                    fontSize: '0.9rem',
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.88rem',
                     fontWeight: 700,
                     letterSpacing: '0.04em',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
+                    textTransform: 'uppercase',
                   }}
                 >
-                  <span>STEP 6: TANKER CIP (CLEAN-IN-PLACE) SANITIZATION VERIFICATION</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 500 }}>QC &amp; Hygiene Inspection</span>
+                  CIP DETAILS
                 </div>
 
-                <div style={{ padding: '1.25rem' }}>
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void handleRecordStage('cip_completed', {
-                        cip_status: cipStatus,
-                        chemical_used: chemicalUsed,
-                        ph_test: phTest,
-                        remarks: cipRemarks.trim() || undefined,
-                      });
-                    }}
-                    className="entry-form"
-                  >
-                    <div className="form-row">
-                      <div className="form-group">
-                        <label style={{ fontWeight: 600 }}>CIP Sanitization Status *</label>
-                        <select value={cipStatus} onChange={(e) => setCipStatus(e.target.value as any)}>
-                          <option value="pass">Pass (Cleaned, Sanitized &amp; Dry)</option>
-                          <option value="fail">Fail (Needs Re-washing)</option>
-                        </select>
+                <div style={{ padding: '1.25rem 1.5rem' }}>
+                  <form onSubmit={(e) => { e.preventDefault(); void handleUpdateCip(); }}>
+                    {/* Vehicle No */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Vehicle No
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          value={cipVehicleNo}
+                          onChange={(e) => setCipVehicleNo(e.target.value.toUpperCase())}
+                          style={{
+                            width: 150,
+                            height: 28,
+                            padding: '2px 8px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                            fontWeight: 600,
+                          }}
+                        />
+                        <span
+                          style={{
+                            backgroundColor: '#fef9c3',
+                            border: '1px solid #fde047',
+                            padding: '2px 8px',
+                            borderRadius: 3,
+                            fontWeight: 700,
+                            fontSize: '0.85rem',
+                            fontStyle: 'italic',
+                            color: '#1e293b',
+                          }}
+                        >
+                          {cipVehicleNo || activeTanker.tanker_number || 'TN28BJ1697'}
+                        </span>
                       </div>
+                    </div>
 
-                      <div className="form-group">
-                        <label style={{ fontWeight: 600 }}>Sanitization Chemical / Cycle *</label>
-                        <select value={chemicalUsed} onChange={(e) => setChemicalUsed(e.target.value)}>
-                          <option value="Caustic Soda 1.5%">Caustic Soda 1.5% (Alkaline wash)</option>
-                          <option value="Nitric Acid 1.0%">Nitric Acid 1.0% (Acid descaling wash)</option>
-                          <option value="Hot Water Steam (85°C)">Hot Water Steam Rinse (85°C)</option>
-                          <option value="Complete 5-Step CIP">Complete 5-Step Automated CIP</option>
+                    {/* Received From : */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem', paddingTop: '2px' }}>
+                        Received From :
+                      </label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        {cipReceivedFromList.map((bmc, idx) => (
+                          <span
+                            key={idx}
+                            style={{
+                              backgroundColor: '#fef9c3',
+                              border: '1px solid #fde047',
+                              padding: '1px 8px',
+                              borderRadius: 2,
+                              fontWeight: 600,
+                              fontSize: '0.82rem',
+                              fontStyle: 'italic',
+                              color: '#1e293b',
+                              width: 'fit-content',
+                            }}
+                          >
+                            {bmc}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* DC NO: */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        DC NO: <span style={{ color: '#ef4444' }}>*</span>
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <input
+                          value={cipDcNo}
+                          onChange={(e) => setCipDcNo(e.target.value)}
+                          required
+                          style={{
+                            width: 150,
+                            height: 28,
+                            padding: '2px 8px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Dispatch Date */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Dispatch Date
+                      </label>
+                      <input
+                        value={cipDispatchDate}
+                        onChange={(e) => setCipDispatchDate(e.target.value)}
+                        style={{
+                          width: 150,
+                          height: 28,
+                          padding: '2px 8px',
+                          border: '1px solid #94a3b8',
+                          borderRadius: 3,
+                        }}
+                      />
+                    </div>
+
+                    {/* Dispatch Time(HHMM)[12 hour format] */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Dispatch Time(HHMM)[12 hour format]
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <input
+                          value={cipDispatchTime}
+                          onChange={(e) => setCipDispatchTime(e.target.value)}
+                          style={{
+                            width: 90,
+                            height: 28,
+                            padding: '2px 8px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                          }}
+                        />
+                        <select
+                          value={cipDispatchAmPm}
+                          onChange={(e) => setCipDispatchAmPm(e.target.value as any)}
+                          style={{
+                            height: 28,
+                            padding: '0 4px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                            fontWeight: 600,
+                          }}
+                        >
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
                         </select>
                       </div>
                     </div>
 
-                    <div className="form-row">
-                      <div className="form-group">
-                        <label style={{ fontWeight: 600 }}>Rinse Water pH Test</label>
-                        <input
-                          type="text"
-                          value={phTest}
-                          onChange={(e) => setPhTest(e.target.value)}
-                          placeholder="Neutral (pH 7.0 - 7.5)"
-                        />
-                      </div>
+                    {/* CIP Date */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        CIP Date
+                      </label>
+                      <input
+                        value={cipDate}
+                        onChange={(e) => setCipDate(e.target.value)}
+                        style={{
+                          width: 150,
+                          height: 28,
+                          padding: '2px 8px',
+                          border: '1px solid #94a3b8',
+                          borderRadius: 3,
+                        }}
+                      />
+                    </div>
 
-                      <div className="form-group">
-                        <label style={{ fontWeight: 600 }}>Inspector Remarks</label>
+                    {/* CIP Time(HHMM)[12 hour format] */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        CIP Time(HHMM)[12 hour format]
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <input
-                          type="text"
-                          value={cipRemarks}
-                          onChange={(e) => setCipRemarks(e.target.value)}
-                          placeholder="e.g. Tanker barrel visual inspection clear and odorless"
+                          value={cipTime}
+                          onChange={(e) => setCipTime(e.target.value)}
+                          style={{
+                            width: 90,
+                            height: 28,
+                            padding: '2px 8px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                          }}
                         />
+                        <select
+                          value={cipTimeAmPm}
+                          onChange={(e) => setCipTimeAmPm(e.target.value as any)}
+                          style={{
+                            height: 28,
+                            padding: '0 4px',
+                            border: '1px solid #94a3b8',
+                            borderRadius: 3,
+                            fontWeight: 600,
+                          }}
+                        >
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
+                    {/* CIP Operator */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        CIP Operator
+                      </label>
+                      <input
+                        value={cipOperator}
+                        onChange={(e) => setCipOperator(e.target.value)}
+                        placeholder=""
+                        style={{
+                          width: 180,
+                          height: 28,
+                          padding: '2px 8px',
+                          border: '1px solid #94a3b8',
+                          borderRadius: 3,
+                        }}
+                      />
+                    </div>
+
+                    {/* QC Inspection */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        QC Inspection
+                      </label>
+                      <select
+                        value={qcInspection}
+                        onChange={(e) => setQcInspection(e.target.value)}
+                        style={{
+                          width: 150,
+                          height: 28,
+                          padding: '0 8px',
+                          border: '1px solid #94a3b8',
+                          borderRadius: 3,
+                          fontWeight: 600,
+                        }}
+                      >
+                        <option value="SATISFIED">SATISFIED</option>
+                        <option value="NOT SATISFIED">NOT SATISFIED</option>
+                        <option value="RE-WASH REQUIRED">RE-WASH REQUIRED</option>
+                      </select>
+                    </div>
+
+                    {/* CIP Clean Types */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        CIP Clean Types
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={cipAutomaticTest}
+                            onChange={(e) => setCipAutomaticTest(e.target.checked)}
+                            style={{ width: 15, height: 15 }}
+                          />
+                          <span style={{ color: '#16a34a', fontWeight: 600 }}>Automatic Test</span>
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={cipManualTest}
+                            onChange={(e) => setCipManualTest(e.target.checked)}
+                            style={{ width: 15, height: 15 }}
+                          />
+                          <span style={{ color: '#dc2626', fontWeight: 600 }}>Manual Test</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Is CIP Checked */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.25rem' }}>
+                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                        Is CIP Checked
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <input
+                          type="checkbox"
+                          checked={isCipChecked}
+                          onChange={(e) => setIsCipChecked(e.target.checked)}
+                          style={{ width: 16, height: 16, cursor: 'pointer' }}
+                        />
+                        <span style={{ color: '#ef4444', fontWeight: 700, fontSize: '1rem' }}>*</span>
+                      </div>
+                    </div>
+
+                    {/* Update button */}
+                    <div style={{ display: 'flex', alignItems: 'center', paddingTop: '0.25rem' }}>
                       <button
                         type="submit"
                         disabled={submitting}
-                        className="btn-primary"
-                        style={{ minWidth: 220, padding: '0.65rem 1.25rem', fontWeight: 700, background: '#0891b2' }}
+                        style={{
+                          backgroundColor: '#65a30d',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: 3,
+                          padding: '5px 18px',
+                          fontWeight: 700,
+                          fontSize: '0.85rem',
+                          cursor: submitting ? 'not-allowed' : 'pointer',
+                          opacity: submitting ? 0.7 : 1,
+                        }}
                       >
-                        {submitting ? 'Certifying…' : '✓ Certify CIP & Hand Over to Gate for Exit'}
+                        {submitting ? 'Updating…' : 'Update'}
                       </button>
                     </div>
                   </form>
@@ -1380,7 +1746,7 @@ export default function QCLab() {
             )}
 
             {/* If waiting for another team */}
-            {journey.waitingTeam !== 'qc' && (
+            {!qcSubTab && journey.waitingTeam !== 'qc' && (
               <div style={{ padding: '2.5rem 1rem', textAlign: 'center', color: '#64748b' }}>
                 <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⏳</div>
                 <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '1.05rem', marginBottom: '0.35rem' }}>
