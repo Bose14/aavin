@@ -147,6 +147,7 @@ export async function insertProfileResiliently(params: {
   sub_role?: string | null;
   is_active?: boolean;
   must_change_password?: boolean;
+  user_type?: 'internal' | 'bmc';
 }): Promise<{ error: any }> {
   const extendedObj: Record<string, unknown> = {
     id: params.id,
@@ -163,6 +164,7 @@ export async function insertProfileResiliently(params: {
   if (params.sub_role !== undefined) extendedObj.sub_role = params.sub_role;
   if (params.is_active !== undefined) extendedObj.is_active = params.is_active;
   if (params.must_change_password !== undefined) extendedObj.must_change_password = params.must_change_password;
+  if (params.user_type !== undefined) extendedObj.user_type = params.user_type;
 
   let res = await supabase.from('profiles').insert(extendedObj);
   if (!res.error) return { error: null };

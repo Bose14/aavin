@@ -23,18 +23,39 @@ const allowedOrigins = (process.env.FRONTEND_URL || '')
 const isLocalOrigin = (origin: string) =>
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
 
+const isDev = process.env.NODE_ENV !== 'production';
+
+if (allowedOrigins.length === 0) {
+  if (isDev) {
+    console.warn('[cors] FRONTEND_URL not set — allowing localhost origins only (development mode)');
+  } else {
+    console.error('[cors] FRONTEND_URL is not set in production — all cross-origin requests will be blocked');
+  }
+}
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.length === 0) {
+    // Same-origin requests (server-to-server, curl, etc.) have no Origin header — allow
+    if (!origin) {
       callback(null, true);
       return;
     }
-    const allowsLocal = allowedOrigins.some(isLocalOrigin);
-    if (allowedOrigins.includes(origin) || (allowsLocal && isLocalOrigin(origin))) {
+    // If explicit allow-list is configured, check it
+    if (allowedOrigins.length > 0) {
+      const allowsLocal = allowedOrigins.some(isLocalOrigin);
+      if (allowedOrigins.includes(origin) || (allowsLocal && isLocalOrigin(origin))) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+      return;
+    }
+    // No allow-list configured: permit localhost in dev, block everything in production
+    if (isDev && isLocalOrigin(origin)) {
       callback(null, true);
       return;
     }
-    callback(new Error(`Origin ${origin} not allowed by CORS`));
+    callback(new Error(`Origin ${origin} not allowed — set FRONTEND_URL to permit it`));
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],

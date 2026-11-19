@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Router } from 'express';
 import { supabase } from '../supabase';
 import { authMiddleware } from '../middleware/auth';
@@ -225,7 +226,7 @@ export async function generateNextTeamUserId(zoneId: string, teamCode?: string):
 }
 
 // GET /teams/next-user-id?team=GATE — get next available unique operator ID (e.g. AV_IT_001)
-router.get('/next-user-id', async (req, res) => {
+router.get('/next-user-id', requireRole('admin', 'superadmin'), async (req, res) => {
   const zoneId = req.profile.zone_id;
   const teamCode = String(req.query.team || '').trim().toUpperCase();
   const nextId = await generateNextTeamUserId(zoneId, teamCode || undefined);
@@ -237,7 +238,7 @@ router.get('/next-user-id', async (req, res) => {
 });
 
 // GET /teams/users — list all plant team users for this zone
-router.get('/users', async (req, res) => {
+router.get('/users', requireRole('admin', 'superadmin'), async (req, res) => {
   const zoneId = req.profile.zone_id;
   const { team, status, search } = req.query as Record<string, string>;
 
@@ -421,9 +422,10 @@ router.post('/users', requireRole('admin', 'superadmin'), async (req, res) => {
   const shift = ['Morning', 'Evening', 'General'].includes(rawShift) ? rawShift : 'General';
   const role = teamCode.toLowerCase();
   const teamObj = await getTeamByCode(teamCode);
+
   const tempPassword = rawPassword && rawPassword.trim().length >= 6
     ? rawPassword.trim()
-    : 'PlantUser@' + Math.floor(1000 + Math.random() * 9000);
+    : 'Aavin123';
 
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email,
@@ -459,6 +461,7 @@ router.post('/users', requireRole('admin', 'superadmin'), async (req, res) => {
     sub_role: 'operator',
     is_active: true,
     must_change_password: force_password_change,
+    user_type: 'internal',
   });
 
   if (pErr) {
@@ -563,8 +566,18 @@ router.patch('/:code/status', requireRole('admin', 'superadmin'), async (req, re
   });
 });
 
-// POST /teams/seed-users — seed one test user per team (gate_test, qc_test, unloading_test)
+// POST /teams/seed-users — seed one test user per team; blocked in production
 router.post('/seed-users', requireRole('admin', 'superadmin'), async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    res.status(403).json({ error: 'Seed endpoint is disabled in production' });
+    return;
+  }
+
+  function genSeedPassword(): string {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#';
+    return Array.from({ length: 12 }, () => chars[crypto.randomInt(chars.length)]).join('');
+  }
+
   const zoneId = req.profile.zone_id;
   const teams = await getTeamsFromDb();
   const teamMap = new Map(teams.map((t) => [t.code.toUpperCase(), t]));
@@ -600,29 +613,33 @@ router.post('/seed-users', requireRole('admin', 'superadmin'), async (req, res) 
   ];
 
   const results: any[] = [];
-  const defaultPassword = 'PlantUser@123';
+
+  // Fetch auth users once (outside loop) to avoid N×listUsers calls
+  const { data: authList } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+  const authByEmail = new Map((authList?.users ?? []).map((u) => [u.email ?? '', u]));
 
   for (const tu of testUsers) {
     const teamObj = teamMap.get(tu.code);
     const teamId = teamObj?.id;
+    const existingAuth = authByEmail.get(tu.email);
 
-    // Check if auth user exists
     let existingUserId: string | null = null;
-    const { data: authList } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-    const match = (authList?.users ?? []).find((u) => u.email === tu.email);
-    if (match) {
-      existingUserId = match.id;
+    let seedPassword: string | null = null;
+
+    if (existingAuth) {
+      existingUserId = existingAuth.id;
     } else {
+      seedPassword = genSeedPassword();
       const { data: createData, error: createErr } = await supabase.auth.admin.createUser({
         email: tu.email,
-        password: defaultPassword,
+        password: seedPassword,
         email_confirm: true,
         user_metadata: {
           full_name: tu.full_name,
           username: tu.username,
           sub_role: 'operator',
           is_active: true,
-          must_change_password: false,
+          must_change_password: true,
         },
       });
       if (createErr) {
@@ -633,7 +650,6 @@ router.post('/seed-users', requireRole('admin', 'superadmin'), async (req, res) 
     }
 
     if (existingUserId) {
-      // Upsert into profiles with resilient schema fallback
       const { error: pErr } = await insertProfileResiliently({
         id: existingUserId,
         role: tu.role,
@@ -646,7 +662,7 @@ router.post('/seed-users', requireRole('admin', 'superadmin'), async (req, res) 
         email: tu.email,
         sub_role: 'operator',
         is_active: true,
-        must_change_password: false,
+        must_change_password: !existingAuth,
       });
       if (pErr) {
         console.warn(`[seed-users] Profile save note for ${tu.email}:`, pErr.message);
@@ -657,7 +673,8 @@ router.post('/seed-users', requireRole('admin', 'superadmin'), async (req, res) 
         username: tu.username,
         role: tu.role,
         team: tu.code,
-        status: match ? 'already_existed' : 'created',
+        status: existingAuth ? 'already_existed' : 'created',
+        ...(seedPassword ? { temp_password: seedPassword } : {}),
       });
     }
   }
@@ -665,7 +682,6 @@ router.post('/seed-users', requireRole('admin', 'superadmin'), async (req, res) 
   res.json({
     message: 'Test users seeded successfully',
     users: results,
-    default_password: defaultPassword,
   });
 });
 

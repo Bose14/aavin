@@ -36,22 +36,7 @@ const TEAM_COLOR_CONFIG: Record<string, { tone: 'indigo' | 'amber' | 'blue'; bor
   UNLOADING: { tone: 'blue', border: '#60a5fa', bg: '#eff6ff', dot: '#2563eb' },
 };
 
-function generateRandomPassword() {
-  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const lower = 'abcdefghijkmnopqrstuvwxyz';
-  const digits = '23456789';
-  const special = '!@#$%&*';
-  let p = '';
-  p += upper[Math.floor(Math.random() * upper.length)];
-  p += lower[Math.floor(Math.random() * lower.length)];
-  p += digits[Math.floor(Math.random() * digits.length)];
-  p += special[Math.floor(Math.random() * special.length)];
-  const all = upper + lower + digits + special;
-  for (let i = 0; i < 6; i++) {
-    p += all[Math.floor(Math.random() * all.length)];
-  }
-  return p;
-}
+const DEFAULT_PASSWORD = 'Aavin123';
 
 export default function AdminTeams() {
   const { lang } = useTranslation();
@@ -79,13 +64,11 @@ export default function AdminTeams() {
   const [addUserType, setAddUserType] = useState<'plant' | 'unit'>('plant');
   const [addTeam, setAddTeam] = useState<'GATE' | 'QC' | 'UNLOADING'>('GATE');
   const [addUnitId, setAddUnitId] = useState('');
-  const [addUserId, setAddUserId] = useState('AV_GT_001');
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
   const [addPhone, setAddPhone] = useState('');
-  const [addPassword, setAddPassword] = useState('');
+  const [addPassword, setAddPassword] = useState(DEFAULT_PASSWORD);
   const [showPassword, setShowPassword] = useState(false);
-  const [addForceChange, setAddForceChange] = useState(false);
   const [savingUser, setSavingUser] = useState(false);
   const [addUserError, setAddUserError] = useState('');
   const [userCreatedAlert, setUserCreatedAlert] = useState<{
@@ -184,41 +167,22 @@ export default function AdminTeams() {
     }
   };
 
-  const fetchNextUserId = async (teamCode: 'GATE' | 'QC' | 'UNLOADING') => {
-    try {
-      const res = await api.get<{ next_user_id: string }>(`/teams/next-user-id?team=${teamCode}`);
-      if (res.data?.next_user_id) {
-        setAddUserId(res.data.next_user_id);
-      }
-    } catch {
-      const pfx = teamCode === 'GATE' ? 'GT' : teamCode === 'QC' ? 'QC' : 'UL';
-      setAddUserId(`AV_${pfx}_001`);
-    }
-  };
-
   useEffect(() => {
     void fetchUnits();
     void fetchAllUsers();
   }, []);
 
   const openAddUserModal = (preselectedTeam?: 'GATE' | 'QC' | 'UNLOADING') => {
-    const target = preselectedTeam || 'GATE';
-    setAddUserType('plant');
-    setAddTeam(target);
+    setAddUserType(preselectedTeam ? 'plant' : 'plant');
+    setAddTeam(preselectedTeam || 'GATE');
     setAddName('');
     setAddEmail('');
     setAddPhone('');
-    setAddPassword('');
+    setAddPassword(DEFAULT_PASSWORD);
     setShowPassword(false);
-    setAddForceChange(false);
     setAddUserError('');
+    if (units.length > 0) setAddUnitId(units[0].id);
     setShowAddModal(true);
-    void fetchNextUserId(target);
-  };
-
-  const handleTeamChangeInModal = (t: 'GATE' | 'QC' | 'UNLOADING') => {
-    setAddTeam(t);
-    void fetchNextUserId(t);
   };
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -228,12 +192,16 @@ export default function AdminTeams() {
       setAddUserError('Full name is required');
       return;
     }
-    if (!addPassword.trim() || addPassword.trim().length < 6) {
-      setAddUserError('Password is required (minimum 6 characters)');
+    if (!addEmail.trim()) {
+      setAddUserError('Email address is required');
       return;
     }
-    if (!addEmail.trim() && addUserType === 'unit') {
-      setAddUserError('Email address is required for BMC staff');
+    if (!addPassword.trim() || addPassword.trim().length < 6) {
+      setAddUserError('Password must be at least 6 characters');
+      return;
+    }
+    if (addUserType === 'unit' && !addUnitId) {
+      setAddUserError('Please select a BMC unit');
       return;
     }
 
@@ -242,14 +210,12 @@ export default function AdminTeams() {
       if (addUserType === 'plant') {
         const payload = {
           full_name: addName.trim(),
-          username: addUserId.trim().toUpperCase() || undefined,
-          email: addEmail.trim().toLowerCase() || `${addUserId.trim().toLowerCase()}@aavin.internal`,
+          email: addEmail.trim().toLowerCase(),
           phone: addPhone.trim() || undefined,
           team: addTeam,
-          user_type: 'plant',
           shift: 'General',
           password: addPassword.trim(),
-          force_password_change: false,
+          force_password_change: true,
         };
 
         const res = await api.post('/teams/users', payload);
@@ -257,7 +223,7 @@ export default function AdminTeams() {
 
         setUserCreatedAlert({
           name: created.full_name || addName,
-          username: created.username || addUserId,
+          username: created.username || '',
           email: created.email || payload.email,
           teamOrUnit: `Team ${addTeam}`,
           password: created.temp_password || addPassword,
@@ -268,12 +234,9 @@ export default function AdminTeams() {
           full_name: addName.trim(),
           email: addEmail.trim().toLowerCase(),
           phone: addPhone.trim() || undefined,
-          role: 'unit',
-          unit_id: addUnitId || (units[0]?.id ?? undefined),
-          sub_role: 'operator',
-          username: addUserId.trim() || undefined,
+          unit_id: addUnitId,
           password: addPassword.trim(),
-          force_password_change: addForceChange,
+          force_password_change: true,
         };
 
         const res = await api.post('/users/create', payload);
@@ -390,7 +353,7 @@ export default function AdminTeams() {
       const res = await api.post<{ temp_password?: string; temporaryPassword?: string }>(
         `/users/${resetTarget.id}/reset-password`
       );
-      const tempPwd = res.data?.temp_password || res.data?.temporaryPassword || generateRandomPassword();
+      const tempPwd = res.data?.temp_password || res.data?.temporaryPassword || DEFAULT_PASSWORD;
       setResetTempPwd(tempPwd);
     } catch (err: any) {
       setResetError(err.response?.data?.error || err.message || 'Failed to reset password');
@@ -1043,21 +1006,14 @@ export default function AdminTeams() {
         )}
       </div>
 
-      {/* 4. ADD USER MODAL WITH UNIQUE USER ID */}
+      {/* 4. ADD USER MODAL */}
       {showAddModal && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="modal-card" style={{ maxWidth: 540 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>
-                  {lang === 'ta' ? 'புதிய தொழிற்சாலை பணியாளர் சேர்' : 'Add Plant Team User'}
-                </h3>
-                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.84rem', color: '#64748b' }}>
-                  {lang === 'ta'
-                    ? 'குழுவைத் தேர்வு செய்து தனித்துவ அடையாள எண்ணை (AV_IT_001) ஒதுக்கவும்'
-                    : 'Assign team, generate a structured Unique User ID (e.g. AV_IT_001) and set password'}
-                </p>
-              </div>
+          <div className="modal-card" style={{ maxWidth: 500 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: '#0f172a' }}>
+                {lang === 'ta' ? 'புதிய பயனர் சேர்' : 'Add New User'}
+              </h3>
               <button
                 type="button"
                 onClick={() => setShowAddModal(false)}
@@ -1067,60 +1023,50 @@ export default function AdminTeams() {
               </button>
             </div>
 
+            {/* Type Tabs */}
+            <div style={{ display: 'flex', gap: 0, background: '#f1f5f9', borderRadius: 8, padding: 3, marginBottom: '1.25rem' }}>
+              <button
+                type="button"
+                onClick={() => setAddUserType('plant')}
+                style={{
+                  flex: 1,
+                  border: 'none',
+                  background: addUserType === 'plant' ? '#ffffff' : 'transparent',
+                  fontWeight: addUserType === 'plant' ? 700 : 500,
+                  color: addUserType === 'plant' ? '#0f172a' : '#64748b',
+                  padding: '0.4rem 0',
+                  borderRadius: 6,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  boxShadow: addUserType === 'plant' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                }}
+              >
+                🏭 Plant Team (Gate / QC / Unloading)
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddUserType('unit')}
+                style={{
+                  flex: 1,
+                  border: 'none',
+                  background: addUserType === 'unit' ? '#ffffff' : 'transparent',
+                  fontWeight: addUserType === 'unit' ? 700 : 500,
+                  color: addUserType === 'unit' ? '#0f172a' : '#64748b',
+                  padding: '0.4rem 0',
+                  borderRadius: 6,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  boxShadow: addUserType === 'unit' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                }}
+              >
+                🏢 BMC Unit Staff
+              </button>
+            </div>
+
             {addUserError && <ErrorBanner message={addUserError} />}
 
-            <form onSubmit={handleCreateUser} className="entry-form" style={{ marginTop: '0.75rem' }}>
-              {/* Row 1: Team Dropdown & Unique User ID */}
-              <div className="form-row">
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>
-                    {lang === 'ta' ? 'குழு (Select Team)' : 'Select Team'} *
-                  </label>
-                  <select
-                    value={addTeam}
-                    onChange={(e) => handleTeamChangeInModal(e.target.value as any)}
-                    required
-                    style={{ fontWeight: 600 }}
-                  >
-                    <option value="GATE">GATE — Vehicle Entry & Weighbridge</option>
-                    <option value="QC">QC — Quality Testing & CIP</option>
-                    <option value="UNLOADING">UNLOAD — Silo & Milk Reception</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <label style={{ fontWeight: 600 }}>Unique User ID *</label>
-                    <button
-                      type="button"
-                      onClick={() => void fetchNextUserId(addTeam)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#2563eb',
-                        fontSize: '0.75rem',
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                        padding: 0,
-                      }}
-                    >
-                      ⚡ Auto-Generate
-                    </button>
-                  </div>
-                  <input
-                    value={addUserId}
-                    onChange={(e) => setAddUserId(e.target.value.toUpperCase())}
-                    placeholder="e.g. AV_IT_001"
-                    required
-                    style={{ fontWeight: 700, letterSpacing: '0.04em' }}
-                  />
-                  <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px', display: 'block' }}>
-                    Format example: <code>AV_IT_001</code>, <code>AV_GT_001</code>. Stored in database.
-                  </span>
-                </div>
-              </div>
-
-              {/* Row 2: Full Name */}
+            <form onSubmit={handleCreateUser} className="entry-form">
+              {/* Full Name */}
               <div className="form-group">
                 <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'முழு பெயர்' : 'Full Name'} *</label>
                 <input
@@ -1131,31 +1077,67 @@ export default function AdminTeams() {
                 />
               </div>
 
-              {/* Row 3: Email & Mobile Phone */}
-              <div className="form-row">
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'மின்னஞ்சல்' : 'Email Address'}</label>
-                  <input
-                    type="email"
-                    value={addEmail}
-                    onChange={(e) => setAddEmail(e.target.value)}
-                    placeholder="e.g. raman.gate@aavin.internal"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'அலைபேசி எண்' : 'Mobile Number (+91)'}</label>
-                  <input
-                    type="tel"
-                    value={addPhone}
-                    onChange={(e) => setAddPhone(e.target.value)}
-                    placeholder="9876543210"
-                    maxLength={10}
-                  />
-                </div>
+              {/* Email */}
+              <div className="form-group">
+                <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'மின்னஞ்சல்' : 'Email Address'} *</label>
+                <input
+                  type="email"
+                  value={addEmail}
+                  onChange={(e) => setAddEmail(e.target.value)}
+                  placeholder={addUserType === 'plant' ? 'e.g. raman@aavin.internal' : 'e.g. kumar@bmc.aavin.in'}
+                  required
+                />
               </div>
 
-              {/* Row 4: Password (Entered directly while creating user) */}
+              {/* Phone */}
+              <div className="form-group">
+                <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'அலைபேசி எண்' : 'Mobile Number (+91)'}</label>
+                <input
+                  type="tel"
+                  value={addPhone}
+                  onChange={(e) => setAddPhone(e.target.value)}
+                  placeholder="9876543210"
+                  maxLength={10}
+                />
+              </div>
+
+              {/* Team (plant) OR BMC Unit (unit) */}
+              {addUserType === 'plant' ? (
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'குழு' : 'Team'} *</label>
+                  <select
+                    value={addTeam}
+                    onChange={(e) => setAddTeam(e.target.value as any)}
+                    required
+                    style={{ fontWeight: 600 }}
+                  >
+                    <option value="GATE">GATE — Vehicle Entry &amp; Weighbridge</option>
+                    <option value="QC">QC — Quality Testing &amp; CIP</option>
+                    <option value="UNLOADING">UNLOADING — Silo &amp; Milk Reception</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'பி.எம்.சி அலகு' : 'BMC Unit'} *</label>
+                  {units.length === 0 ? (
+                    <p style={{ fontSize: '0.84rem', color: '#94a3b8', margin: 0 }}>No BMC units found. Add units first.</p>
+                  ) : (
+                    <select
+                      value={addUnitId}
+                      onChange={(e) => setAddUnitId(e.target.value)}
+                      required
+                    >
+                      {units.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.unit_code})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {/* Password */}
               <div className="form-group">
                 <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'கடவுச்சொல்' : 'Password'} *</label>
                 <div style={{ display: 'flex', gap: '0.4rem' }}>
@@ -1163,7 +1145,7 @@ export default function AdminTeams() {
                     type={showPassword ? 'text' : 'password'}
                     value={addPassword}
                     onChange={(e) => setAddPassword(e.target.value)}
-                    placeholder="Enter user password (min 6 characters)"
+                    placeholder="Min 6 characters"
                     required
                     minLength={6}
                     style={{ flex: 1 }}
@@ -1178,17 +1160,16 @@ export default function AdminTeams() {
                   </button>
                 </div>
                 <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '3px', display: 'block' }}>
-                  Entered directly while creating the user account.
+                  Default: <code>Aavin123</code> — user can change after first login.
                 </span>
               </div>
 
-              {/* Modal Buttons */}
               <div className="modal-actions" style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
                 <button type="button" className="btn-secondary" onClick={() => setShowAddModal(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary" disabled={savingUser} style={{ minWidth: 140 }}>
-                  {savingUser ? 'Creating…' : 'Create User'}
+                <button type="submit" className="btn-primary" disabled={savingUser} style={{ minWidth: 130 }}>
+                  {savingUser ? 'Creating…' : `Create ${addUserType === 'plant' ? 'Operator' : 'BMC User'}`}
                 </button>
               </div>
             </form>

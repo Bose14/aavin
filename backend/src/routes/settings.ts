@@ -21,7 +21,17 @@ router.get('/', async (req, res) => {
       getZoneSettings(zoneId),
       getSellingRateHistory(zoneId),
     ]);
-    res.json({ settings, selling_rate_history });
+
+    const role = (req.profile.role || '').toLowerCase();
+    const isAdmin = role === 'admin' || role === 'superadmin';
+
+    // Strip financial rate coefficients for non-admin roles (gate, qc, unloading, unit)
+    const safeSettings = isAdmin ? settings : (() => {
+      const { rate_base, rate_fat_coeff, rate_snf_coeff, ...rest } = settings as any;
+      return rest;
+    })();
+
+    res.json({ settings: safeSettings, selling_rate_history: isAdmin ? selling_rate_history : [] });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
