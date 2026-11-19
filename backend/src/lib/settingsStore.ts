@@ -88,6 +88,7 @@ interface FallbackStoreData {
   teams?: Record<string, TeamRow>;
   tankerDispatches?: Record<string, TankerDispatchMetadata>;
   tankerDispatchesByNumber?: Record<string, TankerDispatchMetadata>;
+  registeredTankers?: Record<string, RegisteredTanker>;
 }
 
 const FALLBACK_DIR = path.resolve(__dirname, '../../.data');
@@ -842,5 +843,148 @@ export async function updateTeamStatusInDb(code: string, active: boolean): Promi
 
   return updatedRow || current;
 }
+
+export interface RegisteredTanker {
+  id: string;
+  vehicle_number: string;
+  contractor_name: string;
+  from_date: string;
+  vehicle_type: 'Registered' | 'Unregistered';
+  number_of_cells: 1 | 2 | 3;
+  front_cell_capacity: number;
+  middle_cell_capacity?: number | null;
+  back_cell_capacity?: number | null;
+  supplier_name: string;
+  created_at: string;
+}
+
+export const INITIAL_REGISTERED_TANKERS: RegisteredTanker[] = [
+  {
+    id: 't-reg-1',
+    vehicle_number: 'TN28BF9717',
+    contractor_name: 'Murugan Transport',
+    from_date: '2026-01-01',
+    vehicle_type: 'Registered',
+    number_of_cells: 2,
+    front_cell_capacity: 6500,
+    middle_cell_capacity: 0,
+    back_cell_capacity: 5500,
+    supplier_name: 'Krishnampudur CC',
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 't-reg-2',
+    vehicle_number: 'TN54J9599',
+    contractor_name: 'Selvam Logistics',
+    from_date: '2026-02-15',
+    vehicle_type: 'Registered',
+    number_of_cells: 2,
+    front_cell_capacity: 6000,
+    middle_cell_capacity: 0,
+    back_cell_capacity: 5000,
+    supplier_name: 'Mallur Vadakadu BMC',
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 't-reg-3',
+    vehicle_number: 'TN28BJ1697',
+    contractor_name: 'Kongu Dairy Express',
+    from_date: '2026-03-10',
+    vehicle_type: 'Registered',
+    number_of_cells: 2,
+    front_cell_capacity: 7000,
+    middle_cell_capacity: 0,
+    back_cell_capacity: 6000,
+    supplier_name: 'Vanavasi BMC',
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 't-reg-4',
+    vehicle_number: 'TN69AX2529',
+    contractor_name: 'Raman Carriers',
+    from_date: '2026-04-01',
+    vehicle_type: 'Registered',
+    number_of_cells: 3,
+    front_cell_capacity: 4500,
+    middle_cell_capacity: 4500,
+    back_cell_capacity: 4500,
+    supplier_name: 'Ariyanoor BMC',
+    created_at: new Date().toISOString(),
+  },
+];
+
+export async function getRegisteredTankersInDb(): Promise<RegisteredTanker[]> {
+  try {
+    const res: any = await withTimeout(supabase.from('registered_tankers').select('*').order('created_at', { ascending: false }));
+    if (!res?.error && res?.data && res.data.length > 0) {
+      return res.data as RegisteredTanker[];
+    }
+  } catch {
+    // fallback
+  }
+
+  const store = readFallback();
+  if (!store.registeredTankers || Object.keys(store.registeredTankers).length === 0) {
+    if (!store.registeredTankers) store.registeredTankers = {};
+    for (const t of INITIAL_REGISTERED_TANKERS) {
+      store.registeredTankers[t.vehicle_number] = t;
+    }
+    writeFallback(store);
+  }
+
+  return Object.values(store.registeredTankers);
+}
+
+export async function saveRegisteredTankerInDb(data: Omit<RegisteredTanker, 'id' | 'created_at'>): Promise<RegisteredTanker> {
+  const normVeh = data.vehicle_number.trim().toUpperCase();
+  const id = `reg-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+
+  const row: RegisteredTanker = {
+    id,
+    vehicle_number: normVeh,
+    contractor_name: data.contractor_name.trim(),
+    from_date: data.from_date || now.slice(0, 10),
+    vehicle_type: data.vehicle_type || 'Registered',
+    number_of_cells: data.number_of_cells || 2,
+    front_cell_capacity: Number(data.front_cell_capacity) || 0,
+    middle_cell_capacity: data.middle_cell_capacity != null ? Number(data.middle_cell_capacity) : 0,
+    back_cell_capacity: data.back_cell_capacity != null ? Number(data.back_cell_capacity) : 0,
+    supplier_name: data.supplier_name.trim(),
+    created_at: now,
+  };
+
+  try {
+    const res: any = await withTimeout(supabase.from('registered_tankers').upsert(row, { onConflict: 'vehicle_number' }).select().maybeSingle());
+    if (!res?.error && res?.data) {
+      // synced to DB
+    }
+  } catch {
+    // fallback
+  }
+
+  const store = readFallback();
+  if (!store.registeredTankers) store.registeredTankers = {};
+  store.registeredTankers[normVeh] = row;
+  writeFallback(store);
+
+  return row;
+}
+
+export async function findRegisteredTankerInDb(vehicleNumber: string): Promise<RegisteredTanker | null> {
+  const norm = vehicleNumber.trim().toUpperCase();
+  try {
+    const res: any = await withTimeout(supabase.from('registered_tankers').select('*').eq('vehicle_number', norm).maybeSingle());
+    if (!res?.error && res?.data) {
+      return res.data as RegisteredTanker;
+    }
+  } catch {
+    // fallback
+  }
+
+  const store = readFallback();
+  return store.registeredTankers?.[norm] || INITIAL_REGISTERED_TANKERS.find((t) => t.vehicle_number === norm) || null;
+}
+
 
 

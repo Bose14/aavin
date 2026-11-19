@@ -391,6 +391,101 @@ test('QCLab renders authentic Aavin IDMS CIP DETAILS form matching user photo', 
   assert.ok(qcSrc.includes('Is CIP Checked'), 'Must render Is CIP Checked checkbox');
 });
 
+test('1. New Tanker Registration captures all 7 specified functional requirement fields', () => {
+  const regSrc = fs.readFileSync(path.resolve(__dirname, '../src/components/NewTankerRegistrationModal.tsx'), 'utf8');
+  assert.ok(regSrc.includes('Vehicle Number'), '1. Must capture Vehicle Number');
+  assert.ok(regSrc.includes('Contractor Name'), '2. Must capture Contractor Name');
+  assert.ok(regSrc.includes('From Date'), '3. Must capture From Date');
+  assert.ok(regSrc.includes('Registered') && regSrc.includes('Unregistered'), '4. Must capture Vehicle Type (Registered / Unregistered)');
+  assert.ok(regSrc.includes('Number of Cells'), '5. Must capture Number of Cells (1, 2, 3)');
+  assert.ok(regSrc.includes('Front Cell Capacity') && regSrc.includes('Middle Cell Capacity') && regSrc.includes('Back Cell Capacity'), '6. Must capture Cell Capacities (Front, Middle, Back)');
+  assert.ok(regSrc.includes('Supplier Name'), '7. Must capture Supplier Name');
+});
+
+test('2. Vehicle Entry form captures exact 10 details and removes extraneous physical seal checkbox', () => {
+  const gateSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/GateOperations.tsx'), 'utf8');
+  assert.ok(gateSrc.includes('Vehicle No'), '1. Vehicle Number');
+  assert.ok(gateSrc.includes('Driver Name'), '2. Driver Name');
+  assert.ok(gateSrc.includes('Entry Date'), '3. Entry Date');
+  assert.ok(gateSrc.includes('Entry Time(HHMM)(12 hour format)'), '4. Entry Time (HH:MM, 12-hour format)');
+  assert.ok(gateSrc.includes('Dispatch Date'), '5. Dispatch Date');
+  assert.ok(gateSrc.includes('Dispatch Time(HHMM)(12 hour format)'), '6. Dispatch Time (HH:MM, 12-hour format)');
+  assert.ok(gateSrc.includes('Time Difference Between Dispatch And Entry(HH.MM)'), '7. Time Difference Between Dispatch and Entry');
+  assert.ok(gateSrc.includes('DC No'), '8. DC Number');
+  assert.ok(gateSrc.includes('Outlet Seal No'), '9. Outlet Seal Number');
+  assert.ok(gateSrc.includes('NAMAKKAL DAIRY'), '10. Receiving Dairy NAMAKKAL DAIRY');
+  // Checkbox removal verified
+  assert.ok(!gateSrc.includes('Physical seal is intact and matches outlet seal number'), 'Physical seal checkbox removed per user request');
+});
+
+test('3. QC Lab implements 4 test categories for FC and BC, manual entry, and gross weight queue filter', () => {
+  const qcSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/QCLab.tsx'), 'utf8');
+  // Condition
+  assert.ok(qcSrc.includes('gross_weight != null'), 'QC queue condition checks completed gross weight');
+  // 3.1 & 3.2 & 3.3
+  assert.ok(qcSrc.includes('Dispatch Quality'), '3.2 Dispatch Quality');
+  assert.ok(qcSrc.includes('Received Quality'), '3.3 Received Quality');
+  assert.ok(qcSrc.includes('Purchase') && qcSrc.includes('Inter Unit Transfer') && qcSrc.includes('Conversion'), '3.3 Purpose options');
+  assert.ok(qcSrc.includes('Chilled') && qcSrc.includes('Pasteurized') && qcSrc.includes('Skim Separated Milk') && qcSrc.includes('Condensed Skim Milk'), '3.3 C/P/S options');
+  // 3.4
+  assert.ok(qcSrc.includes('Qc Manual Entry Reason'), '3.4 QC Manual Entry Reason');
+  // 3.5 Four test categories
+  assert.ok(qcSrc.includes('Freshness Test'), '3.5.A Freshness Test');
+  assert.ok(qcSrc.includes('SNF Adulteration Test'), '3.5.B SNF Adulteration Test');
+  assert.ok(qcSrc.includes('Special Test'), '3.5.C Special Test');
+  assert.ok(qcSrc.includes('FAT Adulteration Test'), '3.5.D FAT Adulteration Test');
+  // Specific tests
+  assert.ok(qcSrc.includes('Organoleptic'), 'Organoleptic');
+  assert.ok(qcSrc.includes('Sugar Test'), 'Sugar Test');
+  assert.ok(qcSrc.includes('Antibiotic'), 'Antibiotic');
+  assert.ok(qcSrc.includes('Free Fatty Acid'), 'Free Fatty Acid');
+  // 3.6
+  assert.ok(qcSrc.includes('Tests Completed'), '3.6 Tests Completed');
+});
+
+test('4. Unloading Bay implements exact 4.1, 4.2 and 4.3 details, DC Dialog Box, and QC-accepted queue condition', () => {
+  const unloadSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/UnloadingBay.tsx'), 'utf8');
+  // Condition
+  assert.ok(unloadSrc.includes("qc_status === 'accepted'") && unloadSrc.includes('!t.stage_data?.unloaded'), 'Unloading queue condition requires QC accepted');
+  // 4.1
+  assert.ok(unloadSrc.includes('Vehicle No') && unloadSrc.includes('Received From') && unloadSrc.includes('DC NO'), '4.1 Vehicle Details');
+  // 4.2
+  assert.ok(unloadSrc.includes('Unloading Date'), '4.2 Unloading Date');
+  assert.ok(unloadSrc.includes('Unloading Time'), '4.2 Unloading Time (12h format)');
+  assert.ok(unloadSrc.includes('Outlet Seal No'), '4.2 Outlet Seal Number');
+  assert.ok(unloadSrc.includes('Unloaded To Silo'), '4.2 Unloaded To Silo dropdown');
+  assert.ok(unloadSrc.includes('Unload Operator Name'), '4.2 Unload Operator Name');
+  assert.ok(unloadSrc.includes('Line Number'), '4.2 Line Number');
+  assert.ok(unloadSrc.includes('Line 1') && unloadSrc.includes('Line 4'), '4.2 Line 1-4 options');
+  assert.ok(unloadSrc.includes('Gross Weight (Kgs)'), '4.2 Gross Weight (Kgs)');
+  assert.ok(unloadSrc.includes('Unloading Cells'), '4.2 Unloading Cells (FC, DC Dialog Box)');
+  assert.ok(unloadSrc.includes('Delivery Challan (DC) Details'), '4.2 DC Dialog Box modal');
+  assert.ok(unloadSrc.includes('Is NPD Transfer?'), '4.2 Is NPD Transfer?');
+  // 4.3
+  assert.ok(unloadSrc.includes('Received Quality'), '4.3 Received Quality');
+  assert.ok(unloadSrc.includes('Sp. Gr.'), '4.3 Specific Gravity (Sp. Gr.)');
+  assert.ok(unloadSrc.includes('COB'), '4.3 COB');
+});
+
+test('5. Additional Forms: Tare Weight, Tanker Out, and CIP waiting conditions', () => {
+  const gateSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/GateOperations.tsx'), 'utf8');
+  const qcSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/QCLab.tsx'), 'utf8');
+
+  // 6.2 Tare Weight Form
+  assert.ok(gateSrc.includes('VEHICLE TARE WEIGHT DETAILS'), '6.2 Tare Weight Details heading');
+  assert.ok(gateSrc.includes('Tare Weight(Kgs)'), '6.2 Tare Weight Kgs');
+  assert.ok(gateSrc.includes('Net Milk Weight'), '6.2 Net Milk Weight auto-calculation');
+  assert.ok(gateSrc.includes('Tare Slip No'), '6.2 Tare Slip No');
+
+  // 6.3 Tanker Out Form
+  assert.ok(gateSrc.includes('TANKER OUT DETAILS'), '6.3 Tanker Out heading');
+  assert.ok(gateSrc.includes('Gate Pass Number'), '6.3 Gate Pass Number');
+  assert.ok(gateSrc.includes('Security Guard Name'), '6.3 Security Guard Name');
+
+  // 5. CIP Condition
+  assert.ok(qcSrc.includes('tare_weight != null') && qcSrc.includes('!t.stage_data?.cip_completed'), '5. CIP queue requires completed Tare Weight');
+});
+
 
 
 
