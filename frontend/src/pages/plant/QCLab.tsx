@@ -600,10 +600,6 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
               : 'Vehicles with completed gross weighment waiting for laboratory quality testing'}
           </p>
         </div>
-
-        <button type="button" onClick={fetchTankers} className="btn btn-secondary" style={{ height: '38px', padding: '0 0.85rem', width: 'auto' }}>
-          🔄 Refresh
-        </button>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={fetchTankers} />}

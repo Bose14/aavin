@@ -460,7 +460,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
     setGrossQualityRows((rows) => rows.filter((r) => r.id !== id));
   };
 
-  const vehiclesInTodayCount = tankers.length;
+
 
   // Filter lists by search query
   const matchesSearch = (t: any) => {
@@ -519,23 +519,6 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <div
-            style={{
-              padding: '0 1rem',
-              height: '38px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              backgroundColor: '#ecfdf5',
-              border: '1px solid #a7f3d0',
-              borderRadius: 6,
-              color: '#065f46',
-              fontWeight: 600,
-              fontSize: '0.88rem',
-            }}
-          >
-            No.Of Vehicles In Today : <span style={{ color: '#047857', fontSize: '1rem', marginLeft: '6px' }}>{vehiclesInTodayCount}</span>
-          </div>
-
           <button
             type="button"
             onClick={() => setShowNewTankerModal(true)}
@@ -543,15 +526,6 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
             style={{ height: '38px', padding: '0 1rem', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.88rem', fontWeight: 600 }}
           >
             + New Tanker Registration
-          </button>
-
-          <button
-            type="button"
-            onClick={fetchTankers}
-            className="btn btn-secondary"
-            style={{ height: '38px', padding: '0 0.85rem', width: 'auto' }}
-          >
-            🔄 Refresh
           </button>
         </div>
       </div>

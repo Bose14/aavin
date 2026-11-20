@@ -343,17 +343,6 @@ export default function UnloadingBay() {
             Condition: Display only vehicles for which QC has been completed and accepted
           </p>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button
-            type="button"
-            onClick={fetchTankers}
-            className="btn btn-secondary"
-            style={{ fontSize: '0.85rem', padding: '6px 14px' }}
-          >
-            🔄 Refresh
-          </button>
-        </div>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={fetchTankers} />}

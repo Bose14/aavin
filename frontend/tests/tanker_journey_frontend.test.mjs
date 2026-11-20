@@ -229,7 +229,7 @@ test('Frontend Plant Teams & Admin DC No integration (Gate, QC, Unloading, Admin
   const drawerSrc = fs.readFileSync(path.resolve(__dirname, '../src/components/TankerDetailDrawer.tsx'), 'utf8');
 
   // Gate form contains authentic Aavin IDMS layout fields
-  assert.ok(gateSrc.includes('No.Of Vehicles In Today :'), 'Gate page has No.Of Vehicles In Today');
+  assert.ok(gateSrc.includes("Today's Gate Vehicle Register"), 'Gate page has vehicle register table');
   assert.ok(!gateSrc.includes('Create New Tanker'), 'Gate page does not have Create New Tanker (outward dispatch is exclusively BMC)');
   assert.ok(gateSrc.includes('VEHICLE ENTRY DETAILS'), 'Gate page has VEHICLE ENTRY DETAILS heading');
   assert.ok(gateSrc.includes('DC No'), 'Gate form has DC No input');
@@ -293,7 +293,7 @@ test('Frontend Feature Verification: 8-Feature Suite (User Creation, Gate/QC/Unl
   assert.ok(teamsSrc.includes('UNLOAD — Silo & Milk Reception'), 'Feature 1: User modal has Unloading team');
 
   // Feature 2: Gate team Dashboard
-  assert.ok(gateSrc.includes('No.Of Vehicles In Today :'), 'Feature 2: Gate Dashboard has vehicle count');
+  assert.ok(gateSrc.includes("Today's Gate Vehicle Register"), 'Feature 2: Gate Dashboard has vehicle register table');
   assert.ok(gateSrc.includes("Today's Gate Vehicle Register"), 'Feature 2: Gate Dashboard has vehicle register table');
 
   // Feature 3: QC team Dashboard
