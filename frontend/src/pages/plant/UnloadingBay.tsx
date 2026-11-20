@@ -92,7 +92,7 @@ export default function UnloadingBay() {
     setError('');
     try {
       const res = await api.get<any[]>('/tanker');
-      const list = res.data || [];
+      const list = Array.isArray(res.data) ? res.data : ((res.data as any)?.tankers || []);
       setTankers(list);
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Failed to load tankers');

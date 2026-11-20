@@ -195,7 +195,8 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     setError('');
     try {
       const res = await api.get('/tanker');
-      setTankers(res.data.tankers || []);
+      const list = Array.isArray(res.data) ? res.data : (res.data?.tankers || []);
+      setTankers(list);
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Failed to load tankers');
     } finally {
