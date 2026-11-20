@@ -215,7 +215,9 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
       (t) =>
         (t.stage_data?.gross_weight != null || t.journey?.completedStageKeys?.includes('gross_weight')) &&
         !t.stage_data?.qc_completed &&
-        t.journey?.tripStatus !== 'qc_rejected'
+        !t.journey?.completedStageKeys?.includes('qc_completed') &&
+        t.journey?.tripStatus !== 'qc_rejected' &&
+        t.journey?.tripStatus !== 'exited',
     );
   }, [tankers]);
 
@@ -224,7 +226,9 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     return tankers.filter(
       (t) =>
         (t.stage_data?.tare_weight != null || t.journey?.completedStageKeys?.includes('tare_weight')) &&
-        !t.stage_data?.cip_completed
+        !t.stage_data?.cip_completed &&
+        !t.journey?.completedStageKeys?.includes('cip_completed') &&
+        t.journey?.tripStatus !== 'exited',
     );
   }, [tankers]);
 

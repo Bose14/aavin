@@ -109,12 +109,19 @@ export default function UnloadingBay() {
 
   // 4. VEHICLES WAITING FOR UNLOADING: Condition: Display only vehicles for which QC has been completed.
   const unloadEligibleTankers = useMemo(() => {
-    return tankers.filter(
-      (t) =>
-        (t.stage_data?.qc_completed?.qc_status === 'accepted' || t.journey?.completedStageKeys?.includes('qc_completed')) &&
-        !t.stage_data?.unloaded &&
-        t.journey?.tripStatus !== 'qc_rejected'
-    );
+    return tankers.filter((t) => {
+      const isQcRej =
+        t.journey?.isQcRejected ||
+        t.qc_status === 'rejected' ||
+        t.stage_data?.qc_completed?.qc_status === 'rejected';
+      const qcDone =
+        t.stage_data?.qc_completed?.qc_status === 'accepted' ||
+        t.stage_data?.qc_completed != null ||
+        t.journey?.completedStageKeys?.includes('qc_completed');
+      const unloadedDone =
+        t.stage_data?.unloaded != null || t.journey?.completedStageKeys?.includes('unloaded');
+      return !t.stage_data?.unloaded && qcDone && !isQcRej && !unloadedDone && t.journey?.tripStatus !== 'exited';
+    });
   }, [tankers]);
 
   const activeTanker = useMemo(() => {

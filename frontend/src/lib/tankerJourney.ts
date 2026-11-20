@@ -129,6 +129,7 @@ export interface DerivedTankerJourney {
   qcRejectionReason: string | null;
   timelineSteps: DerivedTimelineStep[];
   completedStepsCount: number;
+  completedStageKeys: TankerStageKey[];
   compartments?: CompartmentDetail[];
   calculated: {
     gross_weight_kg: number | null;
@@ -652,6 +653,9 @@ export function deriveTankerJourneyState(
     qcRejectionReason,
     timelineSteps,
     completedStepsCount: completedCount,
+    completedStageKeys: timelineSteps
+      .filter((s) => s.status === 'done' || s.status === 'rejected')
+      .map((s) => s.key as TankerStageKey),
     compartments: compartments.length > 0 ? compartments : undefined,
     calculated,
     autoFlags,

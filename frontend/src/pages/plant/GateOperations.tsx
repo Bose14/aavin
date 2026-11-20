@@ -174,24 +174,49 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
 
   // Filter groups for each sheet
   const receiptWaiters = useMemo(() => {
-    return tankers.filter((t) => !t.stage_data?.vehicle_entered);
+    return tankers.filter(
+      (t) =>
+        !t.stage_data?.vehicle_entered &&
+        !t.journey?.completedStageKeys?.includes('vehicle_entered') &&
+        t.journey?.tripStatus !== 'exited',
+    );
   }, [tankers]);
 
   const grossWaiters = useMemo(() => {
-    return tankers.filter((t) => t.stage_data?.vehicle_entered && !t.stage_data?.gross_weight);
+    return tankers.filter(
+      (t) =>
+        (t.stage_data?.vehicle_entered != null || t.journey?.completedStageKeys?.includes('vehicle_entered')) &&
+        !t.stage_data?.gross_weight &&
+        !t.journey?.completedStageKeys?.includes('gross_weight') &&
+        t.journey?.tripStatus !== 'exited',
+    );
   }, [tankers]);
 
   const tareWaiters = useMemo(() => {
     return tankers.filter((t) => {
-      const isQcRej = t.journey?.isQcRejected || t.qc_status === 'rejected' || t.stage_data?.qc_completed?.qc_status === 'rejected';
-      return (t.stage_data?.unloaded != null || isQcRej) && !t.stage_data?.tare_weight;
+      const isQcRej =
+        t.journey?.isQcRejected ||
+        t.qc_status === 'rejected' ||
+        t.stage_data?.qc_completed?.qc_status === 'rejected';
+      const unloadedDone =
+        t.stage_data?.unloaded != null || t.journey?.completedStageKeys?.includes('unloaded');
+      const tareDone =
+        t.stage_data?.tare_weight != null || t.journey?.completedStageKeys?.includes('tare_weight');
+      return (unloadedDone || isQcRej) && !tareDone && t.journey?.tripStatus !== 'exited';
     });
   }, [tankers]);
 
   const exitWaiters = useMemo(() => {
     return tankers.filter((t) => {
-      const isQcRej = t.journey?.isQcRejected || t.qc_status === 'rejected' || t.stage_data?.qc_completed?.qc_status === 'rejected';
-      return (t.stage_data?.cip_completed != null || isQcRej) && !t.stage_data?.vehicle_exit;
+      const isQcRej =
+        t.journey?.isQcRejected ||
+        t.qc_status === 'rejected' ||
+        t.stage_data?.qc_completed?.qc_status === 'rejected';
+      const cipDone =
+        t.stage_data?.cip_completed != null || t.journey?.completedStageKeys?.includes('cip_completed');
+      const exitDone =
+        t.stage_data?.vehicle_exit != null || t.journey?.completedStageKeys?.includes('vehicle_exit');
+      return (cipDone || isQcRej) && !exitDone && t.journey?.tripStatus !== 'exited';
     });
   }, [tankers]);
 
