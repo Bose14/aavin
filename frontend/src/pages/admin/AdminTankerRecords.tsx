@@ -8,7 +8,7 @@ import {
 } from '../../lib/format';
 import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
-import { ConfirmDialog, ErrorBanner, TableSkeleton } from '../../components/UiPrimitives';
+import { ErrorBanner, TableSkeleton } from '../../components/UiPrimitives';
 import { TankerTimeline } from '../../components/TankerTimeline';
 import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
 import { StagePipeline } from '../../components/StagePipeline';
@@ -57,7 +57,6 @@ const ALL_COLUMNS = [
   { id: 'qc', label: 'QC (Fat/SNF)' },
   { id: 'received', label: 'Received (L)' },
   { id: 'transit_loss', label: 'Transit Loss' },
-  { id: 'actions', label: 'Actions' },
 ];
 
 export default function AdminTankerRecords() {
@@ -152,14 +151,6 @@ export default function AdminTankerRecords() {
   // Drawer state
   const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-
-  // Delete modal
-  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
-  // Seed status
-  const [seeding, setSeeding] = useState(false);
-  const [seedNotice, setSeedNotice] = useState('');
 
   // Persist filters to localStorage
   useEffect(() => {
@@ -324,34 +315,6 @@ export default function AdminTankerRecords() {
   const handleCloseDrawer = () => {
     setDrawerOpen(false);
     setSelectedTrip(null);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      await api.delete(`/tanker/${deleteTarget.id}`);
-      setDeleteTarget(null);
-      await fetchData();
-    } catch (err: unknown) {
-      setError((err as Error)?.message || 'Delete failed');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleSeedData = async () => {
-    setSeeding(true);
-    setSeedNotice('');
-    try {
-      const res = await api.post('/tanker/seed');
-      setSeedNotice(res.data.message || 'Seeded successfully!');
-      await fetchData();
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Failed to seed');
-    } finally {
-      setSeeding(false);
-    }
   };
 
   // Export handlers respecting active filters
@@ -673,44 +636,8 @@ export default function AdminTankerRecords() {
       });
     }
 
-    if (visibleColumns.actions) {
-      cols.push({
-        key: 'actions',
-        header: 'Actions',
-        align: 'center',
-        render: (r) => (
-          <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleOpenDrawer(r);
-              }}
-              className="btn btn-secondary"
-              style={{ padding: '4px 8px', fontSize: '12px' }}
-              title="Open Stage Timeline Drawer"
-            >
-              👁️ View
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setDeleteTarget(r);
-              }}
-              className="btn btn-danger"
-              style={{ padding: '4px 6px', fontSize: '12px' }}
-              title="Delete record"
-            >
-              🗑️
-            </button>
-          </div>
-        ),
-      });
-    }
-
     return cols;
-  }, [visibleColumns, handleOpenDrawer]);
+  }, [visibleColumns]);
 
   return (
     <div className="page" style={{ maxWidth: '100%' }}>
@@ -727,31 +654,8 @@ export default function AdminTankerRecords() {
           <span style={{ fontSize: '12px', color: '#64748b' }}>
             Last updated: <strong>{lastUpdated.toLocaleTimeString()}</strong>
           </span>
-          <button
-            onClick={() => void fetchData()}
-            className="btn btn-secondary"
-            style={{ fontSize: '12px', padding: '6px 12px' }}
-            title="Refresh records now"
-          >
-            🔄 Refresh
-          </button>
-          <button
-            onClick={() => void handleSeedData()}
-            className="btn btn-secondary"
-            style={{ fontSize: '12px', padding: '6px 12px' }}
-            disabled={seeding}
-            title="Inject test seed data for all stages, QC rejection & delay"
-          >
-            {seeding ? '🌱 Seeding…' : '🌱 Seed Test Data'}
-          </button>
         </div>
       </div>
-
-      {seedNotice && (
-        <div style={{ padding: '8px 16px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', borderRadius: '6px', marginBottom: '16px' }}>
-          {seedNotice}
-        </div>
-      )}
 
       {error && <ErrorBanner message={error} onRetry={() => void fetchData()} />}
 
@@ -1030,7 +934,7 @@ export default function AdminTankerRecords() {
               : 'No tanker records found.'}
           </h3>
           <p style={{ margin: 0, fontSize: '13px' }}>
-            Try clearing filters or click &quot;🌱 Seed Test Data&quot; to inject complete test journeys.
+            Try clearing filters or check back when new tanker dispatches are initiated.
           </p>
         </div>
       ) : (
@@ -1045,17 +949,6 @@ export default function AdminTankerRecords() {
           />
         </div>
       )}
-
-      {/* Delete Confirmation Dialog */}
-      <ConfirmDialog
-        open={Boolean(deleteTarget)}
-        title="Delete Tanker Dispatch Record"
-        message={`Are you sure you want to delete dispatch record for tanker ${deleteTarget?.tanker_number}? This cannot be undone.`}
-        confirmLabel={deleting ? 'Deleting…' : 'Delete'}
-        danger
-        onConfirm={() => void handleConfirmDelete()}
-        onCancel={() => setDeleteTarget(null)}
-      />
 
       {/* PART B: ROW DETAIL DRAWER */}
       <TankerDetailDrawer

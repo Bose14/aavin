@@ -9,8 +9,12 @@ import {
 import {
   getSellingRateHistory,
   getZoneSettings,
+  getTankerStagesForTrips,
   isMissingSchemaError,
 } from '../lib/settingsStore';
+import { runResilientTankerQuery, enrichTankerRow } from './tanker';
+import { STAGE_COLORS } from '../lib/tankerJourney';
+import type { StageRecordItem } from '../lib/tankerJourney';
 
 const router = Router();
 router.use(authMiddleware);
@@ -527,6 +531,610 @@ router.get('/units', async (req, res) => {
   }).sort((a, b) => b.quantity - a.quantity);
 
   res.json(result);
+});
+
+// GET /analytics/process?period=today|week|month|year|custom&from=&to=&unit_id=
+router.get('/process', async (req, res) => {
+  try {
+    const { period = 'week', unit_id, from, to } = req.query as Record<string, string>;
+    const zoneId = req.profile.zone_id;
+    const settings = await getZoneSettings(zoneId);
+
+    // Resolve date range
+    let fromDate: string;
+    let toDate: string;
+    const todayISO = getIstTodayISO();
+
+    if (period === 'today') {
+      fromDate = todayISO;
+      toDate = todayISO;
+    } else {
+      const resolved = resolveDateRange(period, from, to);
+      fromDate = resolved.fromDate;
+      toDate = resolved.toDate;
+    }
+
+    const [tankersResult, unitsResult] = await Promise.all([
+      runResilientTankerQuery((selectStr) => {
+        let q = supabase
+          .from('tanker_dispatches')
+          .select(selectStr)
+          .eq('zone_id', zoneId)
+          .order('date', { ascending: false })
+          .order('created_at', { ascending: false });
+
+        if (req.profile.role === 'unit') {
+          q = q.eq('unit_id', req.profile.unit_id!);
+        } else if (unit_id) {
+          q = q.eq('unit_id', unit_id);
+        }
+        if (fromDate) q = q.gte('date', fromDate);
+        if (toDate) q = q.lte('date', toDate);
+        return q;
+      }),
+      supabase
+        .from('units')
+        .select('id, name, unit_code, location')
+        .eq('zone_id', zoneId),
+    ]);
+
+    const rows = (tankersResult.data ?? []) as Array<Record<string, unknown>>;
+    const tripIds = rows.map((r) => String(r.id));
+    const stageMap = await getTankerStagesForTrips(tripIds);
+
+    const unitMap = new Map<string, { id: string; name: string; unit_code: string; location: string }>();
+    for (const u of (unitsResult.data ?? [])) {
+      unitMap.set(u.id, u);
+    }
+
+    const enriched = rows.map((r) => {
+      const tripId = String(r.id);
+      const stages = (stageMap[tripId] ?? []) as StageRecordItem[];
+      return enrichTankerRow(r, stages, settings);
+    });
+
+    // 1. Process KPIs
+    const totalDispatchedCount = enriched.length;
+    let totalDispatchedLitres = 0;
+    let activeInPlantCount = 0;
+    let completedCount = 0;
+    let completedLitres = 0;
+    let qcRejectedCount = 0;
+    let qcRejectedLitres = 0;
+    let waitingTooLongCount = 0;
+    let turnaroundMinSum = 0;
+    let turnaroundMinCount = 0;
+
+    // Quality accumulators
+    let dispFatWeight = 0;
+    let dispSnfWeight = 0;
+    let dispLitresWithQual = 0;
+    let recFatWeight = 0;
+    let recSnfWeight = 0;
+    let recLitresWithQual = 0;
+    let recTempSum = 0;
+    let recTempCount = 0;
+    let recTempCompliantCount = 0;
+    let organolepticSatisfiedCount = 0;
+    let organolepticTotalCount = 0;
+
+    // Team operations accumulators
+    const teamStats = {
+      gate: { ops: 0, activeWaiting: 0, delayed: 0, grossMinSum: 0, grossCount: 0, tareMinSum: 0, tareCount: 0 },
+      qc: { inspected: 0, accepted: 0, rejected: 0, activeWaiting: 0, delayed: 0, testMinSum: 0, testCount: 0, cipCount: 0, cipMinSum: 0 },
+      unloading: { unloadedCount: 0, litresUnloaded: 0, activeWaiting: 0, delayed: 0, unloadMinSum: 0, unloadCount: 0 },
+    };
+
+    const rejectionReasonsMap = new Map<string, number>();
+
+    // Stage pipeline counters
+    const stageCounters: Record<string, { active: number; delayed: number; totalProcessed: number; durationMinSum: number; durationCount: number }> = {
+      on_the_way: { active: 0, delayed: 0, totalProcessed: 0, durationMinSum: 0, durationCount: 0 },
+      vehicle_entered: { active: 0, delayed: 0, totalProcessed: 0, durationMinSum: 0, durationCount: 0 },
+      gross_done: { active: 0, delayed: 0, totalProcessed: 0, durationMinSum: 0, durationCount: 0 },
+      qc_done: { active: 0, delayed: 0, totalProcessed: 0, durationMinSum: 0, durationCount: 0 },
+      unloaded: { active: 0, delayed: 0, totalProcessed: 0, durationMinSum: 0, durationCount: 0 },
+      tare_done: { active: 0, delayed: 0, totalProcessed: 0, durationMinSum: 0, durationCount: 0 },
+      cip_done: { active: 0, delayed: 0, totalProcessed: 0, durationMinSum: 0, durationCount: 0 },
+      exited: { active: 0, delayed: 0, totalProcessed: 0, durationMinSum: 0, durationCount: 0 },
+      qc_rejected: { active: 0, delayed: 0, totalProcessed: 0, durationMinSum: 0, durationCount: 0 },
+    };
+
+    // Per-BMC accumulators
+    const bmcAccum = new Map<string, {
+      unit_id: string;
+      name: string;
+      unit_code: string;
+      dispatched_count: number;
+      dispatched_litres: number;
+      received_litres: number;
+      transit_loss_litres: number;
+      qc_rejected_count: number;
+      turnaround_min_sum: number;
+      turnaround_count: number;
+      fat_diff_sum: number;
+      snf_diff_sum: number;
+      diff_count: number;
+    }>();
+
+    // Daily trend accumulators
+    const dailyAccum = new Map<string, {
+      date: string;
+      dispatched_count: number;
+      dispatched_litres: number;
+      received_litres: number;
+      received_count: number;
+      transit_loss_litres: number;
+      qc_rejected_count: number;
+      turnaround_min_sum: number;
+      turnaround_count: number;
+    }>();
+
+    // Active in-plant tankers list
+    const activeInPlantList: Array<{
+      id: string;
+      tanker_number: string;
+      dc_number: string;
+      bmc_name: string;
+      bmc_code: string;
+      current_stage_key: string;
+      current_stage_title: string;
+      stage_color: string;
+      waiting_team: string;
+      waiting_team_label: string;
+      waiting_since_minutes: number;
+      is_over_limit: boolean;
+      dispatched_litres: number;
+      compartments_count: number;
+      driver_name: string;
+    }> = [];
+
+    for (const item of enriched) {
+      const trip = item.journey;
+      const status = trip.tripStatus;
+      const dLitres = Number(item.quantity_dispatched || 0);
+      const rLitres = item.calculated?.received_litres != null ? Number(item.calculated.received_litres) : null;
+      const tripDate = item.date || getIstTodayISO();
+      const uId = item.unit_id ? String(item.unit_id) : 'unknown';
+      const uInfo = unitMap.get(uId) || { id: uId, name: (item.units?.name as string) || 'BMC', unit_code: (item.units?.unit_code as string) || '', location: '' };
+
+      totalDispatchedLitres += dLitres;
+
+      // Status classification
+      if (status === 'qc_rejected') {
+        qcRejectedCount++;
+        qcRejectedLitres += dLitres;
+        stageCounters.qc_rejected.active++;
+        if (trip.qcRejectionReason) {
+          const rText = trip.qcRejectionReason;
+          rejectionReasonsMap.set(rText, (rejectionReasonsMap.get(rText) || 0) + 1);
+        }
+      } else if (status === 'exited') {
+        completedCount++;
+        stageCounters.exited.active++;
+        if (rLitres != null) completedLitres += rLitres;
+        if (item.calculated?.total_turnaround_min != null) {
+          turnaroundMinSum += item.calculated.total_turnaround_min;
+          turnaroundMinCount++;
+        }
+      } else {
+        // In process
+        if (status !== 'on_the_way') {
+          activeInPlantCount++;
+          activeInPlantList.push({
+            id: String(item.id),
+            tanker_number: item.tanker_number || '',
+            dc_number: item.dc_number || item.dc_no || '',
+            bmc_name: uInfo.name,
+            bmc_code: uInfo.unit_code,
+            current_stage_key: trip.currentStageKey || status,
+            current_stage_title: trip.currentStageTitle || status,
+            stage_color: trip.stageColor?.dot || '#0284c7',
+            waiting_team: trip.waitingTeam || '',
+            waiting_team_label: trip.waitingTeamLabel || '',
+            waiting_since_minutes: trip.waitingSinceMinutes || 0,
+            is_over_limit: Boolean(trip.isOverLimit),
+            dispatched_litres: dLitres,
+            compartments_count: Array.isArray(trip.compartments) && trip.compartments.length > 0 ? trip.compartments.length : 1,
+            driver_name: item.driver_name || '',
+          });
+        }
+      }
+
+      // Stage counters
+      if (stageCounters[status]) {
+        stageCounters[status].active++;
+        if (trip.isOverLimit) {
+          stageCounters[status].delayed++;
+        }
+      }
+
+      if (trip.isOverLimit) {
+        waitingTooLongCount++;
+      }
+
+      // Team queue and operation tracking
+      if (trip.waitingTeam === 'gate') {
+        teamStats.gate.activeWaiting++;
+        if (trip.isOverLimit) teamStats.gate.delayed++;
+      } else if (trip.waitingTeam === 'qc') {
+        teamStats.qc.activeWaiting++;
+        if (trip.isOverLimit) teamStats.qc.delayed++;
+      } else if (trip.waitingTeam === 'unloading') {
+        teamStats.unloading.activeWaiting++;
+        if (trip.isOverLimit) teamStats.unloading.delayed++;
+      }
+
+      // Track completed stages for throughput and duration
+      for (const step of (trip.timelineSteps || [])) {
+        if (step.isDone) {
+          if (step.key === 'vehicle_entered' || step.key === 'gross_weight' || step.key === 'tare_weight' || step.key === 'vehicle_exit') {
+            teamStats.gate.ops++;
+          }
+          if (step.key === 'gross_weight' && step.durationMinutes != null) {
+            teamStats.gate.grossMinSum += step.durationMinutes;
+            teamStats.gate.grossCount++;
+          }
+          if (step.key === 'tare_weight' && step.durationMinutes != null) {
+            teamStats.gate.tareMinSum += step.durationMinutes;
+            teamStats.gate.tareCount++;
+          }
+          if (step.key === 'qc_completed') {
+            teamStats.qc.inspected++;
+            if (trip.isQcRejected) teamStats.qc.rejected++;
+            else teamStats.qc.accepted++;
+            if (step.durationMinutes != null) {
+              teamStats.qc.testMinSum += step.durationMinutes;
+              teamStats.qc.testCount++;
+            }
+          }
+          if (step.key === 'cip_completed') {
+            teamStats.qc.cipCount++;
+            if (step.durationMinutes != null) {
+              teamStats.qc.cipMinSum += step.durationMinutes;
+            }
+          }
+          if (step.key === 'unloaded') {
+            teamStats.unloading.unloadedCount++;
+            if (rLitres != null) teamStats.unloading.litresUnloaded += rLitres;
+            if (step.durationMinutes != null) {
+              teamStats.unloading.unloadMinSum += step.durationMinutes;
+              teamStats.unloading.unloadCount++;
+            }
+          }
+        }
+      }
+
+      // Quality accumulators
+      if (item.dispatch_fat_pct != null && dLitres > 0) {
+        dispFatWeight += Number(item.dispatch_fat_pct) * dLitres;
+        dispSnfWeight += Number(item.dispatch_snf_pct || 0) * dLitres;
+        dispLitresWithQual += dLitres;
+      }
+      if (item.received_fat_pct != null && (rLitres || dLitres) > 0) {
+        const qVol = rLitres || dLitres;
+        recFatWeight += Number(item.received_fat_pct) * qVol;
+        recSnfWeight += Number(item.received_snf_pct || 0) * qVol;
+        recLitresWithQual += qVol;
+      }
+      const stageQcData = item.stages?.find((s: any) => s.stage_name === 'qc_completed')?.stage_data as any;
+      if (stageQcData?.received_quality?.[0]?.temp != null) {
+        const tVal = parseFloat(stageQcData.received_quality[0].temp);
+        if (!isNaN(tVal)) {
+          recTempSum += tVal;
+          recTempCount++;
+          if (tVal <= 4.5) recTempCompliantCount++;
+        }
+      }
+      if (stageQcData?.test_categories?.FC?.freshnessOrganoleptic) {
+        organolepticTotalCount++;
+        if (stageQcData.test_categories.FC.freshnessOrganoleptic === 'Satisfied') {
+          organolepticSatisfiedCount++;
+        }
+      }
+
+      // BMC grouping
+      let bmcRec = bmcAccum.get(uId);
+      if (!bmcRec) {
+        bmcRec = {
+          unit_id: uId,
+          name: uInfo.name,
+          unit_code: uInfo.unit_code,
+          dispatched_count: 0,
+          dispatched_litres: 0,
+          received_litres: 0,
+          transit_loss_litres: 0,
+          qc_rejected_count: 0,
+          turnaround_min_sum: 0,
+          turnaround_count: 0,
+          fat_diff_sum: 0,
+          snf_diff_sum: 0,
+          diff_count: 0,
+        };
+        bmcAccum.set(uId, bmcRec);
+      }
+      bmcRec.dispatched_count++;
+      bmcRec.dispatched_litres += dLitres;
+      if (rLitres != null) {
+        bmcRec.received_litres += rLitres;
+        bmcRec.transit_loss_litres += +(dLitres - rLitres).toFixed(2);
+      }
+      if (status === 'qc_rejected') {
+        bmcRec.qc_rejected_count++;
+      }
+      if (item.calculated?.total_turnaround_min != null) {
+        bmcRec.turnaround_min_sum += item.calculated.total_turnaround_min;
+        bmcRec.turnaround_count++;
+      }
+      if (item.fat_diff != null) {
+        bmcRec.fat_diff_sum += Number(item.fat_diff);
+        bmcRec.snf_diff_sum += Number(item.snf_diff || 0);
+        bmcRec.diff_count++;
+      }
+
+      // Daily trend grouping
+      let dayRec = dailyAccum.get(tripDate);
+      if (!dayRec) {
+        dayRec = {
+          date: tripDate,
+          dispatched_count: 0,
+          dispatched_litres: 0,
+          received_litres: 0,
+          received_count: 0,
+          transit_loss_litres: 0,
+          qc_rejected_count: 0,
+          turnaround_min_sum: 0,
+          turnaround_count: 0,
+        };
+        dailyAccum.set(tripDate, dayRec);
+      }
+      dayRec.dispatched_count++;
+      dayRec.dispatched_litres += dLitres;
+      if (rLitres != null) {
+        dayRec.received_litres += rLitres;
+        dayRec.received_count++;
+        dayRec.transit_loss_litres += +(dLitres - rLitres).toFixed(2);
+      }
+      if (status === 'qc_rejected') {
+        dayRec.qc_rejected_count++;
+      }
+      if (item.calculated?.total_turnaround_min != null) {
+        dayRec.turnaround_min_sum += item.calculated.total_turnaround_min;
+        dayRec.turnaround_count++;
+      }
+    }
+
+    const totalTransitLossLitres = completedCount > 0
+      ? +(totalDispatchedLitres - completedLitres).toFixed(2)
+      : 0;
+    const totalTransitLossPct = totalDispatchedLitres > 0
+      ? +((totalTransitLossLitres / totalDispatchedLitres) * 100).toFixed(2)
+      : 0;
+
+    let transitLossTone: 'green' | 'amber' | 'red' = 'green';
+    if (totalTransitLossPct >= (settings.transit_loss_danger_pct ?? 2.0)) transitLossTone = 'red';
+    else if (totalTransitLossPct >= (settings.transit_loss_warn_pct ?? 1.0)) transitLossTone = 'amber';
+
+    const avgTurnaroundMin = turnaroundMinCount > 0
+      ? Math.round(turnaroundMinSum / turnaroundMinCount)
+      : null;
+
+    const slaCompliancePct = totalDispatchedCount > 0
+      ? Math.round(((totalDispatchedCount - waitingTooLongCount) / totalDispatchedCount) * 100)
+      : 100;
+
+    // Pipeline list
+    const pipeline = [
+      {
+        key: 'on_the_way',
+        title: 'BMC Dispatched',
+        team: 'bmc',
+        team_label: 'BMC Center',
+        active_count: stageCounters.on_the_way.active,
+        delayed_count: stageCounters.on_the_way.delayed,
+        color: STAGE_COLORS.on_the_way.dot,
+        desc: 'Tankers in transit from BMC to Dairy Plant',
+      },
+      {
+        key: 'vehicle_entered',
+        title: 'Gate Reception',
+        team: 'gate',
+        team_label: 'Gate Team',
+        active_count: stageCounters.vehicle_entered.active,
+        delayed_count: stageCounters.vehicle_entered.delayed,
+        color: STAGE_COLORS.vehicle_entered.dot,
+        desc: 'Milk Receipt registered, waiting for gross weighbridge',
+      },
+      {
+        key: 'gross_done',
+        title: 'Gross Weight Done',
+        team: 'gate',
+        team_label: 'Gate Team',
+        active_count: stageCounters.gross_done.active,
+        delayed_count: stageCounters.gross_done.delayed,
+        color: STAGE_COLORS.gross_done.dot,
+        desc: 'Gross weight recorded, waiting for QC Lab inspection',
+      },
+      {
+        key: 'qc_done',
+        title: 'QC Passed',
+        team: 'qc',
+        team_label: 'QC Lab',
+        active_count: stageCounters.qc_done.active,
+        delayed_count: stageCounters.qc_done.delayed,
+        color: STAGE_COLORS.qc_done.dot,
+        desc: 'Chemical and adulteration tests satisfied, waiting for unloading',
+      },
+      {
+        key: 'unloaded',
+        title: 'Milk Unloaded',
+        team: 'unloading',
+        team_label: 'Unloading Bay',
+        active_count: stageCounters.unloaded.active,
+        delayed_count: stageCounters.unloaded.delayed,
+        color: STAGE_COLORS.unloaded.dot,
+        desc: 'Pumping into silos completed, waiting for tare weight',
+      },
+      {
+        key: 'tare_done',
+        title: 'Tare Weight Done',
+        team: 'gate',
+        team_label: 'Gate Team',
+        active_count: stageCounters.tare_done.active,
+        delayed_count: stageCounters.tare_done.delayed,
+        color: STAGE_COLORS.tare_done.dot,
+        desc: 'Empty tanker weighed, waiting for CIP wash & sanitization',
+      },
+      {
+        key: 'cip_done',
+        title: 'CIP Cleaning Done',
+        team: 'qc',
+        team_label: 'QC Lab',
+        active_count: stageCounters.cip_done.active,
+        delayed_count: stageCounters.cip_done.delayed,
+        color: STAGE_COLORS.cip_done.dot,
+        desc: 'Clean-in-place sanitization certified, waiting for gate exit',
+      },
+      {
+        key: 'exited',
+        title: 'Tanker Exited',
+        team: 'gate',
+        team_label: 'Gate Team',
+        active_count: stageCounters.exited.active,
+        delayed_count: 0,
+        color: STAGE_COLORS.exited.dot,
+        desc: 'Successfully dispatched out of plant gate',
+      },
+      {
+        key: 'qc_rejected',
+        title: 'QC Rejected',
+        team: 'qc',
+        team_label: 'QC Lab',
+        active_count: stageCounters.qc_rejected.active,
+        delayed_count: 0,
+        color: STAGE_COLORS.qc_rejected.dot,
+        desc: 'Failed organoleptic, adulteration or quality standards',
+      },
+    ];
+
+    // BMC scorecard list
+    const bmcScorecard = Array.from(bmcAccum.values()).map((b) => {
+      const lossPct = b.dispatched_litres > 0
+        ? +((b.transit_loss_litres / b.dispatched_litres) * 100).toFixed(2)
+        : 0;
+      let health: 'ok' | 'warn' | 'danger' = 'ok';
+      if (b.qc_rejected_count > 0 || lossPct >= (settings.transit_loss_danger_pct ?? 2.0)) {
+        health = 'danger';
+      } else if (lossPct >= (settings.transit_loss_warn_pct ?? 1.0)) {
+        health = 'warn';
+      }
+
+      return {
+        unit_id: b.unit_id,
+        name: b.name,
+        unit_code: b.unit_code,
+        dispatched_count: b.dispatched_count,
+        dispatched_litres: +b.dispatched_litres.toFixed(1),
+        received_litres: +b.received_litres.toFixed(1),
+        transit_loss_litres: +b.transit_loss_litres.toFixed(1),
+        transit_loss_pct: lossPct,
+        qc_rejected_count: b.qc_rejected_count,
+        avg_turnaround_min: b.turnaround_count > 0 ? Math.round(b.turnaround_min_sum / b.turnaround_count) : null,
+        avg_fat_diff: b.diff_count > 0 ? +(b.fat_diff_sum / b.diff_count).toFixed(2) : 0,
+        avg_snf_diff: b.diff_count > 0 ? +(b.snf_diff_sum / b.diff_count).toFixed(2) : 0,
+        health,
+      };
+    }).sort((a, b) => b.dispatched_litres - a.dispatched_litres);
+
+    // Daily trend list
+    const dailyTrend = Array.from(dailyAccum.values()).map((d) => ({
+      date: d.date,
+      dispatched_count: d.dispatched_count,
+      dispatched_litres: +d.dispatched_litres.toFixed(1),
+      received_count: d.received_count,
+      received_litres: +d.received_litres.toFixed(1),
+      transit_loss_litres: +d.transit_loss_litres.toFixed(1),
+      qc_rejected_count: d.qc_rejected_count,
+      avg_turnaround_min: d.turnaround_count > 0 ? Math.round(d.turnaround_min_sum / d.turnaround_count) : null,
+    })).sort((a, b) => a.date.localeCompare(b.date));
+
+    // Rejection reasons list
+    const rejectionReasons = Array.from(rejectionReasonsMap.entries())
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count);
+
+    res.json({
+      period,
+      date_range: { from: fromDate, to: toDate },
+      kpis: {
+        total_dispatched_count: totalDispatchedCount,
+        total_dispatched_litres: +totalDispatchedLitres.toFixed(1),
+        active_in_plant_count: activeInPlantCount,
+        completed_count: completedCount,
+        completed_litres: +completedLitres.toFixed(1),
+        qc_rejected_count: qcRejectedCount,
+        qc_rejected_litres: +qcRejectedLitres.toFixed(1),
+        transit_loss_litres: totalTransitLossLitres,
+        transit_loss_pct: totalTransitLossPct,
+        transit_loss_tone: transitLossTone,
+        avg_plant_turnaround_min: avgTurnaroundMin,
+        sla_delayed_count: waitingTooLongCount,
+        sla_compliance_pct: slaCompliancePct,
+      },
+      pipeline,
+      team_performance: {
+        gate: {
+          name: 'Gate Operations Team',
+          active_queue: teamStats.gate.activeWaiting,
+          total_ops: teamStats.gate.ops,
+          avg_gross_min: teamStats.gate.grossCount > 0 ? Math.round(teamStats.gate.grossMinSum / teamStats.gate.grossCount) : null,
+          avg_tare_min: teamStats.gate.tareCount > 0 ? Math.round(teamStats.gate.tareMinSum / teamStats.gate.tareCount) : null,
+          delayed_count: teamStats.gate.delayed,
+        },
+        qc: {
+          name: 'Quality Control (QC) Lab',
+          active_queue: teamStats.qc.activeWaiting,
+          total_inspected: teamStats.qc.inspected,
+          accepted_count: teamStats.qc.accepted,
+          rejected_count: teamStats.qc.rejected,
+          rejection_rate_pct: teamStats.qc.inspected > 0 ? +((teamStats.qc.rejected / teamStats.qc.inspected) * 100).toFixed(1) : 0,
+          avg_test_min: teamStats.qc.testCount > 0 ? Math.round(teamStats.qc.testMinSum / teamStats.qc.testCount) : null,
+          cip_cleanings_count: teamStats.qc.cipCount,
+          delayed_count: teamStats.qc.delayed,
+          rejection_reasons: rejectionReasons,
+        },
+        unloading: {
+          name: 'Milk Unloading Bay',
+          active_queue: teamStats.unloading.activeWaiting,
+          total_unloaded: teamStats.unloading.unloadedCount,
+          total_volume_litres: +teamStats.unloading.litresUnloaded.toFixed(1),
+          avg_unload_min: teamStats.unloading.unloadCount > 0 ? Math.round(teamStats.unloading.unloadMinSum / teamStats.unloading.unloadCount) : null,
+          delayed_count: teamStats.unloading.delayed,
+        },
+      },
+      quality_reconciliation: {
+        avg_dispatch_fat: dispLitresWithQual > 0 ? +(dispFatWeight / dispLitresWithQual).toFixed(2) : 0,
+        avg_received_fat: recLitresWithQual > 0 ? +(recFatWeight / recLitresWithQual).toFixed(2) : 0,
+        fat_variance: (dispLitresWithQual > 0 && recLitresWithQual > 0)
+          ? +((recFatWeight / recLitresWithQual) - (dispFatWeight / dispLitresWithQual)).toFixed(2)
+          : 0,
+        avg_dispatch_snf: dispLitresWithQual > 0 ? +(dispSnfWeight / dispLitresWithQual).toFixed(2) : 0,
+        avg_received_snf: recLitresWithQual > 0 ? +(recSnfWeight / recLitresWithQual).toFixed(2) : 0,
+        snf_variance: (dispLitresWithQual > 0 && recLitresWithQual > 0)
+          ? +((recSnfWeight / recLitresWithQual) - (dispSnfWeight / dispLitresWithQual)).toFixed(2)
+          : 0,
+        avg_temperature: recTempCount > 0 ? +(recTempSum / recTempCount).toFixed(1) : null,
+        temp_compliant_pct: recTempCount > 0 ? Math.round((recTempCompliantCount / recTempCount) * 100) : 100,
+        organoleptic_satisfied_pct: organolepticTotalCount > 0 ? Math.round((organolepticSatisfiedCount / organolepticTotalCount) * 100) : 100,
+      },
+      bmc_performance: bmcScorecard,
+      active_tankers: activeInPlantList,
+      daily_trend: dailyTrend,
+    });
+  } catch (err: any) {
+    console.error('[analytics/process] Error:', err);
+    res.status(500).json({ error: err?.message || 'Failed to compute process analytics' });
+  }
 });
 
 export default router;

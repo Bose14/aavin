@@ -92,7 +92,7 @@ export default function UnloadingBay() {
     setError('');
     try {
       const res = await api.get<any[]>('/tanker');
-      const list = res.data || [];
+      const list = Array.isArray(res.data) ? res.data : ((res.data as any)?.tankers || []);
       setTankers(list);
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Failed to load tankers');
@@ -205,36 +205,34 @@ export default function UnloadingBay() {
           }))
         );
       } else {
-        setReceivedQualityList([
-          {
-            cell: 'FC',
-            fat: '4.25',
-            snf: '8.10',
+        const grossRows = activeTanker.stage_data?.gross_weight?.quality_breakdown;
+        const comps = activeTanker.compartments || activeTanker.stage_data?.compartments;
+        const cellItems = grossRows && Array.isArray(grossRows) && grossRows.length > 0
+          ? grossRows.map((r: any) => ({ cell: r.cell || 'FC', fat: r.fat, snf: r.snf }))
+          : comps && Array.isArray(comps) && comps.length > 0
+          ? comps.map((c: any, idx: number) => ({
+              cell: comps.length === 3 ? (idx === 0 ? 'FC' : idx === 1 ? 'MC' : 'BC') : (idx === 0 ? 'FC' : 'BC'),
+              fat: c.fat_pct ?? c.fat,
+              snf: c.snf_pct ?? c.snf,
+            }))
+          : [{ cell: 'FC', fat: '4.25', snf: '8.10' }, { cell: 'BC', fat: '4.15', snf: '8.05' }];
+
+        setReceivedQualityList(
+          cellItems.map((item, idx) => ({
+            cell: item.cell,
+            fat: String(item.fat ?? (4.25 - idx * 0.1).toFixed(2)),
+            snf: String(item.snf ?? (8.15 - idx * 0.05).toFixed(2)),
             clr: '27.56',
             acidity: '0.13',
             temp: '4.0',
-            seal: resolvedSeal,
+            seal: resolvedSeal ? `${parseInt(resolvedSeal, 10) - idx || resolvedSeal}` : '018168',
             mbrt: '45',
             sTime: '02:33',
             spGr: '1.030',
             cob: 'Negative',
             milkType: 'MIXED MILK',
-          },
-          {
-            cell: 'BC',
-            fat: '4.15',
-            snf: '8.05',
-            clr: '27.44',
-            acidity: '0.13',
-            temp: '4.1',
-            seal: resolvedSeal ? `${parseInt(resolvedSeal, 10) - 1 || '018167'}` : '018167',
-            mbrt: '45',
-            sTime: '02:33',
-            spGr: '1.030',
-            cob: 'Negative',
-            milkType: 'MIXED MILK',
-          },
-        ]);
+          }))
+        );
       }
     }
   }, [

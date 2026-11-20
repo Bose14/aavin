@@ -133,19 +133,18 @@ export default function PlantRecords() {
                   <th style={{ padding: '0.75rem 1rem' }}>{lang === 'ta' ? 'அனுப்பப்பட்ட அளவு' : 'Dispatched'}</th>
                   <th style={{ padding: '0.75rem 1rem' }}>{lang === 'ta' ? 'நிலை' : 'Stage / Status'}</th>
                   <th style={{ padding: '0.75rem 1rem' }}>{lang === 'ta' ? 'குழு விவரங்கள்' : 'Team Details'}</th>
-                  <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>{lang === 'ta' ? 'செயல்' : 'Action'}</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                    <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
                       {lang === 'ta' ? 'ஏற்றப்படுகிறது...' : 'Loading records...'}
                     </td>
                   </tr>
                 ) : filteredTankers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', padding: '3rem 1rem', color: '#64748b' }}>
+                    <td colSpan={5} style={{ textAlign: 'center', padding: '3rem 1rem', color: '#64748b' }}>
                       <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🥛</div>
                       <strong>{lang === 'ta' ? 'பதிவுகள் எதுவும் இல்லை' : 'No records found'}</strong>
                       <p style={{ fontSize: '0.82rem', marginTop: '0.25rem' }}>
@@ -221,18 +220,6 @@ export default function PlantRecords() {
                           {!['GATE', 'QC', 'UNLOADING'].includes(teamCode) && (
                             <div>Waiting: {journey?.waitingTeamLabel || '—'}</div>
                           )}
-                        </td>
-                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                          <button
-                            type="button"
-                            className="btn-secondary btn-sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedTrip(isSelected ? null : t);
-                            }}
-                          >
-                            {isSelected ? (lang === 'ta' ? 'மூடு' : 'Close') : (lang === 'ta' ? 'விவரம்' : 'View')}
-                          </button>
                         </td>
                       </tr>
                     );
