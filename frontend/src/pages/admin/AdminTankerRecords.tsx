@@ -157,10 +157,6 @@ export default function AdminTankerRecords() {
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Seed status
-  const [seeding, setSeeding] = useState(false);
-  const [seedNotice, setSeedNotice] = useState('');
-
   // Persist filters to localStorage
   useEffect(() => {
     const filters = {
@@ -337,20 +333,6 @@ export default function AdminTankerRecords() {
       setError((err as Error)?.message || 'Delete failed');
     } finally {
       setDeleting(false);
-    }
-  };
-
-  const handleSeedData = async () => {
-    setSeeding(true);
-    setSeedNotice('');
-    try {
-      const res = await api.post('/tanker/seed');
-      setSeedNotice(res.data.message || 'Seeded successfully!');
-      await fetchData();
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Failed to seed');
-    } finally {
-      setSeeding(false);
     }
   };
 
@@ -727,31 +709,8 @@ export default function AdminTankerRecords() {
           <span style={{ fontSize: '12px', color: '#64748b' }}>
             Last updated: <strong>{lastUpdated.toLocaleTimeString()}</strong>
           </span>
-          <button
-            onClick={() => void fetchData()}
-            className="btn btn-secondary"
-            style={{ fontSize: '12px', padding: '6px 12px' }}
-            title="Refresh records now"
-          >
-            🔄 Refresh
-          </button>
-          <button
-            onClick={() => void handleSeedData()}
-            className="btn btn-secondary"
-            style={{ fontSize: '12px', padding: '6px 12px' }}
-            disabled={seeding}
-            title="Inject test seed data for all stages, QC rejection & delay"
-          >
-            {seeding ? '🌱 Seeding…' : '🌱 Seed Test Data'}
-          </button>
         </div>
       </div>
-
-      {seedNotice && (
-        <div style={{ padding: '8px 16px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', borderRadius: '6px', marginBottom: '16px' }}>
-          {seedNotice}
-        </div>
-      )}
 
       {error && <ErrorBanner message={error} onRetry={() => void fetchData()} />}
 
@@ -1030,7 +989,7 @@ export default function AdminTankerRecords() {
               : 'No tanker records found.'}
           </h3>
           <p style={{ margin: 0, fontSize: '13px' }}>
-            Try clearing filters or click &quot;🌱 Seed Test Data&quot; to inject complete test journeys.
+            Try clearing filters or check back when new tanker dispatches are initiated.
           </p>
         </div>
       ) : (

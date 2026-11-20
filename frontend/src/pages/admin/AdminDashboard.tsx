@@ -497,16 +497,6 @@ export default function AdminDashboard() {
               </button>
             </div>
           )}
-
-          <button
-            type="button"
-            className="btn-secondary btn-sm"
-            onClick={fetchData}
-            title="Refresh analytics data"
-            style={{ height: 32, display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.82rem', fontWeight: 600 }}
-          >
-            <span>↻</span> Refresh
-          </button>
         </div>
       </div>
 

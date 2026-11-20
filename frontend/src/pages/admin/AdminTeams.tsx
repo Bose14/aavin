@@ -71,9 +71,6 @@ export default function AdminTeams() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Seeding test users
-  const [seeding, setSeeding] = useState(false);
-
   // Add User Modal State
   const [showAddModal, setShowAddModal] = useState(false);
   const [addUserType, setAddUserType] = useState<'plant' | 'unit'>('plant');
@@ -419,23 +416,6 @@ export default function AdminTeams() {
     }
   };
 
-  const handleSeedUsers = async () => {
-    setSeeding(true);
-    try {
-      await api.post('/teams/seed-users');
-      setSuccessMsg(
-        lang === 'ta'
-          ? 'மாதிரி பயனர்கள் (gate_test, qc_test, unloading_test) வெற்றிகரமாக உருவாக்கப்பட்டனர்!'
-          : 'Test operators (gate_test, qc_test, unloading_test) seeded successfully!'
-      );
-      await fetchAllUsers();
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Failed to seed test users');
-    } finally {
-      setSeeding(false);
-    }
-  };
-
   // User counts per scope
   const scopeCounts = useMemo(() => {
     return {
@@ -740,38 +720,6 @@ export default function AdminTeams() {
             }}
           >
             ➕ {lang === 'ta' ? 'பயனர் சேர் (Add User)' : 'Add User'}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              void fetchUnits();
-              void fetchAllUsers();
-            }}
-            className="btn btn-secondary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', height: '38px', padding: '0 0.85rem', width: 'auto' }}
-          >
-            🔄 {lang === 'ta' ? 'புதுப்பி' : 'Refresh'}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleSeedUsers}
-            disabled={seeding}
-            className="btn btn-secondary"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-              background: '#ecfdf5',
-              borderColor: '#a7f3d0',
-              color: '#065f46',
-              height: '38px',
-              padding: '0 0.85rem',
-              width: 'auto',
-            }}
-          >
-            🌱 {seeding ? (lang === 'ta' ? 'உருவாக்குகிறது...' : 'Seeding...') : (lang === 'ta' ? 'மாதிரி பயனர்கள்' : 'Seed Test Users')}
           </button>
         </div>
       </div>
