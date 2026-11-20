@@ -1,6 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
 import api from '../../lib/api';
-import { TankerTimeline } from '../../components/TankerTimeline';
 import { formatLitres } from '../../lib/format';
 import { ErrorBanner } from '../../components/UiPrimitives';
 
@@ -21,10 +20,16 @@ export interface UnloadReceivedQuality {
 
 export default function UnloadingBay() {
   const [tankers, setTankers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [selectedTankerId, setSelectedTankerId] = useState<string>('');
+  const [submitting, setSubmitting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Dialog Modals
+  const [showUnloadModal, setShowUnloadModal] = useState(false);
+  const [showDcModal, setShowDcModal] = useState(false);
 
   // 4.1 Vehicle Details
   const [vehicleNo, setVehicleNo] = useState('');
@@ -48,7 +53,6 @@ export default function UnloadingBay() {
   const [remarks, setRemarks] = useState('');
   const [cellFcChecked, setCellFcChecked] = useState(true);
   const [cellBcChecked, setCellBcChecked] = useState(true);
-  const [showDcModal, setShowDcModal] = useState(false);
   const [isNpdTransfer, setIsNpdTransfer] = useState<'Yes' | 'No'>('No');
 
   // 4.3 Received Quality (FC and BC)
@@ -83,8 +87,6 @@ export default function UnloadingBay() {
     },
   ]);
 
-  const [submitting, setSubmitting] = useState(false);
-
   const fetchTankers = async () => {
     setLoading(true);
     setError('');
@@ -92,19 +94,6 @@ export default function UnloadingBay() {
       const res = await api.get<any[]>('/tanker');
       const list = res.data || [];
       setTankers(list);
-      if (list.length > 0) {
-        // Prioritize a tanker waiting on unloading with QC completed
-        const unloadWaiting = list.find(
-          (t: any) =>
-            (t.stage_data?.qc_completed?.qc_status === 'accepted' || t.journey?.completedStageKeys?.includes('qc_completed')) &&
-            !t.stage_data?.unloaded
-        );
-        if (!selectedTankerId || !list.some((t: any) => t.id === selectedTankerId)) {
-          setSelectedTankerId(unloadWaiting ? unloadWaiting.id : list[0].id);
-        }
-      } else {
-        setSelectedTankerId('');
-      }
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Failed to load tankers');
     } finally {
@@ -114,6 +103,8 @@ export default function UnloadingBay() {
 
   useEffect(() => {
     void fetchTankers();
+    const interval = setInterval(fetchTankers, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   // 4. VEHICLES WAITING FOR UNLOADING: Condition: Display only vehicles for which QC has been completed.
@@ -126,9 +117,14 @@ export default function UnloadingBay() {
     );
   }, [tankers]);
 
-  const displayedQueue = unloadEligibleTankers.length > 0 ? unloadEligibleTankers : tankers;
+  const activeTanker = useMemo(() => {
+    if (selectedTankerId) {
+      const found = tankers.find((t) => t.id === selectedTankerId);
+      if (found) return found;
+    }
+    return unloadEligibleTankers[0] || tankers[0] || null;
+  }, [selectedTankerId, tankers, unloadEligibleTankers]);
 
-  const activeTanker = tankers.find((t) => t.id === selectedTankerId) || displayedQueue[0] || tankers[0] || null;
   const journey = activeTanker?.journey;
   const isQcRejected = journey?.isQcRejected || activeTanker?.qc_status === 'rejected' || activeTanker?.stage_data?.qc_completed?.qc_status === 'rejected';
 
@@ -148,72 +144,69 @@ export default function UnloadingBay() {
         '106451';
       setDcNumber(resolvedDc);
 
-      const bmcName = activeTanker.units?.name || 'KRISHANAMPUDUR';
-      const bmcCode = activeTanker.units?.unit_code || 'CC_BMC87';
-      const primaryBmcTag = `${bmcName} [${bmcCode}]`;
-      const storedReceived =
-        activeTanker.stage_data?.qc_completed?.received_from ||
-        activeTanker.stage_data?.gross_weight?.received_from;
-
-      if (Array.isArray(storedReceived) && storedReceived.length > 0) {
-        setReceivedFromList(storedReceived);
-      } else {
-        setReceivedFromList([
-          primaryBmcTag,
-          'ADAIYUR BMC [17218]',
-          'CHITHOOR BMC [17193]',
-        ]);
+      const bmcSources: string[] = [];
+      if (activeTanker.units?.name) {
+        bmcSources.push(`${activeTanker.units.name.toUpperCase()} [${activeTanker.units.unit_code || '17218'}]`);
       }
+      if (activeTanker.compartments && Array.isArray(activeTanker.compartments)) {
+        activeTanker.compartments.forEach((c: any) => {
+          if (c.bmc_name && !bmcSources.some((b) => b.includes(c.bmc_name.toUpperCase()))) {
+            bmcSources.push(`${c.bmc_name.toUpperCase()}`);
+          }
+        });
+      }
+      if (bmcSources.length === 0) {
+        bmcSources.push('KRISHANAMPUDUR [CC_BMC87]');
+        bmcSources.push('ADAIYUR BMC [17218]');
+        bmcSources.push('CHITHOOR BMC [17193]');
+      }
+      setReceivedFromList(bmcSources);
 
-      const sealNo =
+      const resolvedSeal =
         activeTanker.seal_number ||
-        activeTanker.stage_data?.seal_number ||
         activeTanker.stage_data?.outlet_seal_no ||
+        activeTanker.stage_data?.seal_number ||
+        activeTanker.stage_data?.vehicle_entered?.outlet_seal_no ||
         activeTanker.stage_data?.vehicle_entered?.seal_number ||
         '018168';
-      setOutletSealNumber(sealNo);
+      setOutletSealNumber(resolvedSeal);
 
-      const gKg =
-        activeTanker.gross_weight_kg ||
+      const gw =
         activeTanker.stage_data?.gross_weight?.gross_weight_kg ||
+        activeTanker.gross_weight_kg ||
         activeTanker.journey?.calculated?.gross_weight_kg ||
-        '';
-      setGrossWeightKg(gKg ? String(gKg) : '');
+        '24850';
+      setGrossWeightKg(String(gw));
 
-      const existingRemarks =
-        activeTanker.stage_data?.unloaded?.remarks ||
-        activeTanker.stage_data?.qc_completed?.remarks ||
-        '';
-      setRemarks(existingRemarks);
-
-      // Populate 4.3 Received Quality from QC or defaults for FC and BC
-      const qcRecList = activeTanker.stage_data?.qc_completed?.received_quality;
-      if (Array.isArray(qcRecList) && qcRecList.length > 0) {
-        const mapped = qcRecList.map((q: any) => ({
-          cell: q.cell || 'FC',
-          fat: String(q.fat ?? '4.25'),
-          snf: String(q.snf ?? '8.10'),
-          clr: String(q.clr ?? '27.56'),
-          acidity: String(q.acidity ?? '0.13'),
-          temp: String(q.temp ?? '4.0'),
-          seal: String(q.seal ?? sealNo),
-          mbrt: String(q.mbrt ?? '45'),
-          sTime: String(q.sampleTime ?? '02:33'),
-          spGr: String(q.spGr ?? '1.030'),
-          cob: (q.cob === 'Positive' ? 'Positive' : 'Negative') as 'Negative' | 'Positive',
-          milkType: String(q.milkType ?? 'MIXED MILK'),
-        }));
-        setReceivedQualityList(mapped);
+      // Populate Received Quality from QC stage if available
+      const qcRecQ = activeTanker.stage_data?.qc_completed?.received_quality;
+      if (qcRecQ && Array.isArray(qcRecQ) && qcRecQ.length > 0) {
+        setReceivedQualityList(
+          qcRecQ.map((q: any) => ({
+            cell: q.cell || 'FC',
+            fat: String(q.fat ?? '4.25'),
+            snf: String(q.snf ?? '8.10'),
+            clr: String(q.clr ?? '27.56'),
+            acidity: String(q.acidity ?? '0.13'),
+            temp: String(q.temp ?? '4.0'),
+            seal: String(q.seal ?? resolvedSeal),
+            mbrt: String(q.mbrt ?? '45'),
+            sTime: String(q.sampleTime ?? '02:33'),
+            spGr: String(q.spGr ?? '1.030'),
+            cob: q.cob === 'Positive' ? 'Positive' : 'Negative',
+            milkType: q.milkType || 'MIXED MILK',
+          }))
+        );
       } else {
         setReceivedQualityList([
           {
             cell: 'FC',
-            fat: String(activeTanker.stage_data?.qc_completed?.received_fat_pct || activeTanker.received_fat_pct || '4.25'),
-            snf: String(activeTanker.stage_data?.qc_completed?.received_snf_pct || activeTanker.received_snf_pct || '8.10'),
+            fat: '4.25',
+            snf: '8.10',
             clr: '27.56',
             acidity: '0.13',
             temp: '4.0',
-            seal: sealNo,
+            seal: resolvedSeal,
             mbrt: '45',
             sTime: '02:33',
             spGr: '1.030',
@@ -227,7 +220,7 @@ export default function UnloadingBay() {
             clr: '27.44',
             acidity: '0.13',
             temp: '4.1',
-            seal: '018167',
+            seal: resolvedSeal ? `${parseInt(resolvedSeal, 10) - 1 || '018167'}` : '018167',
             mbrt: '45',
             sTime: '02:33',
             spGr: '1.030',
@@ -237,16 +230,26 @@ export default function UnloadingBay() {
         ]);
       }
     }
-  }, [activeTanker?.id]);
+  }, [
+    activeTanker?.id,
+    activeTanker?.tanker_number,
+    activeTanker?.seal_number,
+    activeTanker?.dc_number,
+    activeTanker?.stage_data,
+    activeTanker,
+  ]);
 
-  const updateReceivedQuality = (idx: number, field: keyof UnloadReceivedQuality, value: any) => {
-    setReceivedQualityList((prev) =>
-      prev.map((item, i) => (i === idx ? { ...item, [field]: value } : item))
-    );
+  const updateReceivedQuality = (idx: number, field: keyof UnloadReceivedQuality, val: any) => {
+    setReceivedQualityList((prev) => {
+      const next = [...prev];
+      if (next[idx]) {
+        next[idx] = { ...next[idx], [field]: val };
+      }
+      return next;
+    });
   };
 
-  const handleUpdateUnloading = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const handleUpdateUnloading = async () => {
     if (!activeTanker) return;
 
     setSubmitting(true);
@@ -281,6 +284,7 @@ export default function UnloadingBay() {
 
       await api.post(`/tanker/${activeTanker.id}/stages/unloaded`, payload);
       setSuccessMsg('Unloading Details updated successfully! Tanker moved to Weighbridge for Tare Weight.');
+      setShowUnloadModal(false);
       await fetchTankers();
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Failed to update unloading details');
@@ -301,34 +305,54 @@ export default function UnloadingBay() {
       .map((t) => t.stage_data?.unloaded?.unloaded_to_silo || t.stage_data?.unloaded?.silo_or_bay)
       .filter(Boolean)
   );
-  const activeSilosCount = activeSilosSet.size;
-  const activeSilosStr = Array.from(activeSilosSet).slice(0, 3).join(', ') || 'Silo-1';
+  const activeSilosCount = activeSilosSet.size || 2;
+  const activeSilosStr = Array.from(activeSilosSet).length > 0 ? Array.from(activeSilosSet).join(', ') : 'Silo-1, Silo-2';
+
+  const blockedCount = tankers.filter(
+    (t) => t.qc_status === 'rejected' || t.stage_data?.qc_completed?.qc_status === 'rejected' || t.journey?.tripStatus === 'qc_rejected'
+  ).length;
+
+  // Search filter
+  const matchesSearch = (t: any) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    const v = (t.tanker_number || '').toLowerCase();
+    const dc = (t.dc_number || t.stage_data?.dc_number || '').toLowerCase();
+    const bmc = (t.units?.name || '').toLowerCase();
+    const driver = (t.driver_name || '').toLowerCase();
+    return v.includes(q) || dc.includes(q) || bmc.includes(q) || driver.includes(q);
+  };
+
+  const filteredUnloadWaiters = unloadEligibleTankers.filter(matchesSearch);
 
   return (
-    <div className="page" style={{ maxWidth: '1080px', margin: '0 auto', padding: '16px' }}>
-      {/* Header */}
+    <div className="page" style={{ maxWidth: '1180px', margin: '0 auto', padding: '1.25rem' }}>
+      {/* 1. Header */}
       <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
         <span>Dashboard</span>
         <span>&gt;</span>
         <span>Milk Reception</span>
         <span>&gt;</span>
-        <strong style={{ color: '#0f172a' }}>Vehicles Waiting for Unloading</strong>
+        <strong style={{ color: '#0f172a' }}>Unloading Bay</strong>
       </div>
 
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>
-            Unloading Bay Operations
+          <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#0f172a', margin: '0 0 4px 0' }}>
+            Milk Unloading Bay &amp; Silo Intake
           </h1>
-          <p className="page-subtitle" style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '13px' }}>
-            Condition: Display only vehicles for which QC has been completed
+          <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>
+            Condition: Display only vehicles for which QC has been completed and accepted
           </p>
         </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '13px', color: '#475569', fontWeight: 600 }}>
-            Waiting for Unloading: <strong style={{ color: '#0284c7' }}>{waitingForUnloadCount}</strong>
-          </span>
-          <button onClick={fetchTankers} className="btn btn-secondary" style={{ height: '36px', padding: '0 12px', fontSize: '13px', width: 'auto' }}>
+          <button
+            type="button"
+            onClick={fetchTankers}
+            className="btn btn-secondary"
+            style={{ fontSize: '0.85rem', padding: '6px 14px' }}
+          >
             🔄 Refresh
           </button>
         </div>
@@ -336,747 +360,732 @@ export default function UnloadingBay() {
 
       {error && <ErrorBanner message={error} onRetry={fetchTankers} />}
       {successMsg && (
-        <div
-          className="success-banner"
-          style={{
-            backgroundColor: '#f0fdf4',
-            border: '1px solid #86efac',
-            color: '#166534',
-            padding: '12px 16px',
-            borderRadius: '6px',
-            marginBottom: '16px',
-            fontWeight: 600,
-          }}
-        >
+        <div className="success-banner" style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>{successMsg}</span>
+          <button type="button" onClick={() => setSuccessMsg('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534' }}>✕</button>
         </div>
       )}
 
-      {/* 4 Top KPI Dashboard Cards */}
+      {/* 2. Unloading Bay KPI Counters */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
           gap: '12px',
-          marginBottom: '16px',
+          marginBottom: '1.25rem',
         }}
       >
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #0284c7', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #fed7aa', borderLeft: '4px solid #f97316', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
           <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
-            Ready for Silo Reception
+            Ready for Silo Reception (Waiting for Unload)
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#0284c7', marginTop: '4px' }}>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#c2410c', marginTop: '2px' }}>
             {waitingForUnloadCount}
           </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            QC Completed &amp; Approved
-          </div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>QC accepted, ready at bay</div>
         </div>
 
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #16a34a', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #bbf7d0', borderLeft: '4px solid #16a34a', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
           <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
             Total Milk Unloaded Today
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#16a34a', marginTop: '4px' }}>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#15803d', marginTop: '2px' }}>
             {formatLitres(totalUnloadedLitresToday)}
           </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            Discharged into plant silos
-          </div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Pumped into plant raw silos</div>
         </div>
 
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #8b5cf6', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #bae6fd', borderLeft: '4px solid #0284c7', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
           <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
-            Active Storage Silos
+            Silos in Active Use
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#8b5cf6', marginTop: '4px' }}>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#0369a1', marginTop: '2px' }}>
             {activeSilosCount} <span style={{ fontSize: '13px', fontWeight: 600, color: '#64748b' }}>({activeSilosStr})</span>
           </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            Receiving raw chilled milk
-          </div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Receiving lines connected</div>
         </div>
 
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #0d9488', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #fecaca', borderLeft: '4px solid #dc2626', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
           <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
-            Reception Lines
+            QC Rejections Blocked
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#0d9488', marginTop: '4px' }}>
-            4 Lines
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#b91c1c', marginTop: '2px' }}>
+            {blockedCount}
           </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            Line 1, Line 2, Line 3, Line 4
-          </div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Blocked from unloading pumps</div>
         </div>
       </div>
 
-      {/* 4. Tanker Queue Selector Bar (Condition: Display only vehicles for which QC has been completed) */}
+      {/* QC Rejection Warning Banner if selected or detected */}
+      {isQcRejected && (
+        <div
+          style={{
+            backgroundColor: '#fee2e2',
+            border: '2px solid #ef4444',
+            borderRadius: '8px',
+            padding: '12px 16px',
+            marginBottom: '1.25rem',
+            color: '#7f1d1d',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <span style={{ fontSize: '20px' }}>🚫</span>
+            <strong style={{ fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              UNLOADING STRICTLY BLOCKED (QC REJECTED)
+            </strong>
+          </div>
+          <p style={{ margin: 0, fontSize: '12px', lineHeight: '1.5' }}>
+            This tanker was rejected by QC Laboratory ({activeTanker?.stage_data?.qc_completed?.rejection_reason || 'Quality failure'}). It is prohibited from discharging milk into the dairy plant receiving silos and must proceed directly to the weighbridge for empty tare weighing.
+          </p>
+        </div>
+      )}
+
+      {/* Main Vehicle Sheet Card */}
       <div
         className="card"
         style={{
-          padding: '0.75rem 1rem',
-          marginBottom: '1.25rem',
-          background: '#ffffff',
+          backgroundColor: '#ffffff',
           borderRadius: 8,
           border: '1px solid #cbd5e1',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '1rem',
-          flexWrap: 'wrap',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+          padding: '1.25rem',
+          minHeight: '350px',
         }}
       >
-        <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', minWidth: '240px' }}>
-          Vehicles Waiting for Unloading (QC Done):
-        </label>
-        <select
-          value={activeTanker?.id || ''}
-          onChange={(e) => setSelectedTankerId(e.target.value)}
-          style={{
-            flex: 1,
-            padding: '0.5rem 0.75rem',
-            borderRadius: 6,
-            border: '1px solid #94a3b8',
-            fontSize: '0.88rem',
-            fontWeight: 600,
-          }}
-        >
-          {displayedQueue.length === 0 ? (
-            <option value="">No vehicles currently waiting for Unloading (Condition: QC completed)</option>
-          ) : (
-            displayedQueue.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.tanker_number} {t.dc_number ? `(DC #${t.dc_number})` : ''} — Stage: {t.journey?.tripStatusLabel} — BMC: {t.units?.name}
-              </option>
-            ))
-          )}
-        </select>
-      </div>
-
-      {activeTanker && journey ? (
-        <div>
-          {/* Connected 7-Stage Horizontal Pipeline Header */}
-          <div style={{ marginBottom: '1.25rem' }}>
-            <TankerTimeline journey={journey} variant="compact" />
-          </div>
-
-          {/* Sub Navigation Bar matching Aavin IDMS header */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              backgroundColor: '#0284c7',
-              padding: '6px 10px 0 10px',
-              borderRadius: '8px 8px 0 0',
-              borderBottom: '2px solid #0369a1',
-            }}
-          >
-            <div
-              style={{
-                backgroundColor: '#ffffff',
-                color: '#0369a1',
-                borderRadius: '4px 4px 0 0',
-                padding: '6px 16px',
-                fontSize: '0.85rem',
-                fontWeight: 700,
-              }}
-            >
-              Milk Receipt Entry ▾
-            </div>
-            <div
-              style={{
-                backgroundColor: '#0369a1',
-                color: '#f0f9ff',
-                borderRadius: '4px 4px 0 0',
-                padding: '6px 16px',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-              }}
-            >
-              Unloading Details
-            </div>
-          </div>
-
-          {/* Action Form Card */}
-          <div
-            className="card"
-            style={{
-              backgroundColor: '#ffffff',
-              borderRadius: '0 0 8px 8px',
-              border: '1px solid #cbd5e1',
-              borderTop: 'none',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-              overflow: 'hidden',
-              marginBottom: '1.5rem',
-            }}
-          >
-            {isQcRejected ? (
-              <div
-                style={{
-                  padding: '20px',
-                  backgroundColor: '#fee2e2',
-                  border: '2px solid #ef4444',
-                  borderRadius: '8px',
-                  color: '#991b1b',
-                  margin: '1rem',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '22px' }}>🚫</span>
-                  <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>UNLOADING STRICTLY BLOCKED (QC REJECTED)</h4>
-                </div>
-                <p style={{ margin: '0 0 10px 0', fontSize: '14px' }}>
-                  This tanker was <strong>REJECTED</strong> during Quality Control testing due to:{' '}
-                  <strong style={{ textDecoration: 'underline' }}>{journey.qcRejectionReason || 'Quality failure'}</strong>.
-                </p>
-                <p style={{ margin: 0, fontSize: '13px', color: '#7f1d1d' }}>
-                  ⚠️ Discharging rejected milk into Aavin storage silos or processing bays is strictly forbidden.
-                  The tanker must proceed directly to the <strong>Gate Weighbridge</strong> for empty tare weight recording and exit gate pass issuance.
-                </p>
-              </div>
-            ) : (
-              <div>
-                {/* Authentic Aavin IDMS Banner */}
-                <div
-                  style={{
-                    backgroundColor: '#52525b',
-                    color: '#ffffff',
-                    padding: '0.5rem 1rem',
-                    fontSize: '0.88rem',
-                    fontWeight: 700,
-                    letterSpacing: '0.04em',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  UNLOADING DETAILS
-                </div>
-
-                <div style={{ padding: '1.25rem 1.5rem' }}>
-                  <form onSubmit={handleUpdateUnloading}>
-                    {/* 4.1 Vehicle Details */}
-                    {/* 1. Vehicle Number */}
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
-                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
-                        Vehicle No
-                      </label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input
-                          value={vehicleNo}
-                          onChange={(e) => setVehicleNo(e.target.value.toUpperCase())}
-                          style={{
-                            width: 150,
-                            height: 28,
-                            padding: '2px 8px',
-                            border: '1px solid #94a3b8',
-                            borderRadius: 3,
-                            fontWeight: 600,
-                          }}
-                        />
-                        <span
-                          style={{
-                            backgroundColor: '#fef9c3',
-                            border: '1px solid #fde047',
-                            padding: '2px 8px',
-                            borderRadius: 3,
-                            fontWeight: 700,
-                            fontSize: '0.85rem',
-                            color: '#1e293b',
-                          }}
-                        >
-                          {vehicleNo || activeTanker.tanker_number}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* 2. Received From */}
-                    <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem', paddingTop: '2px' }}>
-                        Received From :
-                      </label>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        {receivedFromList.map((bmc, idx) => (
-                          <span
-                            key={idx}
-                            style={{
-                              backgroundColor: '#fef9c3',
-                              border: '1px solid #fde047',
-                              padding: '1px 8px',
-                              borderRadius: 2,
-                              fontWeight: 600,
-                              fontSize: '0.82rem',
-                              color: '#1e293b',
-                              width: 'fit-content',
-                            }}
-                          >
-                            {bmc}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* 3. DC Number */}
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
-                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
-                        DC NO: <span style={{ color: '#ef4444' }}>*</span>
-                      </label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <input
-                          value={dcNumber}
-                          onChange={(e) => setDcNumber(e.target.value.toUpperCase())}
-                          style={{
-                            width: 150,
-                            height: 28,
-                            padding: '2px 8px',
-                            border: '1px solid #94a3b8',
-                            borderRadius: 3,
-                            fontWeight: 600,
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* 4.2 Unloading Details */}
-                    {/* 1. Unloading Date */}
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
-                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
-                        Unloading Date
-                      </label>
-                      <input
-                        type="text"
-                        value={unloadingDate}
-                        onChange={(e) => setUnloadingDate(e.target.value)}
-                        placeholder="DD/MM/YYYY"
-                        style={{
-                          width: 150,
-                          height: 28,
-                          padding: '2px 8px',
-                          border: '1px solid #94a3b8',
-                          borderRadius: 3,
-                        }}
-                      />
-                    </div>
-
-                    {/* 2. Unloading Time (HH:MM, 12-hour format) */}
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
-                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
-                        Unloading Time(HHMM)[12 hour format]
-                      </label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <input
-                          value={unloadingTime}
-                          onChange={(e) => setUnloadingTime(e.target.value)}
-                          placeholder="02:45"
-                          style={{
-                            width: 90,
-                            height: 28,
-                            padding: '2px 8px',
-                            border: '1px solid #94a3b8',
-                            borderRadius: 3,
-                          }}
-                        />
-                        <select
-                          value={unloadingAmPm}
-                          onChange={(e) => setUnloadingAmPm(e.target.value as any)}
-                          style={{
-                            width: 60,
-                            height: 28,
-                            padding: '2px 4px',
-                            border: '1px solid #94a3b8',
-                            borderRadius: 3,
-                            fontWeight: 600,
-                          }}
-                        >
-                          <option value="AM">AM</option>
-                          <option value="PM">PM</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* 3. Outlet Seal Number */}
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
-                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
-                        Outlet Seal Number
-                      </label>
-                      <input
-                        value={outletSealNumber}
-                        onChange={(e) => setOutletSealNumber(e.target.value)}
-                        placeholder="e.g. SL-018168"
-                        style={{
-                          width: 180,
-                          height: 28,
-                          padding: '2px 8px',
-                          border: '1px solid #94a3b8',
-                          borderRadius: 3,
-                        }}
-                      />
-                    </div>
-
-                    {/* 4. Unloaded To Silo (Dropdown) */}
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
-                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
-                        Unloaded To Silo (Receiving Silo / Raw Milk Bay)
-                      </label>
-                      <select
-                        value={unloadedToSilo}
-                        onChange={(e) => setUnloadedToSilo(e.target.value)}
-                        style={{
-                          width: 240,
-                          height: 28,
-                          padding: '0 8px',
-                          border: '1px solid #94a3b8',
-                          borderRadius: 3,
-                          fontWeight: 600,
-                        }}
-                      >
-                        <option value="Silo-1">Silo 1 (50,000 L Raw Chilled Milk)</option>
-                        <option value="Silo-2">Silo 2 (50,000 L Raw Chilled Milk)</option>
-                        <option value="Silo-3">Silo 3 (30,000 L Whole Milk)</option>
-                        <option value="Silo-4">Silo 4 (40,000 L Standardized Milk)</option>
-                        <option value="Silo-5">Silo 5 (50,000 L Storage)</option>
-                        <option value="Raw Milk Silo A">Raw Milk Silo A</option>
-                        <option value="Raw Milk Silo B">Raw Milk Silo B</option>
-                      </select>
-                    </div>
-
-                    {/* 5. Unload Operator Name */}
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
-                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
-                        Unload Operator Name
-                      </label>
-                      <input
-                        value={unloadOperatorName}
-                        onChange={(e) => setUnloadOperatorName(e.target.value)}
-                        style={{
-                          width: 200,
-                          height: 28,
-                          padding: '2px 8px',
-                          border: '1px solid #94a3b8',
-                          borderRadius: 3,
-                        }}
-                      />
-                    </div>
-
-                    {/* 6. Line Number */}
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
-                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
-                        Line Number
-                      </label>
-                      <select
-                        value={lineNumber}
-                        onChange={(e) => setLineNumber(e.target.value as any)}
-                        style={{
-                          width: 150,
-                          height: 28,
-                          padding: '0 8px',
-                          border: '1px solid #94a3b8',
-                          borderRadius: 3,
-                          fontWeight: 600,
-                        }}
-                      >
-                        <option value="Line 1">Line 1</option>
-                        <option value="Line 2">Line 2</option>
-                        <option value="Line 3">Line 3</option>
-                        <option value="Line 4">Line 4</option>
-                      </select>
-                    </div>
-
-                    {/* 7. Gross Weight (Kgs) */}
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
-                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
-                        Gross Weight (Kgs)
-                      </label>
-                      <input
-                        type="number"
-                        value={grossWeightKg}
-                        onChange={(e) => setGrossWeightKg(e.target.value)}
-                        placeholder="e.g. 25300"
-                        style={{
-                          width: 150,
-                          height: 28,
-                          padding: '2px 8px',
-                          border: '1px solid #94a3b8',
-                          borderRadius: 3,
-                          fontWeight: 600,
-                        }}
-                      />
-                    </div>
-
-                    {/* 8. Remarks */}
-                    <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem', paddingTop: '4px' }}>
-                        Remarks
-                      </label>
-                      <textarea
-                        rows={2}
-                        value={remarks}
-                        onChange={(e) => setRemarks(e.target.value)}
-                        placeholder=""
-                        style={{
-                          width: '100%',
-                          maxWidth: 380,
-                          padding: '4px 8px',
-                          border: '1px solid #94a3b8',
-                          borderRadius: 3,
-                          fontSize: '0.85rem',
-                        }}
-                      />
-                    </div>
-
-                    {/* 9. Unloading Cells: FC & DC (Dialog Box) */}
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
-                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
-                        Unloading Cells
-                      </label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.88rem' }}>
-                          <input
-                            type="checkbox"
-                            checked={cellFcChecked}
-                            onChange={(e) => setCellFcChecked(e.target.checked)}
-                            style={{ width: 16, height: 16 }}
-                          />
-                          <span style={{ fontWeight: 700, color: '#1e293b' }}>FC</span>
-                        </label>
-
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.88rem' }}>
-                          <input
-                            type="checkbox"
-                            checked={cellBcChecked}
-                            onChange={(e) => setCellBcChecked(e.target.checked)}
-                            style={{ width: 16, height: 16 }}
-                          />
-                          <span style={{ fontWeight: 700, color: '#1e293b' }}>BC</span>
-                        </label>
-
-                        <button
-                          type="button"
-                          onClick={() => setShowDcModal(true)}
-                          style={{
-                            backgroundColor: '#0284c7',
-                            color: '#ffffff',
-                            border: 'none',
-                            borderRadius: 3,
-                            padding: '3px 12px',
-                            fontWeight: 700,
-                            fontSize: '0.78rem',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          DC (Dialog Box) ▾
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* 10. Is NPD Transfer? */}
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.25rem' }}>
-                      <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
-                        Is NPD Transfer?
-                      </label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.88rem' }}>
-                          <input
-                            type="radio"
-                            name="npdTransfer"
-                            value="Yes"
-                            checked={isNpdTransfer === 'Yes'}
-                            onChange={() => setIsNpdTransfer('Yes')}
-                          />
-                          <span style={{ fontWeight: 600 }}>Yes</span>
-                        </label>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.88rem' }}>
-                          <input
-                            type="radio"
-                            name="npdTransfer"
-                            value="No"
-                            checked={isNpdTransfer === 'No'}
-                            onChange={() => setIsNpdTransfer('No')}
-                          />
-                          <span style={{ fontWeight: 600 }}>No</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* 4.3 Received Quality (Separately for FC and BC) */}
-                    <div style={{ marginTop: '1.5rem', marginBottom: '1.25rem' }}>
-                      <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', fontWeight: 700, color: '#334155' }}>
-                        Received Quality
-                      </h4>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        {receivedQualityList.map((row, idx) => (
-                          <div
-                            key={row.cell}
-                            style={{
-                              padding: '10px 14px',
-                              backgroundColor: '#f8fafc',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: 6,
-                            }}
-                          >
-                            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a', marginBottom: '6px' }}>
-                              {row.cell}
-                            </div>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              {/* Row 1: Fat, SNF, CLR, Acidity %, Temp */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', fontSize: '0.85rem' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ fontWeight: 600, color: '#334155', minWidth: 42 }}>Fat%</span>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    value={row.fat}
-                                    onChange={(e) => updateReceivedQuality(idx, 'fat', e.target.value)}
-                                    style={{ width: 55, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
-                                  />
-                                </div>
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ fontWeight: 600, color: '#334155', minWidth: 45 }}>SNF%</span>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    value={row.snf}
-                                    onChange={(e) => updateReceivedQuality(idx, 'snf', e.target.value)}
-                                    style={{ width: 55, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
-                                  />
-                                </div>
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ fontWeight: 600, color: '#334155', minWidth: 35 }}>CLR</span>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    value={row.clr}
-                                    onChange={(e) => updateReceivedQuality(idx, 'clr', e.target.value)}
-                                    style={{ width: 55, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
-                                  />
-                                </div>
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ fontWeight: 600, color: '#334155', minWidth: 55 }}>Acidity%</span>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    value={row.acidity}
-                                    onChange={(e) => updateReceivedQuality(idx, 'acidity', e.target.value)}
-                                    style={{ width: 50, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
-                                  />
-                                </div>
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ fontWeight: 600, color: '#334155', minWidth: 40 }}>Temp</span>
-                                  <input
-                                    type="number"
-                                    step="0.1"
-                                    value={row.temp}
-                                    onChange={(e) => updateReceivedQuality(idx, 'temp', e.target.value)}
-                                    style={{ width: 50, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
-                                  />
-                                  <span style={{ color: '#64748b' }}>°C</span>
-                                </div>
-                              </div>
-
-                              {/* Row 2: Seal, MBRT, S.Time, Sp. Gr., COB, Milk Type */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', fontSize: '0.85rem' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ fontWeight: 600, color: '#334155', minWidth: 42 }}>Seal</span>
-                                  <input
-                                    value={row.seal}
-                                    onChange={(e) => updateReceivedQuality(idx, 'seal', e.target.value)}
-                                    style={{ width: 65, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
-                                  />
-                                </div>
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ fontWeight: 600, color: '#334155', minWidth: 45 }}>MBRT</span>
-                                  <input
-                                    value={row.mbrt}
-                                    onChange={(e) => updateReceivedQuality(idx, 'mbrt', e.target.value)}
-                                    style={{ width: 50, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
-                                  />
-                                </div>
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ fontWeight: 600, color: '#334155', minWidth: 45 }}>S.Time</span>
-                                  <input
-                                    value={row.sTime}
-                                    onChange={(e) => updateReceivedQuality(idx, 'sTime', e.target.value)}
-                                    style={{ width: 55, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
-                                  />
-                                </div>
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ fontWeight: 600, color: '#334155', minWidth: 40 }}>Sp. Gr.</span>
-                                  <input
-                                    value={row.spGr}
-                                    onChange={(e) => updateReceivedQuality(idx, 'spGr', e.target.value)}
-                                    style={{ width: 50, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
-                                  />
-                                </div>
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ fontWeight: 600, color: '#334155', minWidth: 35 }}>COB</span>
-                                  <select
-                                    value={row.cob}
-                                    onChange={(e) => updateReceivedQuality(idx, 'cob', e.target.value as any)}
-                                    style={{ width: 85, height: 26, padding: '1px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
-                                  >
-                                    <option value="Negative">Negative</option>
-                                    <option value="Positive">Positive</option>
-                                  </select>
-                                </div>
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ fontWeight: 600, color: '#334155', minWidth: 65 }}>Milk Type</span>
-                                  <input
-                                    value={row.milkType}
-                                    onChange={(e) => updateReceivedQuality(idx, 'milkType', e.target.value)}
-                                    style={{ width: 90, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Action Button matching Aavin IDMS */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '0.5rem' }}>
-                      <button
-                        type="submit"
-                        disabled={submitting}
-                        style={{
-                          backgroundColor: '#65a30d',
-                          color: '#ffffff',
-                          border: 'none',
-                          borderRadius: 3,
-                          padding: '6px 20px',
-                          fontWeight: 700,
-                          fontSize: '0.88rem',
-                          cursor: submitting ? 'not-allowed' : 'pointer',
-                          opacity: submitting ? 0.7 : 1,
-                        }}
-                      >
-                        {submitting ? 'Updating…' : 'Update'}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
+        {/* Card Header & Title */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
+              📋 Today's Unloading Bay Reception Register ({filteredUnloadWaiters.length} Vehicles)
+            </h3>
+            <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+              Vehicles with completed QC inspection waiting for silo intake and unloading
+            </p>
           </div>
         </div>
-      ) : (
-        <div className="card" style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
-          {loading ? 'Loading active tankers…' : 'No tankers currently waiting in plant queue.'}
+
+        {/* Search & Filter Toolbar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>Search Vehicles:</span>
+            <input
+              type="text"
+              placeholder="Filter by Lorry No, DC No, BMC..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: 260,
+                height: 32,
+                padding: '4px 10px',
+                border: '1px solid #cbd5e1',
+                borderRadius: 4,
+                fontSize: '0.85rem',
+              }}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '0.85rem' }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+            💡 Click on any row to open the Unloading Details dialog form
+          </span>
+        </div>
+
+        {/* VEHICLE SHEET: Vehicles Waiting for Unloading (QC Completed) */}
+        {filteredUnloadWaiters.length === 0 ? (
+          <div style={{ padding: '3rem 1rem', textAlign: 'center', color: '#64748b' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🥛</div>
+            <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '1.1rem' }}>
+              No vehicles currently waiting for Milk Unloading
+            </div>
+            <p style={{ fontSize: '0.85rem', margin: '0.4rem 0' }}>
+              Condition: Only vehicles for which QC has been completed and accepted will appear in this sheet.
+            </p>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', textAlign: 'left', color: '#475569' }}>
+                  <th style={{ padding: '10px 12px' }}>VEHICLE / TANKER NO</th>
+                  <th style={{ padding: '10px 12px' }}>DC # / DC NO</th>
+                  <th style={{ padding: '10px 12px' }}>SOURCE CC / BMC</th>
+                  <th style={{ padding: '10px 12px' }}>DRIVER NAME</th>
+                  <th style={{ padding: '10px 12px' }}>DISPATCHED (L)</th>
+                  <th style={{ padding: '10px 12px' }}>GROSS WEIGHT (KG)</th>
+                  <th style={{ padding: '10px 12px' }}>QC STATUS</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'right' }}>ACTION</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUnloadWaiters.map((t) => {
+                  const dc = t.dc_number || t.stage_data?.dc_number || '—';
+                  const grossKg = t.stage_data?.gross_weight?.gross_weight_kg || t.gross_weight_kg || '—';
+                  return (
+                    <tr
+                      key={t.id}
+                      onClick={() => {
+                        setSelectedTankerId(t.id);
+                        setShowUnloadModal(true);
+                      }}
+                      style={{
+                        borderBottom: '1px solid #f1f5f9',
+                        cursor: 'pointer',
+                        backgroundColor: selectedTankerId === t.id ? '#f0fdf4' : '#ffffff',
+                        transition: 'background-color 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = selectedTankerId === t.id ? '#f0fdf4' : '#ffffff')}
+                    >
+                      <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0f172a' }}>
+                        <span style={{ backgroundColor: '#fef9c3', border: '1px solid #fde047', padding: '2px 8px', borderRadius: 3 }}>
+                          {t.tanker_number}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0284c7' }}>
+                        #{dc}
+                      </td>
+                      <td style={{ padding: '10px 12px', color: '#334155' }}>
+                        {t.units?.name || 'BMC'}
+                      </td>
+                      <td style={{ padding: '10px 12px', color: '#475569' }}>
+                        {t.driver_name || '—'}
+                      </td>
+                      <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0f172a' }}>
+                        {formatLitres(t.quantity_dispatched)}
+                      </td>
+                      <td style={{ padding: '10px 12px', color: '#0f172a' }}>
+                        {grossKg !== '—' ? `${Number(grossKg).toLocaleString('en-IN')} kg` : '—'}
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <span style={{ backgroundColor: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 4, fontWeight: 700, fontSize: '0.78rem' }}>
+                          ✓ Accepted
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTankerId(t.id);
+                            setShowUnloadModal(true);
+                          }}
+                          className="btn btn-primary btn-sm"
+                          style={{ backgroundColor: '#65a30d', borderColor: '#4d7c0f', fontWeight: 700, padding: '4px 12px' }}
+                        >
+                          🥛 Unload Tanker
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* DIALOG BOX MODAL: UNLOADING DETAILS (Requirement 4) */}
+      {showUnloadModal && activeTanker && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.6)',
+            backdropFilter: 'blur(2px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1100,
+            padding: '1rem',
+          }}
+          onClick={() => setShowUnloadModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: 8,
+              width: '100%',
+              maxWidth: 960,
+              maxHeight: '92vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                backgroundColor: '#52525b',
+                color: '#ffffff',
+                padding: '0.5rem 1rem',
+                fontSize: '0.88rem',
+                fontWeight: 700,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <span>UNLOADING DETAILS</span>
+              <button
+                type="button"
+                onClick={() => setShowUnloadModal(false)}
+                style={{ background: 'none', border: 'none', color: '#ffffff', fontSize: '1.2rem', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: '1.25rem 1.5rem', overflowY: 'auto' }}>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void handleUpdateUnloading();
+                }}
+              >
+                {/* 4.1 Vehicle Details */}
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                    Vehicle No
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      value={vehicleNo || activeTanker.tanker_number || ''}
+                      onChange={(e) => setVehicleNo(e.target.value.toUpperCase())}
+                      style={{ width: 140, height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3, fontWeight: 600 }}
+                    />
+                    <span style={{ backgroundColor: '#fef9c3', border: '1px solid #fde047', padding: '2px 8px', borderRadius: 3, fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
+                      {vehicleNo || activeTanker.tanker_number}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                  <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem', paddingTop: '4px' }}>
+                    Received From :
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {receivedFromList.map((bmc, idx) => (
+                      <span
+                        key={idx}
+                        style={{
+                          backgroundColor: '#fef9c3',
+                          border: '1px solid #fde047',
+                          padding: '2px 8px',
+                          borderRadius: 3,
+                          fontWeight: 700,
+                          fontSize: '0.82rem',
+                          color: '#1e293b',
+                          display: 'inline-block',
+                          width: 'fit-content',
+                        }}
+                      >
+                        {bmc}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.25rem' }}>
+                  <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                    DC NO: <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={dcNumber || activeTanker.dc_number || ''}
+                    onChange={(e) => setDcNumber(e.target.value)}
+                    style={{ width: 150, height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                  />
+                </div>
+
+                {/* 4.2 Unloading Details Section */}
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1rem', marginBottom: '1rem' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#334155', marginBottom: '0.75rem' }}>
+                    Unloading Parameters
+                  </div>
+
+                  {/* 1. Unloading Date */}
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                      Unloading Date
+                    </label>
+                    <input
+                      type="text"
+                      value={unloadingDate}
+                      onChange={(e) => setUnloadingDate(e.target.value)}
+                      style={{ width: 150, height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                    />
+                  </div>
+
+                  {/* 2. Unloading Time */}
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                      Unloading Time(HHMM)[12 hour format]
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <input
+                        type="text"
+                        value={unloadingTime}
+                        onChange={(e) => setUnloadingTime(e.target.value)}
+                        style={{ width: 90, height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                      />
+                      <select
+                        value={unloadingAmPm}
+                        onChange={(e) => setUnloadingAmPm(e.target.value as any)}
+                        style={{ height: 28, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 3, backgroundColor: '#ffffff' }}
+                      >
+                        <option value="AM">AM</option>
+                        <option value="PM">PM</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* 3. Outlet Seal Number */}
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                      Outlet Seal No <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={outletSealNumber}
+                      onChange={(e) => setOutletSealNumber(e.target.value)}
+                      style={{ width: 180, height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                    />
+                  </div>
+
+                  {/* 4. Unloaded To Silo */}
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                      Unloaded To Silo (Receiving Silo / Raw Milk Bay) <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <select
+                      value={unloadedToSilo}
+                      onChange={(e) => setUnloadedToSilo(e.target.value)}
+                      style={{ width: 220, height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3, backgroundColor: '#ffffff', fontWeight: 600 }}
+                    >
+                      <option value="Silo-1">Receiving Silo / Raw Milk Bay 1 (Silo-1)</option>
+                      <option value="Silo-2">Receiving Silo / Raw Milk Bay 2 (Silo-2)</option>
+                      <option value="Silo-3">Receiving Silo / Raw Milk Bay 3 (Silo-3)</option>
+                      <option value="Silo-4">Receiving Silo / Raw Milk Bay 4 (Silo-4)</option>
+                    </select>
+                  </div>
+
+                  {/* 5. Unload Operator Name */}
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                      Unload Operator Name <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={unloadOperatorName}
+                      onChange={(e) => setUnloadOperatorName(e.target.value)}
+                      style={{ width: 220, height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                    />
+                  </div>
+
+                  {/* 6. Line Number */}
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                      Line Number
+                    </label>
+                    <select
+                      value={lineNumber}
+                      onChange={(e) => setLineNumber(e.target.value as any)}
+                      style={{ width: 140, height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3, backgroundColor: '#ffffff', fontWeight: 600 }}
+                    >
+                      <option value="Line 1">Line 1</option>
+                      <option value="Line 2">Line 2</option>
+                      <option value="Line 3">Line 3</option>
+                      <option value="Line 4">Line 4</option>
+                    </select>
+                  </div>
+
+                  {/* 7. Gross Weight (Kgs) */}
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                      Gross Weight (Kgs)
+                    </label>
+                    <input
+                      type="text"
+                      value={grossWeightKg}
+                      onChange={(e) => setGrossWeightKg(e.target.value)}
+                      style={{ width: 140, height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                    />
+                  </div>
+
+                  {/* 8. Remarks */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                    <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem', paddingTop: '4px' }}>
+                      Remarks
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={remarks}
+                      onChange={(e) => setRemarks(e.target.value)}
+                      style={{ width: '100%', maxWidth: 420, padding: '4px 8px', border: '1px solid #94a3b8', borderRadius: 3 }}
+                    />
+                  </div>
+
+                  {/* 9. Unloading Cells: FC & DC (Dialog Box) */}
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                      Unloading Cells
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.88rem', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={cellFcChecked}
+                          onChange={(e) => setCellFcChecked(e.target.checked)}
+                        />
+                        FC
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.88rem', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={cellBcChecked}
+                          onChange={(e) => setCellBcChecked(e.target.checked)}
+                        />
+                        BC
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowDcModal(true)}
+                        style={{
+                          backgroundColor: '#f1f5f9',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: 3,
+                          padding: '2px 10px',
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          color: '#0369a1',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        DC (Dialog Box) ▾
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 10. Is NPD Transfer? */}
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
+                    <label style={{ width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                      Is NPD Transfer?
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.88rem' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="isNpdTransfer"
+                          value="Yes"
+                          checked={isNpdTransfer === 'Yes'}
+                          onChange={() => setIsNpdTransfer('Yes')}
+                        />
+                        Yes
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="isNpdTransfer"
+                          value="No"
+                          checked={isNpdTransfer === 'No'}
+                          onChange={() => setIsNpdTransfer('No')}
+                        />
+                        No
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4.3 Received Quality Section */}
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1rem', marginBottom: '1.5rem' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#334155', marginBottom: '0.75rem' }}>
+                    Received Quality
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {receivedQualityList.map((row, idx) => (
+                      <div key={idx} style={{ border: '1px solid #cbd5e1', borderRadius: 4, padding: '10px 12px', background: '#f8fafc' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                          <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0f172a' }}>
+                            {row.cell}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '0.82rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontWeight: 600, color: '#334155', minWidth: 40 }}>Fat%</span>
+                              <input
+                                type="text"
+                                value={row.fat}
+                                onChange={(e) => updateReceivedQuality(idx, 'fat', e.target.value)}
+                                style={{ width: 45, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontWeight: 600, color: '#334155', minWidth: 42 }}>SNF%</span>
+                              <input
+                                type="text"
+                                value={row.snf}
+                                onChange={(e) => updateReceivedQuality(idx, 'snf', e.target.value)}
+                                style={{ width: 45, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontWeight: 600, color: '#334155', minWidth: 35 }}>CLR</span>
+                              <input
+                                type="text"
+                                value={row.clr}
+                                onChange={(e) => updateReceivedQuality(idx, 'clr', e.target.value)}
+                                style={{ width: 45, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontWeight: 600, color: '#334155', minWidth: 55 }}>Acidity%</span>
+                              <input
+                                type="text"
+                                value={row.acidity}
+                                onChange={(e) => updateReceivedQuality(idx, 'acidity', e.target.value)}
+                                style={{ width: 40, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontWeight: 600, color: '#334155', minWidth: 40 }}>Temp</span>
+                              <input
+                                type="text"
+                                value={row.temp}
+                                onChange={(e) => updateReceivedQuality(idx, 'temp', e.target.value)}
+                                style={{ width: 40, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                              />
+                              <span style={{ color: '#64748b' }}>°C</span>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', fontSize: '0.85rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontWeight: 600, color: '#334155', minWidth: 42 }}>Seal</span>
+                              <input
+                                type="text"
+                                value={row.seal}
+                                onChange={(e) => updateReceivedQuality(idx, 'seal', e.target.value)}
+                                style={{ width: 70, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontWeight: 600, color: '#334155', minWidth: 45 }}>MBRT</span>
+                              <input
+                                type="text"
+                                value={row.mbrt}
+                                onChange={(e) => updateReceivedQuality(idx, 'mbrt', e.target.value)}
+                                style={{ width: 45, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontWeight: 600, color: '#334155', minWidth: 45 }}>S.Time</span>
+                              <input
+                                type="text"
+                                value={row.sTime}
+                                onChange={(e) => updateReceivedQuality(idx, 'sTime', e.target.value)}
+                                style={{ width: 55, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontWeight: 600, color: '#334155', minWidth: 40 }}>Sp. Gr.</span>
+                              <input
+                                type="text"
+                                value={row.spGr}
+                                onChange={(e) => updateReceivedQuality(idx, 'spGr', e.target.value)}
+                                style={{ width: 50, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontWeight: 600, color: '#334155', minWidth: 35 }}>COB</span>
+                              <select
+                                value={row.cob}
+                                onChange={(e) => updateReceivedQuality(idx, 'cob', e.target.value as any)}
+                                style={{ padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2, backgroundColor: '#ffffff' }}
+                              >
+                                <option value="Negative">Negative</option>
+                                <option value="Positive">Positive</option>
+                              </select>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontWeight: 600, color: '#334155', minWidth: 65 }}>Milk Type</span>
+                              <input
+                                type="text"
+                                value={row.milkType}
+                                onChange={(e) => updateReceivedQuality(idx, 'milkType', e.target.value)}
+                                style={{ width: 90, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '1.5rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowUnloadModal(false)}
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 16px' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    style={{
+                      backgroundColor: '#65a30d',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 3,
+                      padding: '6px 20px',
+                      fontWeight: 700,
+                      fontSize: '0.88rem',
+                      cursor: submitting ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {submitting ? 'Updating…' : 'Update'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       )}
 
       {/* DC (Dialog Box) Modal */}
       {showDcModal && (
         <div
+          role="dialog"
+          aria-modal="true"
           style={{
             position: 'fixed',
             inset: 0,
@@ -1084,9 +1093,10 @@ export default function UnloadingBay() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 1000,
+            zIndex: 1200,
             padding: '1rem',
           }}
+          onClick={() => setShowDcModal(false)}
         >
           <div
             style={{
@@ -1097,6 +1107,7 @@ export default function UnloadingBay() {
               boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
               overflow: 'hidden',
             }}
+            onClick={(e) => e.stopPropagation()}
           >
             <div
               style={{
@@ -1123,31 +1134,23 @@ export default function UnloadingBay() {
                 <tbody>
                   <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={{ padding: '6px', fontWeight: 600, color: '#475569' }}>DC Number:</td>
-                    <td style={{ padding: '6px', fontWeight: 700, color: '#0284c7' }}>#{dcNumber}</td>
+                    <td style={{ padding: '6px', fontWeight: 700, color: '#0369a1' }}>#{dcNumber}</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={{ padding: '6px', fontWeight: 600, color: '#475569' }}>Vehicle Number:</td>
                     <td style={{ padding: '6px', fontWeight: 700 }}>{vehicleNo}</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                    <td style={{ padding: '6px', fontWeight: 600, color: '#475569' }}>Source BMC:</td>
+                    <td style={{ padding: '6px' }}>{receivedFromList.join(', ')}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={{ padding: '6px', fontWeight: 600, color: '#475569' }}>Dispatch Date:</td>
-                    <td style={{ padding: '6px' }}>{activeTanker?.date || unloadingDate}</td>
+                    <td style={{ padding: '6px' }}>{activeTanker?.date || 'Today'}</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={{ padding: '6px', fontWeight: 600, color: '#475569' }}>Dispatched Qty:</td>
                     <td style={{ padding: '6px', fontWeight: 700 }}>{formatLitres(activeTanker?.quantity_dispatched || 0)}</td>
-                  </tr>
-                  <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: '6px', fontWeight: 600, color: '#475569' }}>Outlet Seal No:</td>
-                    <td style={{ padding: '6px' }}>{outletSealNumber}</td>
-                  </tr>
-                  <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: '6px', fontWeight: 600, color: '#475569' }}>Source BMC Units:</td>
-                    <td style={{ padding: '6px' }}>{receivedFromList.join(', ')}</td>
-                  </tr>
-                  <tr>
-                    <td style={{ padding: '6px', fontWeight: 600, color: '#475569' }}>Driver Name:</td>
-                    <td style={{ padding: '6px' }}>{activeTanker?.driver_name || 'Driver'}</td>
                   </tr>
                 </tbody>
               </table>
@@ -1156,15 +1159,8 @@ export default function UnloadingBay() {
                 <button
                   type="button"
                   onClick={() => setShowDcModal(false)}
-                  style={{
-                    backgroundColor: '#0284c7',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: 4,
-                    padding: '6px 16px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
+                  className="btn btn-primary"
+                  style={{ fontSize: '0.85rem', padding: '4px 14px' }}
                 >
                   Close
                 </button>
@@ -1173,75 +1169,6 @@ export default function UnloadingBay() {
           </div>
         </div>
       )}
-
-      {/* Today's Unloading Bay Reception Register Table */}
-      <div
-        className="card"
-        style={{
-          marginTop: '24px',
-          padding: '16px 20px',
-          backgroundColor: '#ffffff',
-          borderRadius: '8px',
-          border: '1px solid #e2e8f0',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
-              📋 Today's Unloading Bay Reception Register ({tankers.length} Tankers)
-            </h3>
-            <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-              Daily milk reception log, silo allocation, volume discharged, and transit loss
-            </p>
-          </div>
-        </div>
-
-        {tankers.length === 0 ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-            No tanker movements recorded today yet.
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0', textAlign: 'left' }}>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: '#475569' }}>TANKER NO</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: '#475569' }}>DC #</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: '#475569' }}>SOURCE BMC</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: '#475569' }}>SILO / BAY</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: '#475569' }}>DISPATCHED (L)</th>
-                  <th style={{ padding: '10px 12px', fontWeight: 700, color: '#475569' }}>STAGE STATUS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tankers.map((t) => (
-                  <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '8px 12px', fontWeight: 700 }}>{t.tanker_number}</td>
-                    <td style={{ padding: '8px 12px', color: '#0284c7' }}>#{t.dc_number || '—'}</td>
-                    <td style={{ padding: '8px 12px' }}>{t.units?.name || 'BMC'}</td>
-                    <td style={{ padding: '8px 12px' }}>{t.stage_data?.unloaded?.unloaded_to_silo || t.stage_data?.unloaded?.silo_or_bay || '—'}</td>
-                    <td style={{ padding: '8px 12px', fontWeight: 600 }}>{formatLitres(t.quantity_dispatched)}</td>
-                    <td style={{ padding: '8px 12px' }}>
-                      <span
-                        style={{
-                          backgroundColor: t.journey?.stageColor?.badgeBg || '#e2e8f0',
-                          color: t.journey?.stageColor?.badgeText || '#334155',
-                          padding: '2px 8px',
-                          borderRadius: 4,
-                          fontWeight: 600,
-                          fontSize: '11px',
-                        }}
-                      >
-                        {t.journey?.tripStatusLabel || 'In Process'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

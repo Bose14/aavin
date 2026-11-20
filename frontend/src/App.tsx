@@ -65,7 +65,10 @@ export default function App() {
             <Route path="/unit/records" element={<ProtectedRoute role="unit"><Layout><UnitRecords /></Layout></ProtectedRoute>} />
 
             {/* Plant Team Portals */}
-            <Route path="/gate" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><GateOperations /></Layout></ProtectedRoute>} />
+            <Route path="/gate" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><GateOperations activeView="receipt" /></Layout></ProtectedRoute>} />
+            <Route path="/gate/gross-weight" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><GateOperations activeView="gross" /></Layout></ProtectedRoute>} />
+            <Route path="/gate/tare-weight" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><GateOperations activeView="tare" /></Layout></ProtectedRoute>} />
+            <Route path="/gate/tanker-out" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><GateOperations activeView="exit" /></Layout></ProtectedRoute>} />
             <Route path="/gate/records" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />
             <Route path="/qc" element={<ProtectedRoute role={['qc', 'admin', 'superadmin']}><Layout><QCLab /></Layout></ProtectedRoute>} />
             <Route path="/qc/records" element={<ProtectedRoute role={['qc', 'admin', 'superadmin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />

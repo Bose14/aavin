@@ -31,7 +31,10 @@ const unitNav: NavItem[] = [
 ];
 
 const gateNav: NavItem[] = [
-  { to: '/gate', labelKey: 'navGateQueue', fallbackLabel: 'Gate Queue' },
+  { to: '/gate', labelKey: 'navMilkReceiptEntry', fallbackLabel: 'Milk Receipt Entry' },
+  { to: '/gate/gross-weight', labelKey: 'navGrossWeightEntry', fallbackLabel: 'Gross Weight Entry' },
+  { to: '/gate/tare-weight', labelKey: 'navTareWeightEntry', fallbackLabel: 'Tare Weight Entry' },
+  { to: '/gate/tanker-out', labelKey: 'navTankerOut', fallbackLabel: 'Tanker Out' },
   { to: '/gate/records', labelKey: 'navMyRecords', fallbackLabel: 'My Records' },
 ];
 
