@@ -16,6 +16,7 @@ import {
   getRegisteredTankersInDb,
   saveRegisteredTankerInDb,
   findRegisteredTankerInDb,
+  readFallback,
 } from '../lib/settingsStore';
 import {
   deriveTankerJourneyState,
@@ -386,11 +387,10 @@ export function enrichTankerRow(row: Record<string, unknown>, stages?: StageReco
 
 async function computeAvailableStock(zoneId: string, unitId?: string | null) {
   let milkQ = supabase.from('milk_entries').select('quantity_litres, rejection_qty').eq('zone_id', zoneId);
-  let tankerQ = supabase.from('tanker_dispatches').select('quantity_dispatched').eq('zone_id', zoneId);
+  let tankerQ = supabase.from('tanker_dispatches').select('quantity_dispatched, unit_id, stage_data').eq('zone_id', zoneId);
 
   if (unitId) {
     milkQ = milkQ.eq('unit_id', unitId);
-    tankerQ = tankerQ.eq('unit_id', unitId);
   }
 
   const [mRes, tRes] = await Promise.all([milkQ, tankerQ]);
@@ -402,10 +402,26 @@ async function computeAvailableStock(zoneId: string, unitId?: string | null) {
     (sum, r) => sum + Math.max(0, Number(r.quantity_litres ?? 0) - Number(r.rejection_qty ?? 0)),
     0,
   );
-  const totalDispatched = (tRes.data ?? []).reduce(
-    (sum, r) => sum + Number(r.quantity_dispatched ?? 0),
-    0,
-  );
+
+  let totalDispatched = 0;
+  for (const r of (tRes.data ?? [])) {
+    if (!unitId) {
+      totalDispatched += Number(r.quantity_dispatched ?? 0);
+    } else {
+      const bmcList = (r as any).stage_data?.bmc_dispatches;
+      if (Array.isArray(bmcList) && bmcList.length > 0) {
+        const myEntries = bmcList.filter((b: any) => b.unit_id === unitId);
+        if (myEntries.length > 0) {
+          totalDispatched += myEntries.reduce((s: number, b: any) => s + Number(b.quantity_dispatched || b.quantity || 0), 0);
+        } else if ((r as any).unit_id === unitId) {
+          totalDispatched += Number(r.quantity_dispatched ?? 0);
+        }
+      } else if ((r as any).unit_id === unitId) {
+        totalDispatched += Number(r.quantity_dispatched ?? 0);
+      }
+    }
+  }
+
   const availableStock = Math.max(0, +(totalCollectedNet - totalDispatched).toFixed(2));
 
   return {
@@ -414,6 +430,141 @@ async function computeAvailableStock(zoneId: string, unitId?: string | null) {
     available_stock_qty: availableStock,
     raw_balance_qty: +(totalCollectedNet - totalDispatched).toFixed(2),
   };
+}
+
+// Helper to enrich registered tankers with live cell capacity, filled volume, and multi-BMC dispatch status
+async function enrichRegisteredTankersWithCapacity(zoneId: string, registered: any[]) {
+  let tripList: any[] = [];
+  try {
+    const { data } = await runResilientTankerQuery((selectStr) => {
+      let q = supabase
+        .from('tanker_dispatches')
+        .select(selectStr)
+        .neq('trip_status', 'exited')
+        .order('created_at', { ascending: false });
+      if (zoneId) q = q.eq('zone_id', zoneId);
+      return q;
+    });
+    if (data) tripList = data;
+  } catch (err) {
+    console.warn('Error fetching active trips for capacity calculation:', err);
+  }
+
+  // Also include active trips from fallback store
+  try {
+    const store = readFallback();
+    if (store.tankerDispatches) {
+      for (const [id, meta] of Object.entries(store.tankerDispatches as Record<string, any>)) {
+        if (!tripList.some((t) => t.id === id) && meta.trip_status !== 'exited') {
+          if (!zoneId || meta.zone_id === zoneId) {
+            tripList.push(meta);
+          }
+        }
+      }
+    }
+  } catch {
+    // non-fatal
+  }
+
+  return registered.map((reg) => {
+    const normReg = (reg.vehicle_number || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const activeTrip = tripList.find((t) => {
+      const normTrip = (t.tanker_number || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const isExited = t.trip_status === 'exited' || t.stage_data?.vehicle_exit != null;
+      return normTrip === normReg && !isExited;
+    });
+
+    const numCells = Number(reg.number_of_cells) || (reg.back_cell_capacity ? 2 : 1);
+    const fcCap = Number(reg.front_cell_capacity) || 5000;
+    const mcCap = numCells === 3 ? (Number(reg.middle_cell_capacity) || 4000) : 0;
+    const bcCap = numCells >= 2 ? (Number(reg.back_cell_capacity) || 5000) : 0;
+    const totalCap = fcCap + mcCap + bcCap;
+
+    const cellDefs = [
+      { cell_index: 0, cell_key: 'FC', cell_name: 'Front Compartment (Comp 1)', capacity: fcCap },
+      ...(numCells === 3 ? [{ cell_index: 1, cell_key: 'MC', cell_name: 'Middle Compartment (Comp 2)', capacity: mcCap }] : []),
+      ...(numCells >= 2 ? [{ cell_index: numCells === 3 ? 2 : 1, cell_key: 'BC', cell_name: numCells === 3 ? 'Rear Compartment (Comp 3)' : 'Rear Compartment (Comp 2)', capacity: bcCap }] : []),
+    ];
+
+    let isAtPlant = false;
+    let totalFilled = 0;
+
+    if (activeTrip) {
+      if (activeTrip.trip_status !== 'on_the_way' || activeTrip.stage_data?.vehicle_entered != null) {
+        isAtPlant = true;
+      }
+    }
+
+    const cells = cellDefs.map((cd, idx) => {
+      let filled = 0;
+      let bmcName: string | null = null;
+      let dcNo: string | null = null;
+      let fatPct: number | null = null;
+      let snfPct: number | null = null;
+      let sealNo: string | null = null;
+      let milkType: string = 'Raw Cow Milk';
+      let temp: string = '4.0';
+
+      if (activeTrip) {
+        const comps = activeTrip.compartments || activeTrip.stage_data?.compartments;
+        if (Array.isArray(comps) && comps.length > 0) {
+          const matched = comps.find((c: any) => c.cell_key === cd.cell_key || c.compartment_no === idx + 1) || comps[idx];
+          if (matched && (matched.quantity_litres || matched.quantity)) {
+            filled = Number(matched.quantity_litres || matched.quantity) || 0;
+            bmcName = matched.bmc_name || activeTrip.units?.name || 'Prior BMC';
+            dcNo = matched.dc_number || activeTrip.dc_number || null;
+            fatPct = matched.fat_pct != null ? Number(matched.fat_pct) : null;
+            snfPct = matched.snf_pct != null ? Number(matched.snf_pct) : null;
+            sealNo = matched.seal_number || null;
+            milkType = matched.milk_type || 'Raw Cow Milk';
+            temp = matched.temperature != null ? String(matched.temperature) : '4.0';
+          }
+        }
+      }
+
+      totalFilled += filled;
+      const avail = Math.max(0, cd.capacity - filled);
+
+      return {
+        ...cd,
+        filled_litres: filled,
+        available_litres: avail,
+        is_cell_full: avail <= 0,
+        loaded_by_bmc_name: bmcName,
+        dc_number: dcNo,
+        fat_pct: fatPct,
+        snf_pct: snfPct,
+        seal_number: sealNo,
+        milk_type: milkType,
+        temperature: temp,
+      };
+    });
+
+    const availTotal = Math.max(0, totalCap - totalFilled);
+    const isFull = availTotal <= 0;
+    // Tanker is not available for selection if it is full OR if it is already at the plant, until it exits
+    const isAvailableForDispatch = !isAtPlant && !isFull;
+
+    return {
+      ...reg,
+      number_of_cells: numCells,
+      front_cell_capacity: fcCap,
+      middle_cell_capacity: mcCap,
+      back_cell_capacity: bcCap,
+      total_capacity: totalCap,
+      filled_capacity: totalFilled,
+      available_capacity: availTotal,
+      is_full: isFull,
+      is_at_plant: isAtPlant,
+      is_available_for_dispatch: isAvailableForDispatch,
+      has_active_trip: Boolean(activeTrip),
+      active_trip_id: activeTrip ? String(activeTrip.id) : null,
+      active_driver_name: activeTrip?.driver_name || null,
+      active_driver_phone: activeTrip?.driver_phone || activeTrip?.stage_data?.driver_phone || null,
+      active_dc_number: activeTrip?.dc_number || null,
+      cells,
+    };
+  });
 }
 
 // GET /tanker/stock — available milk stock
@@ -427,11 +578,13 @@ router.get('/stock', async (req, res) => {
   }
 });
 
-// GET /tanker/registered — List all registered tankers
-router.get('/registered', async (_req, res) => {
+// GET /tanker/registered — List all registered tankers with live capacity & availability
+router.get('/registered', async (req, res) => {
   try {
     const list = await getRegisteredTankersInDb();
-    res.json(list);
+    const zoneId = req.profile?.zone_id || '';
+    const enriched = await enrichRegisteredTankersWithCapacity(zoneId, list);
+    res.json(enriched);
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -445,7 +598,9 @@ router.get('/registered/:vehicleNumber', async (req, res) => {
       res.status(404).json({ error: 'Tanker registration not found' });
       return;
     }
-    res.json(found);
+    const zoneId = req.profile?.zone_id || '';
+    const enriched = await enrichRegisteredTankersWithCapacity(zoneId, [found]);
+    res.json(enriched[0] || found);
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -687,7 +842,7 @@ router.get('/', async (req, res) => {
         .order('created_at', { ascending: false });
 
       if (req.profile.role === 'unit') {
-        query = query.eq('unit_id', req.profile.unit_id!);
+        // Query dispatches for this zone; filtered below by primary unit_id or multi-BMC entry
       } else if (unit_id) {
         query = query.eq('unit_id', unit_id);
       }
@@ -712,6 +867,19 @@ router.get('/', async (req, res) => {
       const stages = (stageMap[tripId] ?? []) as StageRecordItem[];
       return enrichTankerRow(r, stages, settings);
     });
+
+    // For BMC unit role, show trips initiated by this unit OR multi-BMC contributions
+    if (req.profile.role === 'unit') {
+      const myUnit = req.profile.unit_id!;
+      enriched = enriched.filter((r) => {
+        if (r.unit_id === myUnit) return true;
+        const bmcList = r.stage_data?.bmc_dispatches;
+        if (Array.isArray(bmcList) && bmcList.some((b: any) => b.unit_id === myUnit)) {
+          return true;
+        }
+        return false;
+      });
+    }
 
     // 1. Stage filter (chip click)
     if (stage) {
@@ -944,14 +1112,190 @@ router.post('/', async (req, res) => {
   const dcNo = ((req.body as any).dc_number || (req.body as any).dc_no)?.trim() || null;
   const shouldRecordEntry = Boolean((req.body as any).record_vehicle_entered);
 
+  // Look up BMC unit name for compartment attribution
+  let unitName = 'BMC Unit';
+  if (unit_id) {
+    try {
+      const { data: uRec } = await supabase.from('units').select('name, unit_code').eq('id', unit_id).maybeSingle();
+      if (uRec?.name) unitName = `${uRec.name}${uRec.unit_code ? ` [${uRec.unit_code}]` : ''}`;
+    } catch {
+      // non-fatal
+    }
+  }
+
+  const taggedCompartments = compartments.map((c: any) => ({
+    ...c,
+    bmc_id: unit_id,
+    bmc_name: unitName,
+    dc_number: dcNo,
+  }));
+
+  // MULTI-BMC ROUTE CHECK:
+  // If this registered tanker is already on the way from a prior BMC, append/merge this BMC's compartments
+  const normTanker = tanker_number.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const { data: activeTrips } = await runResilientTankerQuery((selectStr) => {
+    return supabase
+      .from('tanker_dispatches')
+      .select(selectStr)
+      .eq('zone_id', req.profile.zone_id)
+      .neq('trip_status', 'exited')
+      .order('created_at', { ascending: false });
+  });
+
+  const existingTrip = (activeTrips || []).find((t: any) => {
+    const tNum = (t.tanker_number || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const isExited = t.trip_status === 'exited' || t.stage_data?.vehicle_exit != null;
+    return tNum === normTanker && !isExited;
+  });
+
+  const isMultiBmcAppend = !shouldRecordEntry && existingTrip && existingTrip.trip_status === 'on_the_way' && !existingTrip.stage_data?.vehicle_entered;
+
+  if (isMultiBmcAppend) {
+    const existingComps = Array.isArray(existingTrip.compartments) && existingTrip.compartments.length > 0
+      ? existingTrip.compartments
+      : (Array.isArray(existingTrip.stage_data?.compartments) ? existingTrip.stage_data.compartments : []);
+
+    const mergedComps = [...existingComps];
+    for (const newC of taggedCompartments) {
+      const exIdx = mergedComps.findIndex((c: any) =>
+        (newC.cell_key && c.cell_key === newC.cell_key) ||
+        (c.compartment_no === newC.compartment_no)
+      );
+      if (exIdx >= 0) {
+        if (!mergedComps[exIdx].quantity_litres || Number(mergedComps[exIdx].quantity_litres) <= 0) {
+          mergedComps[exIdx] = newC;
+        } else {
+          const oldQty = Number(mergedComps[exIdx].quantity_litres) || 0;
+          const addQty = Number(newC.quantity_litres) || 0;
+          mergedComps[exIdx] = {
+            ...mergedComps[exIdx],
+            quantity_litres: oldQty + addQty,
+            bmc_name: `${mergedComps[exIdx].bmc_name || 'BMC'}, ${unitName}`,
+            dc_number: mergedComps[exIdx].dc_number ? (mergedComps[exIdx].dc_number.includes(dcNo) ? mergedComps[exIdx].dc_number : `${mergedComps[exIdx].dc_number}, ${dcNo}`) : dcNo,
+          };
+        }
+      } else {
+        mergedComps.push(newC);
+      }
+    }
+
+    const newTotalQty = +(Number(existingTrip.quantity_dispatched || 0) + computedQty).toFixed(2);
+
+    let combinedFat = existingTrip.dispatch_fat_pct;
+    let combinedSnf = existingTrip.dispatch_snf_pct;
+    const totalWithFat = mergedComps.reduce((s: number, c: any) => s + (c.fat_pct != null ? Number(c.quantity_litres || 0) : 0), 0);
+    if (totalWithFat > 0) {
+      const sumFat = mergedComps.reduce((s: number, c: any) => s + (c.fat_pct != null ? Number(c.quantity_litres || 0) * Number(c.fat_pct) : 0), 0);
+      combinedFat = +(sumFat / totalWithFat).toFixed(2);
+    }
+    const totalWithSnf = mergedComps.reduce((s: number, c: any) => s + (c.snf_pct != null ? Number(c.quantity_litres || 0) : 0), 0);
+    if (totalWithSnf > 0) {
+      const sumSnf = mergedComps.reduce((s: number, c: any) => s + (c.snf_pct != null ? Number(c.quantity_litres || 0) * Number(c.snf_pct) : 0), 0);
+      combinedSnf = +(sumSnf / totalWithSnf).toFixed(2);
+    }
+
+    const existingDc = existingTrip.dc_number || existingTrip.stage_data?.dc_number || '';
+    const combinedDc = existingDc ? (existingDc.includes(dcNo) ? existingDc : `${existingDc}, ${dcNo}`) : dcNo;
+
+    const existingBmcList = Array.isArray(existingTrip.stage_data?.bmc_dispatches) ? existingTrip.stage_data.bmc_dispatches : [];
+    const bmcDispatchEntry = {
+      unit_id,
+      unit_name: unitName,
+      dc_number: dcNo,
+      quantity_dispatched: +Number(computedQty).toFixed(2),
+      dispatch_time: dispatch_time || null,
+      seal_number: seal_number || null,
+      driver_name: driver_name || null,
+      driver_phone: (req.body as any).driver_phone || null,
+      compartments: taggedCompartments,
+      created_at: new Date().toISOString(),
+    };
+    const updatedBmcList = [...existingBmcList, bmcDispatchEntry];
+
+    const updatedStageData = {
+      ...existingTrip.stage_data,
+      quantity_dispatched: newTotalQty,
+      dispatch_fat_pct: combinedFat,
+      dispatch_snf_pct: combinedSnf,
+      dc_number: combinedDc,
+      compartments: mergedComps,
+      bmc_dispatches: updatedBmcList,
+    };
+
+    await supabase
+      .from('tanker_dispatches')
+      .update({
+        quantity_dispatched: newTotalQty,
+        dispatch_fat_pct: combinedFat,
+        dispatch_snf_pct: combinedSnf,
+        dc_number: combinedDc,
+        compartments: mergedComps,
+        stage_data: updatedStageData,
+      })
+      .eq('id', existingTrip.id);
+
+    const mergedTripObj = {
+      ...existingTrip,
+      quantity_dispatched: newTotalQty,
+      dispatch_fat_pct: combinedFat,
+      dispatch_snf_pct: combinedSnf,
+      dc_number: combinedDc,
+      compartments: mergedComps,
+      stage_data: updatedStageData,
+    };
+
+    saveTankerDispatchMetadata({
+      id: mergedTripObj.id,
+      tanker_number: mergedTripObj.tanker_number,
+      unit_id: mergedTripObj.unit_id,
+      zone_id: req.profile.zone_id,
+      date: mergedTripObj.date,
+      driver_name: mergedTripObj.driver_name,
+      driver_phone: mergedTripObj.driver_phone,
+      dc_number: combinedDc,
+      seal_number: mergedTripObj.seal_number,
+      dispatch_time: mergedTripObj.dispatch_time,
+      dispatch_fat_pct: combinedFat,
+      dispatch_snf_pct: combinedSnf,
+      quantity_dispatched: newTotalQty,
+      destination: mergedTripObj.destination,
+      compartments: mergedComps,
+      stage_data: updatedStageData,
+    });
+
+    const stages = await getTankerStagesForTrip(mergedTripObj.id);
+    const settings = await getZoneSettings(req.profile.zone_id);
+    res.status(201).json({
+      ...enrichTankerRow(mergedTripObj, stages as StageRecordItem[], settings),
+      stock_warning: stockWarning,
+    });
+    return;
+  }
+
+  const bmcInitialList = [
+    {
+      unit_id,
+      unit_name: unitName,
+      dc_number: dcNo,
+      quantity_dispatched: +Number(computedQty).toFixed(2),
+      dispatch_time: dispatch_time || null,
+      seal_number: seal_number || null,
+      driver_name: driver_name || null,
+      driver_phone: (req.body as any).driver_phone || null,
+      compartments: taggedCompartments,
+      created_at: new Date().toISOString(),
+    },
+  ];
+
   const stageData: Record<string, any> = {
     driver_name: driver_name?.trim() || null,
     seal_number: seal_number?.trim() || null,
     dispatch_time: dispatch_time || null,
     destination: destination?.trim() || 'Namakkal Dairy',
     quantity_dispatched: +Number(computedQty).toFixed(2),
+    bmc_dispatches: bmcInitialList,
     ...(dcNo ? { dc_number: dcNo } : {}),
-    ...(compartments.length > 0 ? { compartments } : {}),
+    ...(taggedCompartments.length > 0 ? { compartments: taggedCompartments } : {}),
     ...((req.body as any).driver_phone ? { driver_phone: String((req.body as any).driver_phone).trim() } : {}),
     ...((req.body as any).dispatch_ampm ? { dispatch_ampm: (req.body as any).dispatch_ampm } : {}),
     ...(computedFat != null && String(computedFat) !== '' ? { dispatch_fat_pct: +Number(computedFat).toFixed(2) } : {}),
@@ -977,7 +1321,7 @@ router.post('/', async (req, res) => {
   };
   if ((req.body as any).driver_phone) insertTier1.driver_phone = String((req.body as any).driver_phone).trim();
   if ((req.body as any).dispatch_ampm) insertTier1.dispatch_ampm = (req.body as any).dispatch_ampm;
-  if (compartments.length > 0) insertTier1.compartments = compartments;
+  if (taggedCompartments.length > 0) insertTier1.compartments = taggedCompartments;
 
   const insertTier2 = {
     unit_id,
@@ -1058,7 +1402,7 @@ router.post('/', async (req, res) => {
     if (!data.dispatch_time && dispatch_time) data.dispatch_time = dispatch_time;
     if (!data.stage_data) data.stage_data = stageData;
     if (!data.destination) data.destination = destination?.trim() || 'Namakkal Dairy';
-    if (!data.compartments && compartments.length > 0) data.compartments = compartments;
+    if (!data.compartments && taggedCompartments.length > 0) data.compartments = taggedCompartments;
 
     // Immediately persist full metadata in fallback store (guaranteed reflection across Gate, QC, Unloading, Admin)
     saveTankerDispatchMetadata({
@@ -1077,7 +1421,7 @@ router.post('/', async (req, res) => {
       dispatch_snf_pct: computedSnf != null && String(computedSnf) !== '' ? +Number(computedSnf).toFixed(2) : null,
       quantity_dispatched: +Number(computedQty).toFixed(2),
       destination: data.destination || destination?.trim() || 'Namakkal Dairy',
-      compartments,
+      compartments: taggedCompartments,
       stage_data: stageData,
       created_at: data.created_at || new Date().toISOString(),
     });

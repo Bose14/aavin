@@ -15,6 +15,7 @@ import type { DataColumn } from '../../components/DataTable';
 import { ConfirmDialog, ErrorBanner, StatusBadge, TableSkeleton } from '../../components/UiPrimitives';
 import { TankerTimeline } from '../../components/TankerTimeline';
 import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
+import NewTankerRegistrationModal from '../../components/NewTankerRegistrationModal';
 
 interface CompartmentFormItem {
   compartment_no: number;
@@ -27,6 +28,11 @@ interface CompartmentFormItem {
   seal_number: string;
   milk_type: string;
   temperature: string;
+  already_filled_litres?: number;
+  available_litres?: number;
+  loaded_by_bmc_name?: string | null;
+  loaded_dc_no?: string | null;
+  cell_key?: string;
 }
 
 interface Dispatch {
@@ -63,6 +69,14 @@ export default function TankerDispatch() {
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [stock, setStock] = useState<StockSummary | null>(null);
 
+  // Dialog Modals
+  const [showDispatchModal, setShowDispatchModal] = useState(false);
+  const [showNewRegModal, setShowNewRegModal] = useState(false);
+
+  // Registered Tankers with Cell Capacity Tracking
+  const [registeredTankers, setRegisteredTankers] = useState<any[]>([]);
+  const [selectedTanker, setSelectedTanker] = useState<any | null>(null);
+
   // Form State
   const [date, setDate] = useState(() => getLocalTodayIso());
   const [tankerNumber, setTankerNumber] = useState('');
@@ -77,38 +91,38 @@ export default function TankerDispatch() {
   const [dispatchAmPm, setDispatchAmPm] = useState<'AM' | 'PM'>('AM');
   const [destination, setDestination] = useState(settings.destinations[0] ?? 'Namakkal Dairy');
 
-  // Multi-Compartment Form State (Default 3 compartments)
+  // Multi-Compartment Form State
   const [compartments, setCompartments] = useState<CompartmentFormItem[]>([
     {
       compartment_no: 1,
       compartment_name: 'Front Compartment (Comp 1)',
-      quantity_litres: '3000',
+      quantity_litres: '',
       capacity_litres: '5000',
       fat_pct: '4.30',
       snf_pct: '8.45',
-      seal_number: 'CMP-1-789',
+      seal_number: '',
       milk_type: 'Raw Cow Milk',
       temperature: '4.0',
     },
     {
       compartment_no: 2,
       compartment_name: 'Middle Compartment (Comp 2)',
-      quantity_litres: '3000',
+      quantity_litres: '',
       capacity_litres: '5000',
       fat_pct: '4.25',
       snf_pct: '8.42',
-      seal_number: 'CMP-2-790',
+      seal_number: '',
       milk_type: 'Raw Cow Milk',
       temperature: '4.0',
     },
     {
       compartment_no: 3,
       compartment_name: 'Rear Compartment (Comp 3)',
-      quantity_litres: '3000',
+      quantity_litres: '',
       capacity_litres: '5000',
       fat_pct: '4.20',
       snf_pct: '8.40',
-      seal_number: 'CMP-3-791',
+      seal_number: '',
       milk_type: 'Raw Cow Milk',
       temperature: '4.0',
     },
@@ -128,12 +142,14 @@ export default function TankerDispatch() {
     setListLoading(true);
     setError('');
     try {
-      const [dRes, sRes] = await Promise.all([
+      const [dRes, sRes, rRes] = await Promise.all([
         api.get<Dispatch[]>('/tanker'),
         api.get<StockSummary>('/tanker/stock'),
+        api.get<any[]>('/tanker/registered'),
       ]);
       setDispatches(dRes.data);
       setStock(sRes.data);
+      setRegisteredTankers(rRes.data || []);
     } catch (err: unknown) {
       setError((err as Error)?.message || 'Failed to load tanker dispatches');
     } finally {
@@ -144,6 +160,52 @@ export default function TankerDispatch() {
   useEffect(() => {
     void fetchAll();
   }, [fetchAll]);
+
+  // Only registered tankers with available capacity that have not entered the plant are selectable
+  const availableTankers = useMemo(() => {
+    return registeredTankers.filter((t) => t.is_available_for_dispatch !== false);
+  }, [registeredTankers]);
+
+  const handleTankerSelect = (vehNum: string) => {
+    setTankerNumber(vehNum);
+    const found = registeredTankers.find((t) => t.vehicle_number === vehNum);
+    setSelectedTanker(found || null);
+
+    if (found) {
+      if (found.active_driver_name) {
+        setDriverName(found.active_driver_name);
+      }
+      if (found.active_driver_phone) {
+        setDriverPhone(found.active_driver_phone);
+      }
+
+      if (found.cells && Array.isArray(found.cells) && found.cells.length > 0) {
+        const cellItems: CompartmentFormItem[] = found.cells.map((cell: any, idx: number) => {
+          const avail = cell.available_litres != null ? cell.available_litres : (cell.capacity || 5000);
+          return {
+            compartment_no: idx + 1,
+            compartment_name: cell.cell_name || `Compartment ${idx + 1}`,
+            cell_key: cell.cell_key,
+            quantity_litres: avail > 0 ? '' : '0',
+            capacity_litres: String(cell.capacity || 5000),
+            fat_pct: '4.30',
+            snf_pct: '8.45',
+            seal_number: '',
+            milk_type: 'Raw Cow Milk',
+            temperature: '4.0',
+            already_filled_litres: cell.filled_litres || 0,
+            available_litres: avail,
+            loaded_by_bmc_name: cell.loaded_by_bmc_name,
+            loaded_dc_no: cell.dc_number,
+          };
+        });
+        setCompartments(cellItems);
+      } else {
+        const count = found.number_of_cells || 2;
+        setPresetCompartments(count);
+      }
+    }
+  };
 
   // Compartment Quick Presets (1, 2, or 3 compartments)
   const setPresetCompartments = (count: number) => {
@@ -263,7 +325,7 @@ export default function TankerDispatch() {
     setWarningMsg('');
 
     if (!tankerNumber.trim()) {
-      setError('Lorry / Tanker number is required');
+      setError('Please select a registered Lorry / Tanker Number');
       return;
     }
     if (!driverName.trim()) {
@@ -278,30 +340,38 @@ export default function TankerDispatch() {
       setError('Outlet Seal No is mandatory for tanker dispatch security');
       return;
     }
-    if (totalCompartmentLitres <= 0) {
-      setError('Please enter positive milk volume for at least one compartment');
+
+    // Filter active compartments with entered milk volume
+    const activeCompartments = compartments.filter((c) => {
+      const q = parseFloat(c.quantity_litres);
+      return !isNaN(q) && q > 0;
+    });
+
+    if (activeCompartments.length === 0) {
+      setError('Please enter positive milk volume for at least one available compartment');
       return;
     }
 
-    // Verify all active compartments have quantity
-    for (const c of compartments) {
+    // Verify each active compartment does not exceed available space
+    for (const c of activeCompartments) {
       const q = parseFloat(c.quantity_litres);
-      if (!q || q <= 0) {
-        setError(`Please enter a valid milk quantity for ${c.compartment_name}`);
+      const maxAvail = c.available_litres != null ? c.available_litres : (c.capacity_litres ? parseFloat(c.capacity_litres) : Infinity);
+      if (q > maxAvail) {
+        setError(`Quantity for ${c.compartment_name} (${q.toLocaleString('en-IN')} L) exceeds available cell capacity (${maxAvail.toLocaleString('en-IN')} L)`);
         return;
       }
     }
 
     setLoading(true);
     try {
-      const structuredCompartments = compartments.map((c) => ({
+      const structuredCompartments = activeCompartments.map((c) => ({
         compartment_no: c.compartment_no,
         compartment_name: c.compartment_name.trim(),
+        cell_key: c.cell_key,
         quantity_litres: parseFloat(c.quantity_litres),
         capacity_litres: c.capacity_litres ? parseFloat(c.capacity_litres) : null,
         fat_pct: c.fat_pct ? parseFloat(c.fat_pct) : null,
         snf_pct: c.snf_pct ? parseFloat(c.snf_pct) : null,
-        dipstick_cm: c.dipstick_cm ? parseFloat(c.dipstick_cm) : null,
         seal_number: c.seal_number.trim() || null,
         milk_type: c.milk_type || 'Raw Cow Milk',
         temperature: c.temperature ? parseFloat(c.temperature) : null,
@@ -326,11 +396,13 @@ export default function TankerDispatch() {
       if (res.data.stock_warning) setWarningMsg(res.data.stock_warning);
 
       setSuccessMsg(
-        `✓ Lorry ${tankerNumber.trim().toUpperCase()} (DC #${dcNumber.trim().toUpperCase()}) with ${compartments.length} compartments (${totalCompartmentLitres.toLocaleString('en-IN')} L) dispatched successfully! On the way to ${destination}.`
+        `✓ Lorry ${tankerNumber.trim().toUpperCase()} (DC #${dcNumber.trim().toUpperCase()}) with ${activeCompartments.length} compartment(s) (${totalCompartmentLitres.toLocaleString('en-IN')} L) dispatched successfully! On the way to ${destination}.`
       );
 
-      // Reset Form to fresh state
+      // Close modal and reset form
+      setShowDispatchModal(false);
       setTankerNumber('');
+      setSelectedTanker(null);
       setDriverName('');
       setDriverPhone('');
       setDcNumber('');
@@ -522,7 +594,29 @@ export default function TankerDispatch() {
             Record outgoing milk tanker with lorry number, driver details, Delivery Challan (DC No), and individual compartment breakdown
           </p>
         </div>
-        <div className="header-actions">
+        <div className="header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              setError('');
+              setShowDispatchModal(true);
+            }}
+            style={{
+              backgroundColor: '#16a34a',
+              borderColor: '#15803d',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: '13px',
+              padding: '8px 16px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+            }}
+          >
+            🚛 + Create Dispatch Entry
+          </button>
           <button
             type="button"
             className="btn-secondary"
@@ -578,11 +672,35 @@ export default function TankerDispatch() {
       )}
       {warningMsg && <div className="warning-banner" style={{ marginBottom: '16px' }}><span>⚠ {warningMsg}</span></div>}
 
-      {/* Recent Dispatches Table (Placed above Dispatch Entry Form) */}
+      {/* Recent Dispatches Table (Displayed on main BMC front face) */}
       <div className="card table-card" style={{ padding: '20px', marginBottom: '24px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-        <h2 style={{ margin: '0 0 12px 0', fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
-          Recent Tanker Dispatches
-        </h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
+            Recent Tanker Dispatches
+          </h2>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              setError('');
+              setShowDispatchModal(true);
+            }}
+            style={{
+              backgroundColor: '#16a34a',
+              borderColor: '#15803d',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: '12px',
+              padding: '6px 14px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+            }}
+          >
+            🚛 + Create Dispatch Entry
+          </button>
+        </div>
         {listLoading ? (
           <TableSkeleton rows={4} cols={7} />
         ) : (
@@ -590,389 +708,597 @@ export default function TankerDispatch() {
             rows={dispatches}
             columns={columns}
             getRowKey={(r) => r.id}
-            emptyMessage="No tanker dispatches recorded yet."
+            emptyMessage="No tanker dispatches recorded yet. Click '+ Create Dispatch Entry' above to dispatch milk."
             showTotalsRow
           />
         )}
       </div>
 
-      {/* Main Dispatch Form Card */}
-      <div className="card form-card" style={{ padding: '20px', marginBottom: '24px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '16px' }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
-              🚛 Tanker Lorry Dispatch Entry Form
-            </h2>
-            <span style={{ fontSize: '12px', color: '#64748b' }}>
-              Fill lorry details, DC invoice, and compartment volumes. Dispatched tankers sync instantly to Dairy Plant Admin &amp; Gate teams.
-            </span>
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="entry-form">
-          {/* SECTION 1: LORRY & DRIVER PARTICULARS */}
-          <div style={{ fontSize: '13px', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>
-            1. LORRY &amp; DRIVER PARTICULARS
-          </div>
-
-          <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '14px' }}>
-            <div className="form-group">
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
-                Lorry / Tanker Number *
-              </label>
-              <input
-                type="text"
-                value={tankerNumber}
-                onChange={(e) => setTankerNumber(e.target.value.toUpperCase())}
-                placeholder="e.g. TN-28-AB-1234"
-                required
-                style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '14px' }}
-              />
-            </div>
-
-            <div className="form-group">
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
-                Driver Name *
-              </label>
-              <input
-                type="text"
-                value={driverName}
-                onChange={(e) => setDriverName(e.target.value)}
-                placeholder="e.g. R. Murugan"
-                required
-                style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-              />
-            </div>
-
-            <div className="form-group">
-              <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>
-                Driver Mobile (+91)
-              </label>
-              <input
-                type="tel"
-                value={driverPhone}
-                onChange={(e) => setDriverPhone(e.target.value)}
-                placeholder="9876543210"
-                style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-              />
-            </div>
-
-            <div className="form-group">
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#0284c7' }}>
-                DC No (Delivery Challan / Invoice No) *
-              </label>
-              <input
-                type="text"
-                value={dcNumber}
-                onChange={(e) => setDcNumber(e.target.value.toUpperCase())}
-                placeholder="e.g. DC-BMC-2026-001"
-                required
-                style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #38bdf8', fontWeight: 700, fontSize: '13px', backgroundColor: '#f0f9ff' }}
-              />
-            </div>
-          </div>
-
-          <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '18px' }}>
-            <div className="form-group">
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
-                Outlet Seal No (Main Discharge Valve) *
-              </label>
-              <input
-                type="text"
-                value={outletSealNo}
-                onChange={(e) => setOutletSealNo(e.target.value.toUpperCase())}
-                placeholder="e.g. SL-OUT-8891"
-                required
-                style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-              />
-            </div>
-
-            <div className="form-group">
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
-                Destination Dairy *
-              </label>
-              <select
-                value={destination}
-                onChange={(e) => setDestination(e.target.value)}
-                style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff' }}
-              >
-                {settings.destinations.map((dest) => (
-                  <option key={dest} value={dest}>{dest}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
-                Dispatch Date *
-              </label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                required
-                style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-              />
-            </div>
-
-            <div className="form-group">
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
-                Dispatch Time *
-              </label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <input
-                  type="time"
-                  value={dispatchTime}
-                  onChange={(e) => setDispatchTime(e.target.value)}
-                  style={{ flex: 1, padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-                />
-                <select
-                  value={dispatchAmPm}
-                  onChange={(e) => setDispatchAmPm(e.target.value as 'AM' | 'PM')}
-                  style={{ width: '70px', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff', fontWeight: 700 }}
-                >
-                  <option value="AM">AM</option>
-                  <option value="PM">PM</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* SECTION 2: COMPARTMENT DETAILS */}
-          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '16px', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+      {/* Dispatch Entry Modal Dialog */}
+      {showDispatchModal && (
+        <div
+          className="modal-backdrop"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1050,
+            padding: '16px',
+            overflowY: 'auto',
+          }}
+          onClick={() => setShowDispatchModal(false)}
+        >
+          <div
+            className="modal-dialog card"
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              maxWidth: '920px',
+              width: '100%',
+              maxHeight: '92vh',
+              overflowY: 'auto',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+              border: '1px solid #cbd5e1',
+              padding: '24px',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '16px' }}>
               <div>
-                <span style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  2. LORRY COMPARTMENT DETAILS
-                </span>
-                <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '8px' }}>
-                  Specify volume and tested quality per individual compartment
+                <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>
+                  🚛 Tanker Lorry Dispatch Entry Form
+                </h2>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>
+                  Select registered tanker, check available cell capacity, and enter Delivery Challan (DC No) and compartment volumes.
                 </span>
               </div>
-
-              {/* Quick Presets & Add (Max 3 compartments) */}
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Presets:</span>
-                {[1, 2, 3].map((count) => (
-                  <button
-                    key={count}
-                    type="button"
-                    onClick={() => setPresetCompartments(count)}
-                    className="btn btn-secondary btn-sm"
-                    style={{
-                      fontSize: '11px',
-                      padding: '3px 8px',
-                      backgroundColor: compartments.length === count ? '#e0f2fe' : '#ffffff',
-                      borderColor: compartments.length === count ? '#0284c7' : '#cbd5e1',
-                      color: compartments.length === count ? '#0369a1' : '#475569',
-                      fontWeight: 700,
-                    }}
-                  >
-                    {count} Comp
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={addCompartment}
-                  className="btn btn-secondary btn-sm"
-                  style={{
-                    fontSize: '11px',
-                    padding: '3px 8px',
-                    color: '#16a34a',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
-                  title="Add compartment"
-                >
-                  + Add
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowDispatchModal(false)}
+                style={{
+                  background: '#f1f5f9',
+                  border: 'none',
+                  borderRadius: '6px',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '16px',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                }}
+                title="Close"
+              >
+                ✕
+              </button>
             </div>
 
-            {/* Compartment Cards Grid */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
-              {compartments.map((comp, idx) => (
+            {error && <ErrorBanner message={error} />}
+
+            <form onSubmit={handleSubmit} className="entry-form">
+              {/* SECTION 1: LORRY & DRIVER PARTICULARS */}
+              <div style={{ fontSize: '13px', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>
+                1. LORRY &amp; DRIVER PARTICULARS
+              </div>
+
+              <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '14px' }}>
+                <div className="form-group">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
+                      Lorry / Tanker Number *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewRegModal(true)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#0284c7',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        padding: 0,
+                      }}
+                    >
+                      + Register Tanker
+                    </button>
+                  </div>
+                  <select
+                    value={tankerNumber}
+                    onChange={(e) => handleTankerSelect(e.target.value)}
+                    required
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '14px', backgroundColor: '#ffffff' }}
+                  >
+                    <option value="">-- Select Registered Tanker --</option>
+                    {availableTankers.map((t) => (
+                      <option key={t.id || t.vehicle_number} value={t.vehicle_number}>
+                        {t.vehicle_number} — {t.available_capacity != null ? `${t.available_capacity.toLocaleString('en-IN')} L avail / ${t.total_capacity?.toLocaleString('en-IN')} L total` : `${t.total_capacity || 10000} L`} ({t.number_of_cells || 2} cells)
+                      </option>
+                    ))}
+                  </select>
+                  {availableTankers.length === 0 && (
+                    <div style={{ fontSize: '11px', color: '#b45309', marginTop: '4px' }}>
+                      No registered tankers currently available for dispatch. Tankers with 0 available space or currently inside the dairy processing centre will be unlocked after gate exit.
+                    </div>
+                  )}
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
+                    Driver Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={driverName}
+                    onChange={(e) => setDriverName(e.target.value)}
+                    placeholder="e.g. R. Murugan"
+                    required
+                    style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>
+                    Driver Mobile (+91)
+                  </label>
+                  <input
+                    type="tel"
+                    value={driverPhone}
+                    onChange={(e) => setDriverPhone(e.target.value)}
+                    placeholder="9876543210"
+                    style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#0284c7' }}>
+                    DC No (Delivery Challan / Invoice No) *
+                  </label>
+                  <input
+                    type="text"
+                    value={dcNumber}
+                    onChange={(e) => setDcNumber(e.target.value.toUpperCase())}
+                    placeholder="e.g. DC-BMC-2026-001"
+                    required
+                    style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #38bdf8', fontWeight: 700, fontSize: '13px', backgroundColor: '#f0f9ff' }}
+                  />
+                </div>
+              </div>
+
+              {/* Tanker Live Capacity Overview if selected */}
+              {selectedTanker && (
                 <div
-                  key={idx}
                   style={{
-                    padding: '14px 16px',
-                    borderRadius: '8px',
                     backgroundColor: '#f8fafc',
                     border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    padding: '12px 16px',
+                    marginBottom: '14px',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div>
+                      <strong style={{ fontSize: '14px', color: '#0f172a' }}>{selectedTanker.vehicle_number}</strong>
+                      <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '8px' }}>
+                        ({selectedTanker.contractor_name || selectedTanker.transporter_name || 'Registered Transporter'} · {selectedTanker.number_of_cells || selectedTanker.cells?.length || 2} Cells)
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '16px', fontSize: '12px' }}>
+                      <span>Total: <strong>{(selectedTanker.total_capacity || 0).toLocaleString('en-IN')} L</strong></span>
+                      <span style={{ color: '#d97706' }}>Already Filled: <strong>{(selectedTanker.filled_capacity || 0).toLocaleString('en-IN')} L</strong></span>
+                      <span style={{ color: '#16a34a' }}>Available Space: <strong>{(selectedTanker.available_capacity || selectedTanker.total_capacity || 0).toLocaleString('en-IN')} L</strong></span>
+                    </div>
+                  </div>
+
+                  {selectedTanker.filled_capacity > 0 && (
+                    <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '6px 10px', fontSize: '12px', color: '#1e40af', marginTop: '6px' }}>
+                      ℹ <strong>Multi-BMC Route Active:</strong> This tanker has {(selectedTanker.filled_capacity || 0).toLocaleString('en-IN')} L of milk from prior BMC loading. You can fill remaining empty cell(s) up to {(selectedTanker.available_capacity || 0).toLocaleString('en-IN')} L under your BMC Delivery Challan (DC No).
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '18px' }}>
+                <div className="form-group">
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
+                    Outlet Seal No (Main Discharge Valve) *
+                  </label>
+                  <input
+                    type="text"
+                    value={outletSealNo}
+                    onChange={(e) => setOutletSealNo(e.target.value.toUpperCase())}
+                    placeholder="e.g. SL-OUT-8891"
+                    required
+                    style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
+                    Destination Dairy *
+                  </label>
+                  <select
+                    value={destination}
+                    onChange={(e) => setDestination(e.target.value)}
+                    style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff' }}
+                  >
+                    {settings.destinations.map((dest) => (
+                      <option key={dest} value={dest}>{dest}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
+                    Dispatch Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    required
+                    style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
+                    Dispatch Time *
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <input
+                      type="time"
+                      value={dispatchTime}
+                      onChange={(e) => setDispatchTime(e.target.value)}
+                      style={{ flex: 1, padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                    />
+                    <select
+                      value={dispatchAmPm}
+                      onChange={(e) => setDispatchAmPm(e.target.value as 'AM' | 'PM')}
+                      style={{ width: '70px', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff', fontWeight: 700 }}
+                    >
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 2: COMPARTMENT DETAILS */}
+              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '16px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div>
+                    <span style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      2. LORRY COMPARTMENT DETAILS
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '8px' }}>
+                      Enter milk volume, Fat, and SNF for available cells
+                    </span>
+                  </div>
+
+                  {/* Quick Presets & Add */}
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Presets:</span>
+                    {[1, 2, 3].map((count) => (
+                      <button
+                        key={count}
+                        type="button"
+                        onClick={() => setPresetCompartments(count)}
+                        className="btn btn-secondary btn-sm"
                         style={{
-                          backgroundColor: '#0f172a',
-                          color: '#ffffff',
-                          borderRadius: '50%',
-                          width: '20px',
-                          height: '20px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
                           fontSize: '11px',
+                          padding: '3px 8px',
+                          backgroundColor: compartments.length === count ? '#e0f2fe' : '#ffffff',
+                          borderColor: compartments.length === count ? '#0284c7' : '#cbd5e1',
+                          color: compartments.length === count ? '#0369a1' : '#475569',
                           fontWeight: 700,
                         }}
                       >
-                        {comp.compartment_no}
-                      </span>
-                      <strong style={{ fontSize: '13px', color: '#1e293b' }}>
-                        {comp.compartment_name}
-                      </strong>
-                    </div>
-
-                    {compartments.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeCompartment(idx)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#ef4444',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        ✕ Remove
+                        {count} Comp
                       </button>
-                    )}
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#334155', marginBottom: '3px' }}>
-                        Quantity (Litres) *
-                      </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        placeholder="e.g. 4500"
-                        value={comp.quantity_litres}
-                        onChange={(e) => updateCompartment(idx, 'quantity_litres', e.target.value)}
-                        required
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 700, fontSize: '13px' }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '3px' }}>
-                        Fat %
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        placeholder="4.30"
-                        value={comp.fat_pct}
-                        onChange={(e) => updateCompartment(idx, 'fat_pct', e.target.value)}
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '3px' }}>
-                        SNF %
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        placeholder="8.45"
-                        value={comp.snf_pct}
-                        onChange={(e) => updateCompartment(idx, 'snf_pct', e.target.value)}
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '3px' }}>
-                        Top Seal No
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. CMP-1-789"
-                        value={comp.seal_number}
-                        onChange={(e) => updateCompartment(idx, 'seal_number', e.target.value.toUpperCase())}
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '3px' }}>
-                        Milk Type
-                      </label>
-                      <select
-                        value={comp.milk_type}
-                        onChange={(e) => updateCompartment(idx, 'milk_type', e.target.value)}
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px', backgroundColor: '#ffffff' }}
-                      >
-                        <option value="Raw Cow Milk">Raw Cow Milk</option>
-                        <option value="Buffalo Milk">Buffalo Milk</option>
-                        <option value="Mixed Milk">Mixed Milk</option>
-                      </select>
-                    </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={addCompartment}
+                      className="btn btn-secondary btn-sm"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        color: '#16a34a',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                      title="Add compartment"
+                    >
+                      + Add
+                    </button>
                   </div>
                 </div>
-              ))}
-            </div>
 
-            {/* Live Real-time Lorry Summary Bar */}
-            <div
-              style={{
-                padding: '12px 16px',
-                borderRadius: '6px',
-                backgroundColor: '#eff6ff',
-                border: '1px solid #bfdbfe',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '12px',
-                marginBottom: '16px',
-              }}
-            >
-              <div>
-                <span style={{ fontSize: '12px', color: '#1e40af', fontWeight: 600 }}>Total Lorry Dispatched Volume: </span>
-                <strong style={{ fontSize: '16px', color: '#1e3a8a' }}>
-                  {formatLitres(totalCompartmentLitres)}
-                </strong>
-                <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '6px' }}>
-                  ({compartments.length} Compartments)
-                </span>
+                {/* Compartment Cards Grid */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+                  {compartments.map((comp, idx) => {
+                    const maxAvail = comp.available_litres != null ? comp.available_litres : (comp.capacity_litres ? parseFloat(comp.capacity_litres) : Infinity);
+                    const isCellFull = comp.available_litres != null && comp.available_litres <= 0;
+                    const qtyVal = parseFloat(comp.quantity_litres) || 0;
+                    const isOverCap = qtyVal > maxAvail;
+
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '14px 16px',
+                          borderRadius: '8px',
+                          backgroundColor: isCellFull ? '#f1f5f9' : '#f8fafc',
+                          border: isOverCap ? '1px solid #ef4444' : isCellFull ? '1px solid #e2e8f0' : '1px solid #cbd5e1',
+                          opacity: isCellFull ? 0.75 : 1,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span
+                              style={{
+                                backgroundColor: isCellFull ? '#64748b' : '#0f172a',
+                                color: '#ffffff',
+                                borderRadius: '50%',
+                                width: '20px',
+                                height: '20px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                              }}
+                            >
+                              {comp.compartment_no}
+                            </span>
+                            <strong style={{ fontSize: '13px', color: '#1e293b' }}>
+                              {comp.compartment_name}
+                            </strong>
+                            {comp.capacity_litres && (
+                              <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                (Capacity: {Number(comp.capacity_litres).toLocaleString('en-IN')} L)
+                              </span>
+                            )}
+                            {comp.already_filled_litres != null && comp.already_filled_litres > 0 && (
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  backgroundColor: '#fef3c7',
+                                  color: '#92400e',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #fde68a',
+                                }}
+                              >
+                                Filled: {comp.already_filled_litres.toLocaleString('en-IN')} L by {comp.loaded_by_bmc_name || 'Prior BMC'} {comp.loaded_dc_no ? `(DC #${comp.loaded_dc_no})` : ''}
+                              </span>
+                            )}
+                            {comp.available_litres != null && (
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  backgroundColor: isCellFull ? '#fee2e2' : '#dcfce7',
+                                  color: isCellFull ? '#991b1b' : '#166534',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                }}
+                              >
+                                {isCellFull ? 'Cell Full' : `Available: ${comp.available_litres.toLocaleString('en-IN')} L`}
+                              </span>
+                            )}
+                          </div>
+
+                          {compartments.length > 1 && !selectedTanker && (
+                            <button
+                              type="button"
+                              onClick={() => removeCompartment(idx)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#ef4444',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              ✕ Remove
+                            </button>
+                          )}
+                        </div>
+
+                        {isCellFull ? (
+                          <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', padding: '6px 0' }}>
+                            🔒 This cell is fully loaded by a prior BMC on this route. No additional milk volume can be filled here.
+                          </div>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#334155', marginBottom: '3px' }}>
+                                Quantity (Litres) *
+                              </label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                max={maxAvail !== Infinity ? maxAvail : undefined}
+                                placeholder={maxAvail !== Infinity ? `Max ${maxAvail}` : 'e.g. 4500'}
+                                value={comp.quantity_litres}
+                                onChange={(e) => updateCompartment(idx, 'quantity_litres', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  border: isOverCap ? '1px solid #ef4444' : '1px solid #cbd5e1',
+                                  fontWeight: 700,
+                                  fontSize: '13px',
+                                }}
+                              />
+                              {isOverCap && (
+                                <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: 600 }}>
+                                  Exceeds space ({maxAvail.toLocaleString('en-IN')} L)
+                                </span>
+                              )}
+                            </div>
+
+                            <div>
+                              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '3px' }}>
+                                Fat %
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                placeholder="4.30"
+                                value={comp.fat_pct}
+                                onChange={(e) => updateCompartment(idx, 'fat_pct', e.target.value)}
+                                style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+                              />
+                            </div>
+
+                            <div>
+                              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '3px' }}>
+                                SNF %
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                placeholder="8.45"
+                                value={comp.snf_pct}
+                                onChange={(e) => updateCompartment(idx, 'snf_pct', e.target.value)}
+                                style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+                              />
+                            </div>
+
+                            <div>
+                              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '3px' }}>
+                                Top Seal No
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. CMP-1-789"
+                                value={comp.seal_number}
+                                onChange={(e) => updateCompartment(idx, 'seal_number', e.target.value.toUpperCase())}
+                                style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+                              />
+                            </div>
+
+                            <div>
+                              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '3px' }}>
+                                Milk Type
+                              </label>
+                              <select
+                                value={comp.milk_type}
+                                onChange={(e) => updateCompartment(idx, 'milk_type', e.target.value)}
+                                style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px', backgroundColor: '#ffffff' }}
+                              >
+                                <option value="Raw Cow Milk">Raw Cow Milk</option>
+                                <option value="Buffalo Milk">Buffalo Milk</option>
+                                <option value="Mixed Milk">Mixed Milk</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Live Real-time Lorry Summary Bar */}
+                <div
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: '6px',
+                    backgroundColor: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '12px',
+                    marginBottom: '16px',
+                  }}
+                >
+                  <div>
+                    <span style={{ fontSize: '12px', color: '#1e40af', fontWeight: 600 }}>Total Lorry Dispatched Volume: </span>
+                    <strong style={{ fontSize: '16px', color: '#1e3a8a' }}>
+                      {formatLitres(totalCompartmentLitres)}
+                    </strong>
+                    <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '6px' }}>
+                      ({compartments.length} Compartments)
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: '12px', color: '#1e40af', fontWeight: 700 }}>
+                    Weighted Average Quality: Fat {weightedFat.toFixed(2)}% · SNF {weightedSnf.toFixed(2)}%
+                  </div>
+                </div>
               </div>
 
-              <div style={{ fontSize: '12px', color: '#1e40af', fontWeight: 700 }}>
-                Weighted Average Quality: Fat {weightedFat.toFixed(2)}% · SNF {weightedSnf.toFixed(2)}%
+              {exceedsStock && (
+                <div className="warning-banner" style={{ marginBottom: '16px' }}>
+                  <span>⚠ Dispatched volume exceeds available stock at BMC ({formatLitres(stock.available_stock_qty, 1)})</span>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowDispatchModal(false)}
+                  className="btn-secondary"
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    fontSize: '14px',
+                    fontWeight: 700,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading || totalCompartmentLitres <= 0}
+                  className="btn-primary"
+                  style={{
+                    flex: 2,
+                    padding: '12px',
+                    fontSize: '15px',
+                    fontWeight: 800,
+                    backgroundColor: '#16a34a',
+                    borderColor: '#15803d',
+                    cursor: loading || totalCompartmentLitres <= 0 ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {loading ? 'Dispatching Tanker…' : '🚛 Confirm & Dispatch Tanker to Dairy Plant'}
+                </button>
               </div>
-            </div>
+            </form>
           </div>
+        </div>
+      )}
 
-          {exceedsStock && (
-            <div className="warning-banner" style={{ marginBottom: '16px' }}>
-              <span>⚠ Dispatched volume exceeds available stock at BMC ({formatLitres(stock.available_stock_qty, 1)})</span>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading || totalCompartmentLitres <= 0}
-            className="btn-primary"
-            style={{
-              width: '100%',
-              padding: '12px',
-              fontSize: '15px',
-              fontWeight: 800,
-              backgroundColor: '#16a34a',
-              borderColor: '#15803d',
-              cursor: loading || totalCompartmentLitres <= 0 ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {loading ? 'Dispatching Tanker…' : '🚛 Confirm & Dispatch Tanker to Dairy Plant'}
-          </button>
-        </form>
-      </div>
+      {/* New Tanker Registration Modal */}
+      <NewTankerRegistrationModal
+        isOpen={showNewRegModal}
+        onClose={() => setShowNewRegModal(false)}
+        onSuccess={(newTanker) => {
+          setShowNewRegModal(false);
+          void fetchAll().then(() => {
+            if (newTanker?.vehicle_number) {
+              handleTankerSelect(newTanker.vehicle_number);
+            }
+          });
+        }}
+      />
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
