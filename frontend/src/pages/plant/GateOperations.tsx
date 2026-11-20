@@ -335,15 +335,34 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
       if (comps && Array.isArray(comps) && comps.length > 0) {
         setNumberOfCells(comps.length);
         comps.forEach((c: any, idx: number) => {
-          const cellLabel = idx === 0 ? 'FC' : idx === 1 ? 'BC' : `MC ${idx}`;
+          let cellLabel = 'FC';
+          if (c.cell && ['FC', 'MC', 'BC'].includes(String(c.cell).toUpperCase())) {
+            cellLabel = String(c.cell).toUpperCase();
+          } else {
+            const name = String(c.compartment_name || '').toLowerCase();
+            if (name.includes('front') || name.includes('fc') || name.includes('comp 1') || name.includes('comp1')) {
+              cellLabel = 'FC';
+            } else if (comps.length === 3 && (name.includes('middle') || name.includes('mc') || name.includes('comp 2') || name.includes('comp2'))) {
+              cellLabel = 'MC';
+            } else if (name.includes('rear') || name.includes('back') || name.includes('bc') || (comps.length === 3 && (name.includes('comp 3') || name.includes('comp3')))) {
+              cellLabel = 'BC';
+            } else if (comps.length === 3) {
+              cellLabel = idx === 0 ? 'FC' : idx === 1 ? 'MC' : 'BC';
+            } else if (comps.length === 2) {
+              cellLabel = idx === 0 ? 'FC' : 'BC';
+            } else {
+              cellLabel = 'FC';
+            }
+          }
+
           initialRows.push({
             id: `comp_${idx}`,
             cell: cellLabel,
-            bmc: (c.bmc_name || activeTanker.units?.name || 'ARIYANOOR').toUpperCase(),
-            fat: String(c.fat ?? '4.25'),
-            snf: String(c.snf ?? '8.45'),
-            temp: String(c.temp ?? '4.0'),
-            qty: String(c.quantity_litres ?? Math.round(dispQty / comps.length)),
+            bmc: (c.bmc_name || activeTanker.units?.name || activeTanker.unit_name || 'RASIPURAM').toUpperCase(),
+            fat: String(c.fat_pct ?? c.fat ?? activeTanker.dispatch_fat_pct ?? '4.25'),
+            snf: String(c.snf_pct ?? c.snf ?? activeTanker.dispatch_snf_pct ?? '8.45'),
+            temp: String(c.temperature ?? c.temp ?? '4.0'),
+            qty: String(c.quantity_litres ?? c.qty ?? Math.round(dispQty / comps.length)),
             dcNo: resolvedDc || '012748',
           });
         });

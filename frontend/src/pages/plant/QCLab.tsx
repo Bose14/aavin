@@ -336,26 +336,61 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
           });
         });
       } else {
-        dispQ.push({
-          cell: 'FC',
-          fat: '4.25',
-          snf: '8.10',
-          clr: '27.56',
-          acidity: '0.13',
-          temp: '4.0',
-          milkType: 'MIXED MILK',
-          qty: '6378',
-        });
-        dispQ.push({
-          cell: 'BC',
-          fat: '4.15',
-          snf: '8.05',
-          clr: '27.44',
-          acidity: '0.14',
-          temp: '4.0',
-          milkType: 'MIXED MILK',
-          qty: '5098',
-        });
+        const comps = activeTanker.compartments || activeTanker.stage_data?.compartments;
+        if (comps && Array.isArray(comps) && comps.length > 0) {
+          comps.forEach((c: any, idx: number) => {
+            let cellLabel = 'FC';
+            if (c.cell && ['FC', 'MC', 'BC'].includes(String(c.cell).toUpperCase())) {
+              cellLabel = String(c.cell).toUpperCase();
+            } else {
+              const name = String(c.compartment_name || '').toLowerCase();
+              if (name.includes('front') || name.includes('fc') || name.includes('comp 1') || name.includes('comp1')) {
+                cellLabel = 'FC';
+              } else if (comps.length === 3 && (name.includes('middle') || name.includes('mc') || name.includes('comp 2') || name.includes('comp2'))) {
+                cellLabel = 'MC';
+              } else if (name.includes('rear') || name.includes('back') || name.includes('bc') || (comps.length === 3 && (name.includes('comp 3') || name.includes('comp3')))) {
+                cellLabel = 'BC';
+              } else if (comps.length === 3) {
+                cellLabel = idx === 0 ? 'FC' : idx === 1 ? 'MC' : 'BC';
+              } else if (comps.length === 2) {
+                cellLabel = idx === 0 ? 'FC' : 'BC';
+              } else {
+                cellLabel = 'FC';
+              }
+            }
+            dispQ.push({
+              cell: cellLabel,
+              fat: String(c.fat_pct ?? c.fat ?? activeTanker.dispatch_fat_pct ?? '4.25'),
+              snf: String(c.snf_pct ?? c.snf ?? activeTanker.dispatch_snf_pct ?? '8.10'),
+              clr: '27.56',
+              acidity: '0.13',
+              temp: String(c.temperature ?? c.temp ?? '4.0'),
+              milkType: c.milk_type || 'MIXED MILK',
+              qty: String(c.quantity_litres ?? c.qty ?? '5000'),
+            });
+          });
+        } else {
+          dispQ.push({
+            cell: 'FC',
+            fat: '4.25',
+            snf: '8.10',
+            clr: '27.56',
+            acidity: '0.13',
+            temp: '4.0',
+            milkType: 'MIXED MILK',
+            qty: '6378',
+          });
+          dispQ.push({
+            cell: 'BC',
+            fat: '4.15',
+            snf: '8.05',
+            clr: '27.44',
+            acidity: '0.14',
+            temp: '4.0',
+            milkType: 'MIXED MILK',
+            qty: '5098',
+          });
+        }
       }
       setDispatchQualityList(dispQ);
 
