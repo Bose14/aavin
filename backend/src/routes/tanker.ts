@@ -78,7 +78,7 @@ const BARE_TANKER_SELECT = `
   id, unit_id, zone_id, date, tanker_number, quantity_dispatched, destination, created_at
 `;
 
-async function runResilientTankerQuery(
+export async function runResilientTankerQuery(
   buildQuery: (selectStr: string) => any,
 ): Promise<{ data: any[]; error: any }> {
   const tiers = [
@@ -138,7 +138,7 @@ export interface EnrichedTankerRow {
   calculated: any;
 }
 
-function enrichTankerRow(row: Record<string, unknown>, stages?: StageRecordItem[], settings?: any): EnrichedTankerRow {
+export function enrichTankerRow(row: Record<string, unknown>, stages?: StageRecordItem[], settings?: any): EnrichedTankerRow {
   // 1. Safely parse stage_data if returned as JSON string
   let rowStageData: Record<string, any> = {};
   if (typeof row.stage_data === 'string') {
