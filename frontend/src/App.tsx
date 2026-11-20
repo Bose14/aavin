@@ -70,7 +70,8 @@ export default function App() {
             <Route path="/gate/tare-weight" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><GateOperations activeView="tare" /></Layout></ProtectedRoute>} />
             <Route path="/gate/tanker-out" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><GateOperations activeView="exit" /></Layout></ProtectedRoute>} />
             <Route path="/gate/records" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />
-            <Route path="/qc" element={<ProtectedRoute role={['qc', 'admin', 'superadmin']}><Layout><QCLab /></Layout></ProtectedRoute>} />
+            <Route path="/qc" element={<ProtectedRoute role={['qc', 'admin', 'superadmin']}><Layout><QCLab activeView="qc" /></Layout></ProtectedRoute>} />
+            <Route path="/qc/cip" element={<ProtectedRoute role={['qc', 'admin', 'superadmin']}><Layout><QCLab activeView="cip" /></Layout></ProtectedRoute>} />
             <Route path="/qc/records" element={<ProtectedRoute role={['qc', 'admin', 'superadmin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />
             <Route path="/unloading" element={<ProtectedRoute role={['unloading', 'admin', 'superadmin']}><Layout><UnloadingBay /></Layout></ProtectedRoute>} />
             <Route path="/unloading/records" element={<ProtectedRoute role={['unloading', 'admin', 'superadmin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />

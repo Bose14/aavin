@@ -97,7 +97,11 @@ export interface QcReceivedQuality {
   qty?: string;
 }
 
-export default function QCLab() {
+export interface QCLabProps {
+  activeView?: 'qc' | 'cip';
+}
+
+export default function QCLab({ activeView = 'qc' }: QCLabProps) {
   const { lang } = useTranslation();
   const [tankers, setTankers] = useState<any[]>([]);
   const [, setLoading] = useState(true);
@@ -108,7 +112,12 @@ export default function QCLab() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Sub-navigation tab: Quality Control Details vs CIP Sanitization
-  const [qcSubTab, setQcSubTab] = useState<'qc' | 'cip'>('qc');
+  const [qcSubTab, setQcSubTab] = useState<'qc' | 'cip'>(activeView);
+
+  // Sync prop changes
+  useEffect(() => {
+    if (activeView) setQcSubTab(activeView);
+  }, [activeView]);
 
   // Dialog Modals
   const [showQcModal, setShowQcModal] = useState(false);
@@ -577,8 +586,8 @@ export default function QCLab() {
         }}
       >
         <div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.2rem' }}>
-            Dashboard &gt; Quality Control &gt; <strong style={{ color: '#0f172a' }}>{qcSubTab === 'cip' ? 'CIP Sanitization' : 'Milk Testing'}</strong>
+          <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.2rem', fontWeight: 600 }}>
+            Quality Control &gt; <strong style={{ color: '#0f172a' }}>{qcSubTab === 'cip' ? 'CIP Sanitization' : 'QC Laboratory Milk Inspection'}</strong>
           </div>
           <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
             {qcSubTab === 'cip'
@@ -639,73 +648,13 @@ export default function QCLab() {
         </div>
       </div>
 
-      {/* Sub Navigation Bar matching Aavin IDMS header */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-          backgroundColor: '#0284c7',
-          padding: '6px 10px 0 10px',
-          borderRadius: '8px 8px 0 0',
-          borderBottom: '2px solid #0369a1',
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setQcSubTab('qc')}
-          style={{
-            backgroundColor: qcSubTab === 'qc' ? '#ffffff' : 'transparent',
-            color: qcSubTab === 'qc' ? '#0369a1' : '#f0f9ff',
-            border: 'none',
-            borderRadius: '4px 4px 0 0',
-            padding: '7px 18px',
-            fontSize: '0.85rem',
-            fontWeight: qcSubTab === 'qc' ? 700 : 500,
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}
-        >
-          Milk Receipt Entry ▾
-          <span style={{ backgroundColor: qcSubTab === 'qc' ? '#e0f2fe' : 'rgba(255,255,255,0.25)', color: qcSubTab === 'qc' ? '#0369a1' : '#ffffff', padding: '1px 6px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 800 }}>
-            {qcEligibleTankers.length}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setQcSubTab('cip')}
-          style={{
-            backgroundColor: qcSubTab === 'cip' ? '#ffffff' : 'transparent',
-            color: qcSubTab === 'cip' ? '#0369a1' : '#f0f9ff',
-            border: 'none',
-            borderRadius: '4px 4px 0 0',
-            padding: '7px 18px',
-            fontSize: '0.85rem',
-            fontWeight: qcSubTab === 'cip' ? 700 : 500,
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}
-        >
-          CIP Details
-          <span style={{ backgroundColor: qcSubTab === 'cip' ? '#e0f2fe' : 'rgba(255,255,255,0.25)', color: qcSubTab === 'cip' ? '#0369a1' : '#ffffff', padding: '1px 6px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 800 }}>
-            {cipEligibleTankers.length}
-          </span>
-        </button>
-      </div>
-
       {/* Main Vehicle Sheet Container */}
       <div
         className="card"
         style={{
           backgroundColor: '#ffffff',
-          borderRadius: '0 0 8px 8px',
+          borderRadius: '8px',
           border: '1px solid #cbd5e1',
-          borderTop: 'none',
           boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
           padding: '1.25rem',
           minHeight: '350px',

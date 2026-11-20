@@ -495,8 +495,8 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
         }}
       >
         <div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.2rem' }}>
-            Dashboard &gt; {gateSubTab === 'receipt' ? 'Milk Receipt Entry' : gateSubTab === 'gross' ? 'Gross Weight Entry' : gateSubTab === 'tare' ? 'Tare Weight Entry' : 'Tanker Out'}
+          <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.2rem', fontWeight: 600 }}>
+            {gateSubTab === 'receipt' ? 'Milk Receipt Entry' : gateSubTab === 'gross' ? 'Gross Weight Entry' : gateSubTab === 'tare' ? 'Tare Weight Entry' : 'Tanker Out'}
           </div>
           <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
             {gateSubTab === 'receipt'
@@ -538,6 +538,15 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
 
           <button
             type="button"
+            onClick={() => setShowNewTankerModal(true)}
+            className="btn btn-primary"
+            style={{ height: '38px', padding: '0 1rem', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.88rem', fontWeight: 600 }}
+          >
+            + New Tanker Registration
+          </button>
+
+          <button
+            type="button"
             onClick={fetchTankers}
             className="btn btn-secondary"
             style={{ height: '38px', padding: '0 0.85rem', width: 'auto' }}
@@ -555,137 +564,13 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
         </div>
       )}
 
-      {/* Sub Navigation Bar matching Aavin IDMS header */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-          backgroundColor: '#0284c7',
-          padding: '6px 10px 0 10px',
-          borderRadius: '8px 8px 0 0',
-          borderBottom: '2px solid #0369a1',
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setGateSubTab('receipt')}
-          style={{
-            backgroundColor: gateSubTab === 'receipt' ? '#ffffff' : 'transparent',
-            color: gateSubTab === 'receipt' ? '#0369a1' : '#f0f9ff',
-            border: 'none',
-            borderRadius: '4px 4px 0 0',
-            padding: '7px 16px',
-            fontSize: '0.85rem',
-            fontWeight: gateSubTab === 'receipt' ? 700 : 500,
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}
-        >
-          Milk Receipt Entry ▾
-          <span style={{ backgroundColor: gateSubTab === 'receipt' ? '#e0f2fe' : 'rgba(255,255,255,0.25)', color: gateSubTab === 'receipt' ? '#0369a1' : '#ffffff', padding: '1px 6px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 800 }}>
-            {receiptWaiters.length}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setGateSubTab('gross')}
-          style={{
-            backgroundColor: gateSubTab === 'gross' ? '#ffffff' : 'transparent',
-            color: gateSubTab === 'gross' ? '#0369a1' : '#f0f9ff',
-            border: 'none',
-            borderRadius: '4px 4px 0 0',
-            padding: '7px 16px',
-            fontSize: '0.85rem',
-            fontWeight: gateSubTab === 'gross' ? 700 : 500,
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}
-        >
-          Gross Weight Entry
-          <span style={{ backgroundColor: gateSubTab === 'gross' ? '#e0f2fe' : 'rgba(255,255,255,0.25)', color: gateSubTab === 'gross' ? '#0369a1' : '#ffffff', padding: '1px 6px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 800 }}>
-            {grossWaiters.length}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setGateSubTab('tare')}
-          style={{
-            backgroundColor: gateSubTab === 'tare' ? '#ffffff' : 'transparent',
-            color: gateSubTab === 'tare' ? '#0369a1' : '#f0f9ff',
-            border: 'none',
-            borderRadius: '4px 4px 0 0',
-            padding: '7px 16px',
-            fontSize: '0.85rem',
-            fontWeight: gateSubTab === 'tare' ? 700 : 500,
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}
-        >
-          Tare Weight Entry
-          <span style={{ backgroundColor: gateSubTab === 'tare' ? '#e0f2fe' : 'rgba(255,255,255,0.25)', color: gateSubTab === 'tare' ? '#0369a1' : '#ffffff', padding: '1px 6px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 800 }}>
-            {tareWaiters.length}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setGateSubTab('exit')}
-          style={{
-            backgroundColor: gateSubTab === 'exit' ? '#ffffff' : 'transparent',
-            color: gateSubTab === 'exit' ? '#0369a1' : '#f0f9ff',
-            border: 'none',
-            borderRadius: '4px 4px 0 0',
-            padding: '7px 16px',
-            fontSize: '0.85rem',
-            fontWeight: gateSubTab === 'exit' ? 700 : 500,
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}
-        >
-          Tanker Out
-          <span style={{ backgroundColor: gateSubTab === 'exit' ? '#e0f2fe' : 'rgba(255,255,255,0.25)', color: gateSubTab === 'exit' ? '#0369a1' : '#ffffff', padding: '1px 6px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 800 }}>
-            {exitWaiters.length}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setShowNewTankerModal(true)}
-          style={{
-            backgroundColor: 'transparent',
-            color: '#bbf7d0',
-            border: 'none',
-            borderRadius: '4px 4px 0 0',
-            padding: '7px 16px',
-            fontSize: '0.85rem',
-            fontWeight: 700,
-            cursor: 'pointer',
-            marginLeft: 'auto',
-          }}
-        >
-          + New Tanker Registration
-        </button>
-      </div>
-
       {/* Main Vehicle Sheet Container */}
       <div
         className="card"
         style={{
           backgroundColor: '#ffffff',
-          borderRadius: '0 0 8px 8px',
+          borderRadius: '8px',
           border: '1px solid #cbd5e1',
-          borderTop: 'none',
           boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
           padding: '1.25rem',
           minHeight: '350px',

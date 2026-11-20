@@ -329,8 +329,6 @@ export default function UnloadingBay() {
     <div className="page" style={{ maxWidth: '1180px', margin: '0 auto', padding: '1.25rem' }}>
       {/* 1. Header */}
       <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <span>Dashboard</span>
-        <span>&gt;</span>
         <span>Milk Reception</span>
         <span>&gt;</span>
         <strong style={{ color: '#0f172a' }}>Unloading Bay</strong>

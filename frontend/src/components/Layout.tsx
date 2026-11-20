@@ -39,7 +39,8 @@ const gateNav: NavItem[] = [
 ];
 
 const qcNav: NavItem[] = [
-  { to: '/qc', labelKey: 'navQCQueue', fallbackLabel: 'QC Queue' },
+  { to: '/qc', labelKey: 'navQcInspection', fallbackLabel: 'QC Inspection' },
+  { to: '/qc/cip', labelKey: 'navCipSanitization', fallbackLabel: 'CIP Sanitization' },
   { to: '/qc/records', labelKey: 'navMyRecords', fallbackLabel: 'My Records' },
 ];
 

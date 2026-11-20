@@ -374,8 +374,7 @@ test('QCLab renders authentic Aavin IDMS QUALITY CONTROL DETAILS form matching u
 test('QCLab renders authentic Aavin IDMS CIP DETAILS form matching user photo', () => {
   const qcSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/QCLab.tsx'), 'utf8');
   assert.ok(qcSrc.includes('CIP DETAILS'), 'Must render CIP DETAILS section header banner');
-  assert.ok(qcSrc.includes('CIP Details'), 'Must render CIP Details tab button');
-  assert.ok(qcSrc.includes('Milk Receipt Entry ▾'), 'Must render Milk Receipt Entry dropdown tab');
+  assert.ok(qcSrc.includes('CIP Details') || qcSrc.includes('CIP Sanitization'), 'Must render CIP Details title');
   assert.ok(qcSrc.includes('Vehicle No'), 'Must render Vehicle No');
   assert.ok(qcSrc.includes('Received From :'), 'Must render Received From with BMC tags');
   assert.ok(qcSrc.includes('DC NO:'), 'Must render DC NO:');
