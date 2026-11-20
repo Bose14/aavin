@@ -209,7 +209,7 @@ export async function insertProfileResiliently(params: {
   return { error: lastErr };
 }
 
-function readFallback(): FallbackStoreData {
+export function readFallback(): FallbackStoreData {
   try {
     if (fs.existsSync(FALLBACK_FILE)) {
       const parsed = JSON.parse(fs.readFileSync(FALLBACK_FILE, 'utf8')) as Partial<FallbackStoreData>;

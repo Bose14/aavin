@@ -1,7 +1,8 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import api from '../../lib/api';
 import { formatLitres } from '../../lib/format';
 import { ErrorBanner } from '../../components/UiPrimitives';
+import { useAuth } from '../../context/AuthContext';
 
 export interface UnloadReceivedQuality {
   cell: string; // 'FC' | 'BC'
@@ -19,6 +20,7 @@ export interface UnloadReceivedQuality {
 }
 
 export default function UnloadingBay() {
+  const { profile } = useAuth();
   const [tankers, setTankers] = useState<any[]>([]);
   const [, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -30,6 +32,9 @@ export default function UnloadingBay() {
   // Dialog Modals
   const [showUnloadModal, setShowUnloadModal] = useState(false);
   const [showDcModal, setShowDcModal] = useState(false);
+
+  // Ref to prevent background 30s poll from resetting open user input
+  const lastLoadedTankerIdRef = useRef<string | null>(null);
 
   // 4.1 Vehicle Details
   const [vehicleNo, setVehicleNo] = useState('');
@@ -43,11 +48,18 @@ export default function UnloadingBay() {
     const mon = String(d.getMonth() + 1).padStart(2, '0');
     return `${day}/${mon}/${d.getFullYear()}`;
   });
-  const [unloadingTime, setUnloadingTime] = useState('02:45');
-  const [unloadingAmPm, setUnloadingAmPm] = useState<'AM' | 'PM'>('PM');
+  const [unloadingTime, setUnloadingTime] = useState(() => {
+    const d = new Date();
+    const hr = d.getHours() % 12 || 12;
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${String(hr).padStart(2, '0')}:${min}`;
+  });
+  const [unloadingAmPm, setUnloadingAmPm] = useState<'AM' | 'PM'>(() => {
+    return new Date().getHours() >= 12 ? 'PM' : 'AM';
+  });
   const [outletSealNumber, setOutletSealNumber] = useState('');
   const [unloadedToSilo, setUnloadedToSilo] = useState('Silo-1');
-  const [unloadOperatorName, setUnloadOperatorName] = useState('R. Kumaran');
+  const [unloadOperatorName, setUnloadOperatorName] = useState(() => profile?.full_name || '');
   const [lineNumber, setLineNumber] = useState<'Line 1' | 'Line 2' | 'Line 3' | 'Line 4'>('Line 1');
   const [grossWeightKg, setGrossWeightKg] = useState('');
   const [remarks, setRemarks] = useState('');
@@ -59,51 +71,53 @@ export default function UnloadingBay() {
   const [receivedQualityList, setReceivedQualityList] = useState<UnloadReceivedQuality[]>([
     {
       cell: 'FC',
-      fat: '4.25',
-      snf: '8.10',
-      clr: '27.56',
-      acidity: '0.13',
-      temp: '4.0',
-      seal: '018168',
-      mbrt: '45',
-      sTime: '02:33',
-      spGr: '1.030',
+      fat: '',
+      snf: '',
+      clr: '',
+      acidity: '',
+      temp: '',
+      seal: '',
+      mbrt: '',
+      sTime: '',
+      spGr: '',
       cob: 'Negative',
       milkType: 'MIXED MILK',
     },
     {
       cell: 'BC',
-      fat: '4.15',
-      snf: '8.05',
-      clr: '27.44',
-      acidity: '0.13',
-      temp: '4.1',
-      seal: '018167',
-      mbrt: '45',
-      sTime: '02:33',
-      spGr: '1.030',
+      fat: '',
+      snf: '',
+      clr: '',
+      acidity: '',
+      temp: '',
+      seal: '',
+      mbrt: '',
+      sTime: '',
+      spGr: '',
       cob: 'Negative',
       milkType: 'MIXED MILK',
     },
   ]);
 
-  const fetchTankers = async () => {
-    setLoading(true);
+  const fetchTankers = async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     setError('');
     try {
       const res = await api.get<any[]>('/tanker');
       const list = Array.isArray(res.data) ? res.data : ((res.data as any)?.tankers || []);
       setTankers(list);
     } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Failed to load tankers');
+      if (!isBackground) {
+        setError(err.response?.data?.error || err.message || 'Failed to load tankers');
+      }
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
   useEffect(() => {
-    void fetchTankers();
-    const interval = setInterval(fetchTankers, 30000);
+    void fetchTankers(false);
+    const interval = setInterval(() => void fetchTankers(true), 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -135,113 +149,137 @@ export default function UnloadingBay() {
   const journey = activeTanker?.journey;
   const isQcRejected = journey?.isQcRejected || activeTanker?.qc_status === 'rejected' || activeTanker?.stage_data?.qc_completed?.qc_status === 'rejected';
 
-  // Pre-fill form when active tanker changes
-  useEffect(() => {
-    if (activeTanker) {
-      setVehicleNo(activeTanker.tanker_number || '');
+  // Tankers requiring CIP re-cleaning after unsatisfied wash inspection
+  const cipUnsatisfiedTankers = useMemo(() => {
+    return tankers.filter((t) => {
+      const isCipUnsatisfied =
+        t.cip_status === 'unsatisfied' ||
+        t.stage_data?.cip_completed?.cip_status === 'unsatisfied' ||
+        t.stage_data?.cip_completed?.qc_inspection === 'UNSATISFIED' ||
+        t.journey?.tripStatus === 'cip_unsatisfied';
+      return isCipUnsatisfied && t.journey?.tripStatus !== 'exited';
+    });
+  }, [tankers]);
 
-      const resolvedDc =
-        activeTanker.dc_number ||
-        activeTanker.stage_data?.dc_number ||
-        activeTanker.stage_data?.dc_no ||
-        activeTanker.stage_data?.qc_completed?.dc_number ||
-        activeTanker.stage_data?.gross_weight?.dc_number ||
-        activeTanker.stage_data?.vehicle_entered?.dc_number ||
-        activeTanker.journey?.dc_number ||
-        '106451';
-      setDcNumber(resolvedDc);
+  const populateUnloadForm = (t: any) => {
+    if (!t) return;
+    setVehicleNo(t.tanker_number || '');
 
-      const bmcSources: string[] = [];
-      if (activeTanker.units?.name) {
-        bmcSources.push(`${activeTanker.units.name.toUpperCase()} [${activeTanker.units.unit_code || '17218'}]`);
-      }
-      if (activeTanker.compartments && Array.isArray(activeTanker.compartments)) {
-        activeTanker.compartments.forEach((c: any) => {
-          if (c.bmc_name && !bmcSources.some((b) => b.includes(c.bmc_name.toUpperCase()))) {
-            bmcSources.push(`${c.bmc_name.toUpperCase()}`);
-          }
-        });
-      }
-      if (bmcSources.length === 0) {
-        bmcSources.push('KRISHANAMPUDUR [CC_BMC87]');
-        bmcSources.push('ADAIYUR BMC [17218]');
-        bmcSources.push('CHITHOOR BMC [17193]');
-      }
-      setReceivedFromList(bmcSources);
+    const resolvedDc =
+      t.dc_number ||
+      t.stage_data?.dc_number ||
+      t.stage_data?.dc_no ||
+      t.stage_data?.qc_completed?.dc_number ||
+      t.stage_data?.gross_weight?.dc_number ||
+      t.stage_data?.vehicle_entered?.dc_number ||
+      t.journey?.dc_number ||
+      '';
+    setDcNumber(resolvedDc);
 
-      const resolvedSeal =
-        activeTanker.seal_number ||
-        activeTanker.stage_data?.outlet_seal_no ||
-        activeTanker.stage_data?.seal_number ||
-        activeTanker.stage_data?.vehicle_entered?.outlet_seal_no ||
-        activeTanker.stage_data?.vehicle_entered?.seal_number ||
-        '018168';
-      setOutletSealNumber(resolvedSeal);
-
-      const gw =
-        activeTanker.stage_data?.gross_weight?.gross_weight_kg ||
-        activeTanker.gross_weight_kg ||
-        activeTanker.journey?.calculated?.gross_weight_kg ||
-        '24850';
-      setGrossWeightKg(String(gw));
-
-      // Populate Received Quality from QC stage if available
-      const qcRecQ = activeTanker.stage_data?.qc_completed?.received_quality;
-      if (qcRecQ && Array.isArray(qcRecQ) && qcRecQ.length > 0) {
-        setReceivedQualityList(
-          qcRecQ.map((q: any) => ({
-            cell: q.cell || 'FC',
-            fat: String(q.fat ?? '4.25'),
-            snf: String(q.snf ?? '8.10'),
-            clr: String(q.clr ?? '27.56'),
-            acidity: String(q.acidity ?? '0.13'),
-            temp: String(q.temp ?? '4.0'),
-            seal: String(q.seal ?? resolvedSeal),
-            mbrt: String(q.mbrt ?? '45'),
-            sTime: String(q.sampleTime ?? '02:33'),
-            spGr: String(q.spGr ?? '1.030'),
-            cob: q.cob === 'Positive' ? 'Positive' : 'Negative',
-            milkType: q.milkType || 'MIXED MILK',
-          }))
-        );
-      } else {
-        const grossRows = activeTanker.stage_data?.gross_weight?.quality_breakdown;
-        const comps = activeTanker.compartments || activeTanker.stage_data?.compartments;
-        const cellItems = grossRows && Array.isArray(grossRows) && grossRows.length > 0
-          ? grossRows.map((r: any) => ({ cell: r.cell || 'FC', fat: r.fat, snf: r.snf }))
-          : comps && Array.isArray(comps) && comps.length > 0
-          ? comps.map((c: any, idx: number) => ({
-              cell: comps.length === 3 ? (idx === 0 ? 'FC' : idx === 1 ? 'MC' : 'BC') : (idx === 0 ? 'FC' : 'BC'),
-              fat: c.fat_pct ?? c.fat,
-              snf: c.snf_pct ?? c.snf,
-            }))
-          : [{ cell: 'FC', fat: '4.25', snf: '8.10' }, { cell: 'BC', fat: '4.15', snf: '8.05' }];
-
-        setReceivedQualityList(
-          cellItems.map((item, idx) => ({
-            cell: item.cell,
-            fat: String(item.fat ?? (4.25 - idx * 0.1).toFixed(2)),
-            snf: String(item.snf ?? (8.15 - idx * 0.05).toFixed(2)),
-            clr: '27.56',
-            acidity: '0.13',
-            temp: '4.0',
-            seal: resolvedSeal ? `${parseInt(resolvedSeal, 10) - idx || resolvedSeal}` : '018168',
-            mbrt: '45',
-            sTime: '02:33',
-            spGr: '1.030',
-            cob: 'Negative',
-            milkType: 'MIXED MILK',
-          }))
-        );
-      }
+    const bmcSources: string[] = [];
+    if (t.units?.name) {
+      bmcSources.push(`${t.units.name.toUpperCase()}${t.units.unit_code ? ` [${t.units.unit_code}]` : ''}`);
     }
+    if (t.compartments && Array.isArray(t.compartments)) {
+      t.compartments.forEach((c: any) => {
+        if (c.bmc_name && !bmcSources.some((b) => b.includes(c.bmc_name.toUpperCase()))) {
+          bmcSources.push(`${c.bmc_name.toUpperCase()}`);
+        }
+      });
+    }
+    if (bmcSources.length === 0 && (t.source_bmc_name || t.units?.name)) {
+      bmcSources.push(t.source_bmc_name || t.units?.name);
+    }
+    setReceivedFromList(bmcSources);
+
+    const resolvedSeal =
+      t.seal_number ||
+      t.stage_data?.outlet_seal_no ||
+      t.stage_data?.seal_number ||
+      t.stage_data?.vehicle_entered?.outlet_seal_no ||
+      t.stage_data?.vehicle_entered?.seal_number ||
+      '';
+    setOutletSealNumber(resolvedSeal);
+
+    const gw =
+      t.stage_data?.gross_weight?.gross_weight_kg ||
+      t.gross_weight_kg ||
+      t.journey?.calculated?.gross_weight_kg ||
+      '';
+    setGrossWeightKg(gw ? String(gw) : '');
+
+    if (profile?.full_name) {
+      setUnloadOperatorName(profile.full_name);
+    }
+
+    const qcRecQ = t.stage_data?.qc_completed?.received_quality;
+    if (qcRecQ && Array.isArray(qcRecQ) && qcRecQ.length > 0) {
+      setReceivedQualityList(
+        qcRecQ.map((q: any) => ({
+          cell: q.cell || 'FC',
+          fat: q.fat !== undefined && q.fat !== null ? String(q.fat) : '',
+          snf: q.snf !== undefined && q.snf !== null ? String(q.snf) : '',
+          clr: q.clr !== undefined && q.clr !== null ? String(q.clr) : '',
+          acidity: q.acidity !== undefined && q.acidity !== null ? String(q.acidity) : '',
+          temp: q.temp !== undefined && q.temp !== null ? String(q.temp) : '',
+          seal: String(q.seal || resolvedSeal || ''),
+          mbrt: q.mbrt !== undefined && q.mbrt !== null ? String(q.mbrt) : '',
+          sTime: q.sampleTime ? String(q.sampleTime) : (q.sTime ? String(q.sTime) : ''),
+          spGr: q.spGr !== undefined && q.spGr !== null ? String(q.spGr) : '',
+          cob: q.cob === 'Positive' ? 'Positive' : 'Negative',
+          milkType: q.milkType || 'MIXED MILK',
+        }))
+      );
+    } else {
+      const grossRows = t.stage_data?.gross_weight?.quality_breakdown;
+      const comps = t.compartments || t.stage_data?.compartments;
+      const cellItems = grossRows && Array.isArray(grossRows) && grossRows.length > 0
+        ? grossRows.map((r: any) => ({ cell: r.cell || 'FC', fat: r.fat, snf: r.snf }))
+        : comps && Array.isArray(comps) && comps.length > 0
+        ? comps.map((c: any, idx: number) => ({
+            cell: comps.length === 3 ? (idx === 0 ? 'FC' : idx === 1 ? 'MC' : 'BC') : (idx === 0 ? 'FC' : 'BC'),
+            fat: c.fat_pct ?? c.fat,
+            snf: c.snf_pct ?? c.snf,
+          }))
+        : [{ cell: 'FC', fat: '', snf: '' }, { cell: 'BC', fat: '', snf: '' }];
+
+      setReceivedQualityList(
+        cellItems.map((item: any) => ({
+          cell: item.cell,
+          fat: item.fat !== undefined && item.fat !== null ? String(item.fat) : '',
+          snf: item.snf !== undefined && item.snf !== null ? String(item.snf) : '',
+          clr: '',
+          acidity: '',
+          temp: '',
+          seal: resolvedSeal || '',
+          mbrt: '',
+          sTime: '',
+          spGr: '',
+          cob: 'Negative',
+          milkType: 'MIXED MILK',
+        }))
+      );
+    }
+  };
+
+  const openUnloadModal = (t: any) => {
+    setSelectedTankerId(t.id);
+    lastLoadedTankerIdRef.current = t.id;
+    populateUnloadForm(t);
+    setShowUnloadModal(true);
+  };
+
+  // Pre-fill form when active tanker changes (only when modal is not open, avoiding wiping user typing)
+  useEffect(() => {
+    if (showUnloadModal || showDcModal) return;
+    if (!activeTanker) return;
+    if (activeTanker.id === lastLoadedTankerIdRef.current) return;
+    lastLoadedTankerIdRef.current = activeTanker.id;
+    populateUnloadForm(activeTanker);
   }, [
     activeTanker?.id,
-    activeTanker?.tanker_number,
-    activeTanker?.seal_number,
-    activeTanker?.dc_number,
-    activeTanker?.stage_data,
-    activeTanker,
+    showUnloadModal,
+    showDcModal,
   ]);
 
   const updateReceivedQuality = (idx: number, field: keyof UnloadReceivedQuality, val: any) => {
@@ -432,6 +470,30 @@ export default function UnloadingBay() {
         </div>
       )}
 
+      {/* CIP Unsatisfied Warning Banner */}
+      {cipUnsatisfiedTankers.length > 0 && (
+        <div
+          style={{
+            backgroundColor: '#fffbeb',
+            border: '2px solid #f59e0b',
+            borderRadius: '8px',
+            padding: '12px 16px',
+            marginBottom: '1.25rem',
+            color: '#78350f',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <span style={{ fontSize: '20px' }}>⚠️</span>
+            <strong style={{ fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              CIP CLEANING UNSATISFIED — RE-CLEANING REQUIRED ({cipUnsatisfiedTankers.length} VEHICLE{cipUnsatisfiedTankers.length > 1 ? 'S' : ''})
+            </strong>
+          </div>
+          <p style={{ margin: 0, fontSize: '12px', lineHeight: '1.5' }}>
+            The following tanker(s) failed QC inspection after washing: <strong>{cipUnsatisfiedTankers.map((t) => t.tanker_number).join(', ')}</strong>. Bay cleaning team must thoroughly re-wash compartments with hot water / caustic rinse before QC Lab can re-inspect and clear them for exit.
+          </p>
+        </div>
+      )}
+
       {/* Main Vehicle Sheet Card */}
       <div
         className="card"
@@ -522,10 +584,7 @@ export default function UnloadingBay() {
                   return (
                     <tr
                       key={t.id}
-                      onClick={() => {
-                        setSelectedTankerId(t.id);
-                        setShowUnloadModal(true);
-                      }}
+                      onClick={() => openUnloadModal(t)}
                       style={{
                         borderBottom: '1px solid #f1f5f9',
                         cursor: 'pointer',
@@ -565,8 +624,7 @@ export default function UnloadingBay() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedTankerId(t.id);
-                            setShowUnloadModal(true);
+                            openUnloadModal(t);
                           }}
                           className="btn btn-primary btn-sm"
                           style={{ backgroundColor: '#65a30d', borderColor: '#4d7c0f', fontWeight: 700, padding: '4px 12px' }}

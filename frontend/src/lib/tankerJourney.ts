@@ -22,6 +22,7 @@ export type TripStatus =
   | 'unloaded'
   | 'tare_done'
   | 'cip_done'
+  | 'cip_unsatisfied'
   | 'exited'
   | 'qc_rejected';
 
@@ -58,6 +59,7 @@ export const STAGE_COLORS: Record<TripStatus | 'on_the_way', {
   unloaded: { dot: '#3b82f6', badgeBg: '#dbeafe', badgeText: '#1e40af', border: '#3b82f6', label: 'Unloaded' },
   tare_done: { dot: '#d97706', badgeBg: '#fffbeb', badgeText: '#b45309', border: '#fde68a', label: 'Tare Done' },
   cip_done: { dot: '#06b6d4', badgeBg: '#cffafe', badgeText: '#155e75', border: '#06b6d4', label: 'CIP Done' },
+  cip_unsatisfied: { dot: '#d97706', badgeBg: '#fef3c7', badgeText: '#92400e', border: '#f59e0b', label: 'CIP Unsatisfied' },
   exited: { dot: '#22c55e', badgeBg: '#dcfce7', badgeText: '#166534', border: '#22c55e', label: 'Exited' },
   qc_rejected: { dot: '#ef4444', badgeBg: '#fee2e2', badgeText: '#991b1b', border: '#ef4444', label: 'QC Rejected' },
 };
@@ -317,10 +319,11 @@ export function deriveTankerJourneyState(
     });
   }
   if (!stageRecordMap.has('cip_completed') && trip.cip_status != null) {
+    const isUnsat = trip.cip_status === 'unsatisfied' || trip.cip_status === 'fail';
     stageRecordMap.set('cip_completed', {
       stage_name: 'cip_completed',
       team: 'qc',
-      status: 'done',
+      status: isUnsat ? 'rejected' : 'done',
       stage_data: { cip_status: trip.cip_status },
     });
   }
@@ -421,8 +424,12 @@ export function deriveTankerJourneyState(
     }
 
     if (rec && (rec.status === 'done' || (rec.status as string) === 'rejected')) {
-      const isRejectStep = def.key === 'qc_completed' && isQcRejected;
-      completedCount++;
+      const isRejectStep =
+        (def.key === 'qc_completed' && isQcRejected) ||
+        (def.key === 'cip_completed' && (rec.status === 'rejected' || (rec.stage_data?.cip_status as string) === 'unsatisfied' || trip.cip_status === 'unsatisfied'));
+      if (!isRejectStep || def.key === 'qc_completed') {
+        completedCount++;
+      }
       const doneAtStr = rec.done_at || trip.created_at || new Date(nowMs).toISOString();
 
       let timeSpentMin: number | null = null;
@@ -465,7 +472,8 @@ export function deriveTankerJourneyState(
         const net = gross != null && tare != null ? Number(gross) - Number(tare) : null;
         summary = `Tare ${tare ? `${Number(tare).toLocaleString('en-IN')} kg` : '-'} · Net ${net ? `${Number(net).toLocaleString('en-IN')} kg` : '-'}`;
       } else if (def.key === 'cip_completed') {
-        const st = (d.cip_status as string) || trip.cip_status || 'Pass';
+        const isCipUnsat = rec.status === 'rejected' || (d.cip_status as string) === 'unsatisfied' || trip.cip_status === 'unsatisfied';
+        const st = isCipUnsat ? 'Unsatisfied (Re-cleaning required)' : (d.cip_status as string) || trip.cip_status || 'Pass';
         summary = `CIP Sanitization: ${st}`;
       } else if (def.key === 'vehicle_exit') {
         const pass = (d.exit_gate_pass_no as string) || trip.exit_gate_pass_no || '';
@@ -497,7 +505,7 @@ export function deriveTankerJourneyState(
       else if (def.key === 'qc_completed') tripStatus = isRejectStep ? 'qc_rejected' : 'qc_done';
       else if (def.key === 'unloaded') tripStatus = 'unloaded';
       else if (def.key === 'tare_weight') tripStatus = 'tare_done';
-      else if (def.key === 'cip_completed') tripStatus = 'cip_done';
+      else if (def.key === 'cip_completed') tripStatus = isRejectStep ? 'cip_unsatisfied' : 'cip_done';
       else if (def.key === 'vehicle_exit') tripStatus = 'exited';
     } else if (!foundCurrent) {
       foundCurrent = true;
@@ -658,7 +666,7 @@ export function deriveTankerJourneyState(
     timelineSteps,
     completedStepsCount: completedCount,
     completedStageKeys: timelineSteps
-      .filter((s) => s.status === 'done' || s.status === 'rejected')
+      .filter((s) => s.status === 'done' || (s.status === 'rejected' && s.key === 'qc_completed'))
       .map((s) => s.key as TankerStageKey),
     compartments: compartments.length > 0 ? compartments : undefined,
     calculated,

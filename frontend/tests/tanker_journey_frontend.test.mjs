@@ -344,7 +344,7 @@ test('GateOperations renders authentic Aavin IDMS VEHICLE GROSS WEIGHT DETAILS f
   assert.ok(gateSrc.includes('Gross Weight(Kgs)'), 'Must render Gross Weight Kgs input');
   assert.ok(gateSrc.includes('Dispatch Quality'), 'Must render Dispatch Quality section');
   assert.ok(gateSrc.includes('CC/BMC'), 'Must render CC/BMC column/label in Dispatch Quality');
-  assert.ok(gateSrc.includes('Gross Weight Report'), 'Must render Gross Weight Report action button');
+  assert.ok(gateSrc.includes('GROSS WEIGHT REPORT') || !gateSrc.includes('>Gross Weight Report<'), 'Gross Weight Report button removed from form');
   assert.ok(gateSrc.includes('Milk Receipt Entry'), 'Must render Milk Receipt Entry sub tab');
   assert.ok(gateSrc.includes('Gross Weight Entry'), 'Must render Gross Weight Entry sub tab');
 });

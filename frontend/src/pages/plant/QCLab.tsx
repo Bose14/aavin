@@ -1,8 +1,10 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import api from '../../lib/api';
 import { formatLitres, getLocalTodayIso } from '../../lib/format';
 import { ErrorBanner } from '../../components/UiPrimitives';
 import { useTranslation } from '../../context/LanguageContext';
+import { useAuth } from '../../context/AuthContext';
+import { parseDispatchTime } from './GateOperations';
 
 export interface QcDispatchQuality {
   cell: string; // 'FC' | 'BC' | 'MC'
@@ -48,7 +50,7 @@ export interface QcCellTests {
   fatChemist: string;
 }
 
-export function getDefaultCellTests(chemist = 'S. Ramesh (QC Chemist)'): QcCellTests {
+export function getDefaultCellTests(chemist = ''): QcCellTests {
   return {
     freshnessTemp: '4.0',
     freshnessOrganoleptic: 'Satisfied',
@@ -69,10 +71,10 @@ export function getDefaultCellTests(chemist = 'S. Ramesh (QC Chemist)'): QcCellT
     aflatoxinTest: 'Negative',
     specialChemist: chemist,
 
-    freeFattyAcid: '0.12',
-    brReading: '41.2',
+    freeFattyAcid: '',
+    brReading: '',
     motTest: 'Negative',
-    rmValue: '28.5',
+    rmValue: '',
     fatChemist: chemist,
   };
 }
@@ -145,6 +147,10 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
   // Received Quality per cell
   const [receivedQualityList, setReceivedQualityList] = useState<QcReceivedQuality[]>([]);
 
+  const { profile } = useAuth();
+  const userChemist = profile?.full_name || '';
+  const lastLoadedTankerIdRef = useRef<string | null>(null);
+
   // Meta & Tests
   const [manualEntryReason, setManualEntryReason] = useState('');
   const [testTypes, setTestTypes] = useState<Record<string, string>>({});
@@ -153,17 +159,17 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
   const [rejectionReason, setRejectionReason] = useState('');
 
   // 3.5 Select Test: 4 test categories separately for FC and BC
-  const [cellTests, setCellTests] = useState<Record<string, QcCellTests>>({
-    FC: getDefaultCellTests(),
-    BC: getDefaultCellTests(),
-  });
+  const [cellTests, setCellTests] = useState<Record<string, QcCellTests>>(() => ({
+    FC: getDefaultCellTests(profile?.full_name || ''),
+    BC: getDefaultCellTests(profile?.full_name || ''),
+  }));
   const [selectedTestCellTab, setSelectedTestCellTab] = useState<string>('FC');
 
   const updateCellTest = <K extends keyof QcCellTests>(cell: string, field: K, val: QcCellTests[K]) => {
     setCellTests((prev) => ({
       ...prev,
       [cell]: {
-        ...(prev[cell] || getDefaultCellTests()),
+        ...(prev[cell] || getDefaultCellTests(userChemist)),
         [field]: val,
       },
     }));
@@ -190,23 +196,23 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
   const [cipManualTest, setCipManualTest] = useState(false);
   const [isCipChecked, setIsCipChecked] = useState(true);
 
-  const fetchTankers = async () => {
-    setLoading(true);
+  const fetchTankers = async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     setError('');
     try {
       const res = await api.get('/tanker');
       const list = Array.isArray(res.data) ? res.data : (res.data?.tankers || []);
       setTankers(list);
     } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Failed to load tankers');
+      if (!isBackground) setError(err.response?.data?.error || err.message || 'Failed to load tankers');
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
   useEffect(() => {
-    void fetchTankers();
-    const interval = setInterval(fetchTankers, 30000);
+    void fetchTankers(false);
+    const interval = setInterval(() => void fetchTankers(true), 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -222,13 +228,12 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     );
   }, [tankers]);
 
-  // Condition 5: CIP queue displays only vehicles for which Tare Weight has been completed
+  // Condition 5: CIP queue displays only vehicles for which Tare Weight has been completed (and keeps unsatisfied ones for re-cleaning)
   const cipEligibleTankers = useMemo(() => {
     return tankers.filter(
       (t) =>
         (t.stage_data?.tare_weight != null || t.journey?.completedStageKeys?.includes('tare_weight')) &&
-        !t.stage_data?.cip_completed &&
-        !t.journey?.completedStageKeys?.includes('cip_completed') &&
+        (!t.stage_data?.cip_completed || t.stage_data?.cip_completed?.cip_status === 'unsatisfied' || t.stage_data?.cip_completed?.status === 'rejected' || t.cip_status === 'unsatisfied') &&
         t.journey?.tripStatus !== 'exited',
     );
   }, [tankers]);
@@ -246,204 +251,198 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
 
 
 
-  // Pre-fill form when active tanker changes
+  // Pre-fill form when active tanker changes (guarded to avoid wiping active edits or polling reset)
   useEffect(() => {
-    if (activeTanker) {
-      const vNo = activeTanker.tanker_number || '';
-      setQcVehicleNo(vNo);
-      setCipVehicleNo(vNo);
+    if (!activeTanker) return;
+    const isAnyModalOpen = showQcModal || showCipModal || showRejectModal;
+    if (isAnyModalOpen) return;
+    if (activeTanker.id === lastLoadedTankerIdRef.current) return;
+    lastLoadedTankerIdRef.current = activeTanker.id;
 
-      const resolvedDc =
-        activeTanker.dc_number ||
-        activeTanker.stage_data?.dc_number ||
-        activeTanker.stage_data?.dc_no ||
-        activeTanker.stage_data?.gross_weight?.dc_number ||
-        activeTanker.stage_data?.vehicle_entered?.dc_number ||
-        '';
-      setQcDcNo(resolvedDc);
-      setCipDcNo(resolvedDc);
+    const vNo = activeTanker.tanker_number || '';
+    setQcVehicleNo(vNo);
+    setCipVehicleNo(vNo);
 
-      const bmcSources: string[] = [];
-      if (activeTanker.units?.name) {
-        bmcSources.push(`${activeTanker.units.name.toUpperCase()} [${activeTanker.units.unit_code || '17218'}]`);
-      }
-      if (activeTanker.compartments && Array.isArray(activeTanker.compartments)) {
-        activeTanker.compartments.forEach((c: any) => {
-          if (c.bmc_name && !bmcSources.some((b) => b.includes(c.bmc_name.toUpperCase()))) {
-            bmcSources.push(`${c.bmc_name.toUpperCase()}`);
-          }
-        });
-      }
-      if (bmcSources.length === 0) {
-        bmcSources.push('KRISHANAMPUDUR [CC_BMC87]');
-        bmcSources.push('ADAIYUR BMC [17218]');
-        bmcSources.push('CHITHOOR BMC [17193]');
-      }
-      setQcReceivedFromList(bmcSources);
-      setCipReceivedFromList(bmcSources);
+    const resolvedDc =
+      activeTanker.dc_number ||
+      activeTanker.stage_data?.dc_number ||
+      activeTanker.stage_data?.dc_no ||
+      activeTanker.stage_data?.gross_weight?.dc_number ||
+      activeTanker.stage_data?.vehicle_entered?.dc_number ||
+      '';
+    setQcDcNo(resolvedDc);
+    setCipDcNo(resolvedDc);
 
-      const dispDate = activeTanker.date || getLocalTodayIso();
-      const [y, m, d] = dispDate.split('-');
-      if (y && m && d) {
-        setQcDispatchDate(`${d}/${m}/${y}`);
-        setCipDispatchDate(`${d}/${m}/${y}`);
-      } else {
-        setQcDispatchDate(dispDate);
-        setCipDispatchDate(dispDate);
-      }
-
-      const rawDispTime = activeTanker.dispatch_time || activeTanker.stage_data?.dispatch_time || '01:00 PM';
-      if (rawDispTime) {
-        const isPm = rawDispTime.toUpperCase().includes('PM');
-        const isAm = rawDispTime.toUpperCase().includes('AM');
-        const clean = rawDispTime.replace(/(AM|PM)/gi, '').trim();
-        const parts = clean.split(':');
-        let hh = parseInt(parts[0], 10) || 1;
-        const mm = parts[1] || '00';
-        if (isPm) {
-          setQcDispatchAmPm('PM');
-          setCipDispatchAmPm('PM');
-          if (hh > 12) hh -= 12;
-        } else if (isAm) {
-          setQcDispatchAmPm('AM');
-          setCipDispatchAmPm('AM');
-          if (hh === 0) hh = 12;
-          if (hh > 12) hh -= 12;
-        } else {
-          setQcDispatchAmPm(hh >= 12 ? 'PM' : 'AM');
-          setCipDispatchAmPm(hh >= 12 ? 'PM' : 'AM');
-          if (hh > 12) hh -= 12;
+    const bmcSources: string[] = [];
+    if (activeTanker.units?.name) {
+      bmcSources.push(`${activeTanker.units.name.toUpperCase()}${activeTanker.units.unit_code ? ` [${activeTanker.units.unit_code}]` : ''}`);
+    }
+    if (activeTanker.compartments && Array.isArray(activeTanker.compartments)) {
+      activeTanker.compartments.forEach((c: any) => {
+        if (c.bmc_name && !bmcSources.some((b) => b.includes(c.bmc_name.toUpperCase()))) {
+          bmcSources.push(`${c.bmc_name.toUpperCase()}`);
         }
-        const timeStr = `${String(hh).padStart(2, '0')}:${mm}`;
-        setQcDispatchTime(timeStr);
-        setCipDispatchTime(timeStr);
-      }
+      });
+    }
+    setQcReceivedFromList(bmcSources);
+    setCipReceivedFromList(bmcSources);
 
-      // Initialize Dispatch Quality List
-      const dispQ: QcDispatchQuality[] = [];
-      const grossRows = activeTanker.stage_data?.gross_weight?.quality_breakdown;
-      if (grossRows && Array.isArray(grossRows) && grossRows.length > 0) {
-        grossRows.forEach((r: any) => {
-          dispQ.push({
-            cell: r.cell || 'FC',
-            fat: String(r.fat ?? '4.25'),
-            snf: String(r.snf ?? '8.10'),
-            clr: '27.56',
-            acidity: '0.13',
-            temp: String(r.temp ?? '4.0'),
-            milkType: 'MIXED MILK',
-            qty: String(r.qty ?? '6378'),
-          });
-        });
-      } else {
-        const comps = activeTanker.compartments || activeTanker.stage_data?.compartments;
-        if (comps && Array.isArray(comps) && comps.length > 0) {
-          comps.forEach((c: any, idx: number) => {
-            let cellLabel = 'FC';
-            if (c.cell && ['FC', 'MC', 'BC'].includes(String(c.cell).toUpperCase())) {
-              cellLabel = String(c.cell).toUpperCase();
-            } else {
-              const name = String(c.compartment_name || '').toLowerCase();
-              if (name.includes('front') || name.includes('fc') || name.includes('comp 1') || name.includes('comp1')) {
-                cellLabel = 'FC';
-              } else if (comps.length === 3 && (name.includes('middle') || name.includes('mc') || name.includes('comp 2') || name.includes('comp2'))) {
-                cellLabel = 'MC';
-              } else if (name.includes('rear') || name.includes('back') || name.includes('bc') || (comps.length === 3 && (name.includes('comp 3') || name.includes('comp3')))) {
-                cellLabel = 'BC';
-              } else if (comps.length === 3) {
-                cellLabel = idx === 0 ? 'FC' : idx === 1 ? 'MC' : 'BC';
-              } else if (comps.length === 2) {
-                cellLabel = idx === 0 ? 'FC' : 'BC';
-              } else {
-                cellLabel = 'FC';
-              }
-            }
-            dispQ.push({
-              cell: cellLabel,
-              fat: String(c.fat_pct ?? c.fat ?? activeTanker.dispatch_fat_pct ?? '4.25'),
-              snf: String(c.snf_pct ?? c.snf ?? activeTanker.dispatch_snf_pct ?? '8.10'),
-              clr: '27.56',
-              acidity: '0.13',
-              temp: String(c.temperature ?? c.temp ?? '4.0'),
-              milkType: c.milk_type || 'MIXED MILK',
-              qty: String(c.quantity_litres ?? c.qty ?? '5000'),
-            });
-          });
-        } else {
-          dispQ.push({
-            cell: 'FC',
-            fat: '4.25',
-            snf: '8.10',
-            clr: '27.56',
-            acidity: '0.13',
-            temp: '4.0',
-            milkType: 'MIXED MILK',
-            qty: '6378',
-          });
-          dispQ.push({
-            cell: 'BC',
-            fat: '4.15',
-            snf: '8.05',
-            clr: '27.44',
-            acidity: '0.14',
-            temp: '4.0',
-            milkType: 'MIXED MILK',
-            qty: '5098',
-          });
-        }
-      }
-      setDispatchQualityList(dispQ);
+    const dispDate = activeTanker.date || getLocalTodayIso();
+    const [y, m, d] = dispDate.split('-');
+    if (y && m && d) {
+      setQcDispatchDate(`${d}/${m}/${y}`);
+      setCipDispatchDate(`${d}/${m}/${y}`);
+    } else {
+      setQcDispatchDate(dispDate);
+      setCipDispatchDate(dispDate);
+    }
 
-      // Initialize Received Quality List
-      const recQ: QcReceivedQuality[] = [];
-      const cellNames = dispQ.map((d) => d.cell);
-      const uniqueCells = Array.from(new Set(cellNames.length > 0 ? cellNames : ['FC', 'BC']));
+    const parsedDisp = parseDispatchTime(
+      activeTanker.dispatch_time || activeTanker.stage_data?.dispatch_time,
+      activeTanker.dispatch_ampm || activeTanker.stage_data?.dispatch_ampm,
+      activeTanker.created_at
+    );
+    setQcDispatchTime(parsedDisp.time);
+    setQcDispatchAmPm(parsedDisp.ampm);
+    setCipDispatchTime(parsedDisp.time);
+    setCipDispatchAmPm(parsedDisp.ampm);
 
-      uniqueCells.forEach((cLabel, idx) => {
-        recQ.push({
-          cell: cLabel,
-          purpose: 'Purchase',
-          cps: 'Chilled',
-          fat: (4.25 - idx * 0.1).toFixed(2),
-          snf: (8.15 - idx * 0.05).toFixed(2),
-          clr: '28.00',
-          acidity: '0.13',
-          temp: '4.0',
-          seal: idx === 0 ? '018168' : '018167',
-          mbrt: '04:30',
-          sampleDate: qcDate,
-          sampleTime: '02:33',
-          spGr: '1.030',
-          cob: 'Negative',
+    // Initialize Dispatch Quality List
+    const dispQ: QcDispatchQuality[] = [];
+    const grossRows = activeTanker.stage_data?.gross_weight?.quality_breakdown;
+    if (grossRows && Array.isArray(grossRows) && grossRows.length > 0) {
+      grossRows.forEach((r: any) => {
+        dispQ.push({
+          cell: r.cell || 'FC',
+          fat: String(r.fat ?? activeTanker.dispatch_fat_pct ?? ''),
+          snf: String(r.snf ?? activeTanker.dispatch_snf_pct ?? ''),
+          clr: '',
+          acidity: '',
+          temp: String(r.temp ?? '4.0'),
           milkType: 'MIXED MILK',
-          cellRejected: false,
-          qty: dispQ.find((d) => d.cell === cLabel)?.qty || '5000',
+          qty: String(r.qty ?? ''),
         });
       });
-      setReceivedQualityList(recQ);
-
-      // Initialize cellTests for all unique compartments
-      setCellTests((prev) => {
-        const next = { ...prev };
-        uniqueCells.forEach((c) => {
-          if (!next[c]) {
-            next[c] = getDefaultCellTests();
+    } else {
+      const comps = activeTanker.compartments || activeTanker.stage_data?.compartments;
+      if (comps && Array.isArray(comps) && comps.length > 0) {
+        comps.forEach((c: any, idx: number) => {
+          let cellLabel = 'FC';
+          if (c.cell && ['FC', 'MC', 'BC'].includes(String(c.cell).toUpperCase())) {
+            cellLabel = String(c.cell).toUpperCase();
+          } else if (comps.length === 3) {
+            cellLabel = idx === 0 ? 'FC' : idx === 1 ? 'MC' : 'BC';
+          } else if (comps.length === 2) {
+            cellLabel = idx === 0 ? 'FC' : 'BC';
           }
+          dispQ.push({
+            cell: cellLabel,
+            fat: String(c.fat_pct ?? c.fat ?? activeTanker.dispatch_fat_pct ?? ''),
+            snf: String(c.snf_pct ?? c.snf ?? activeTanker.dispatch_snf_pct ?? ''),
+            clr: '',
+            acidity: '',
+            temp: String(c.temperature ?? c.temp ?? '4.0'),
+            milkType: c.milk_type || 'MIXED MILK',
+            qty: String(c.quantity_litres ?? c.qty ?? ''),
+          });
         });
-        return next;
-      });
-      if (uniqueCells.length > 0 && !uniqueCells.includes(selectedTestCellTab)) {
-        setSelectedTestCellTab(uniqueCells[0]);
+      } else {
+        const defaultFat = activeTanker.dispatch_fat_pct != null ? String(activeTanker.dispatch_fat_pct) : '';
+        const defaultSnf = activeTanker.dispatch_snf_pct != null ? String(activeTanker.dispatch_snf_pct) : '';
+        const halfQty = activeTanker.quantity_dispatched > 0 ? String(Math.round(activeTanker.quantity_dispatched / 2)) : '';
+        dispQ.push({
+          cell: 'FC',
+          fat: defaultFat,
+          snf: defaultSnf,
+          clr: '',
+          acidity: '',
+          temp: '4.0',
+          milkType: 'MIXED MILK',
+          qty: halfQty,
+        });
+        dispQ.push({
+          cell: 'BC',
+          fat: defaultFat,
+          snf: defaultSnf,
+          clr: '',
+          acidity: '',
+          temp: '4.0',
+          milkType: 'MIXED MILK',
+          qty: halfQty,
+        });
       }
+    }
+    setDispatchQualityList(dispQ);
+
+    // Initialize Received Quality List
+    const recQ: QcReceivedQuality[] = [];
+    const cellNames = dispQ.map((d) => d.cell);
+    const uniqueCells = Array.from(new Set(cellNames.length > 0 ? cellNames : ['FC', 'BC']));
+
+    uniqueCells.forEach((cLabel) => {
+      const matchDisp = dispQ.find((d) => d.cell === cLabel);
+      recQ.push({
+        cell: cLabel,
+        purpose: 'Purchase',
+        cps: 'Chilled',
+        fat: matchDisp?.fat || (activeTanker.dispatch_fat_pct != null ? String(activeTanker.dispatch_fat_pct) : ''),
+        snf: matchDisp?.snf || (activeTanker.dispatch_snf_pct != null ? String(activeTanker.dispatch_snf_pct) : ''),
+        clr: '',
+        acidity: '',
+        temp: '4.0',
+        seal: activeTanker.seal_number || activeTanker.stage_data?.seal_number || activeTanker.stage_data?.outlet_seal_no || '',
+        mbrt: '',
+        sampleDate: qcDate,
+        sampleTime: '',
+        spGr: '',
+        cob: 'Negative',
+        milkType: 'MIXED MILK',
+        cellRejected: false,
+        qty: matchDisp?.qty || '',
+      });
+    });
+    setReceivedQualityList(recQ);
+
+    // Initialize cellTests for all unique compartments
+    setCellTests((prev) => {
+      const next = { ...prev };
+      uniqueCells.forEach((c) => {
+        if (!next[c]) {
+          next[c] = getDefaultCellTests(userChemist);
+        }
+      });
+      return next;
+    });
+    if (uniqueCells.length > 0 && !uniqueCells.includes(selectedTestCellTab)) {
+      setSelectedTestCellTab(uniqueCells[0]);
     }
   }, [
     activeTanker?.id,
-    activeTanker?.tanker_number,
-    activeTanker?.dc_number,
-    activeTanker?.dispatch_time,
-    activeTanker?.stage_data,
-    activeTanker,
+    showQcModal,
+    showCipModal,
+    showRejectModal,
+    userChemist,
   ]);
+
+  const openQcModal = (t: any) => {
+    setSelectedTankerId(t.id);
+    lastLoadedTankerIdRef.current = t.id;
+    const vNo = t.tanker_number || '';
+    setQcVehicleNo(vNo);
+    const resolvedDc = t.dc_number || t.stage_data?.dc_number || t.stage_data?.dc_no || t.stage_data?.gross_weight?.dc_number || t.stage_data?.vehicle_entered?.dc_number || '';
+    setQcDcNo(resolvedDc);
+    setShowQcModal(true);
+  };
+
+  const openCipModal = (t: any) => {
+    setSelectedTankerId(t.id);
+    lastLoadedTankerIdRef.current = t.id;
+    const vNo = t.tanker_number || '';
+    setCipVehicleNo(vNo);
+    const resolvedDc = t.dc_number || t.stage_data?.dc_number || t.stage_data?.dc_no || t.stage_data?.gross_weight?.dc_number || t.stage_data?.vehicle_entered?.dc_number || '';
+    setCipDcNo(resolvedDc);
+    setShowCipModal(true);
+  };
 
   const updateReceivedQuality = (idx: number, field: keyof QcReceivedQuality, val: any) => {
     setReceivedQualityList((prev) => {
@@ -537,6 +536,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
       return;
     }
 
+    const isUnsatisfied = qcInspection === 'UNSATISFIED';
     await handleRecordStage('cip_completed', {
       vehicle_no: cipVehicleNo,
       received_from: cipReceivedFromList,
@@ -552,7 +552,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
         manual_test: cipManualTest,
       },
       is_cip_checked: isCipChecked,
-      cip_status: qcInspection === 'SATISFIED' ? 'pass' : 'fail',
+      cip_status: isUnsatisfied ? 'unsatisfied' : 'pass',
       chemical_used: cipAutomaticTest ? 'Automated CIP 5-Step Cycle' : 'Manual Caustic/Acid Sanitization',
     });
   };
@@ -564,11 +564,19 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     setSuccessMsg('');
     try {
       await api.post(`/tanker/${activeTanker.id}/stages/${stageKey}`, payload);
-      setSuccessMsg(
-        lang === 'ta'
-          ? `QC தகவல் வெற்றிகரமாக பதிவு செய்யப்பட்டது! அடுத்த பணிக்கு அனுப்பப்பட்டது.`
-          : `Stage ${stageKey.replace('_', ' ').toUpperCase()} recorded successfully!`
-      );
+      if (stageKey === 'cip_completed' && payload.qc_inspection === 'UNSATISFIED') {
+        setSuccessMsg(
+          lang === 'ta'
+            ? 'CIP சுத்தம் அதிருப்தி என பதிவு செய்யப்பட்டது! டேங்கர் மீண்டும் கழுவுவதற்காக இறக்கும் குழுவுக்கு திருப்பி அனுப்பப்பட்டது.'
+            : 'CIP cleaning was marked UNSATISFIED. Tanker rejected and returned to Unloading / Cleaning team for re-washing!'
+        );
+      } else {
+        setSuccessMsg(
+          lang === 'ta'
+            ? `QC தகவல் வெற்றிகரமாக பதிவு செய்யப்பட்டது! அடுத்த பணிக்கு அனுப்பப்பட்டது.`
+            : `Stage ${stageKey.replace('_', ' ').toUpperCase()} recorded successfully!`
+        );
+      }
       setShowQcModal(false);
       setShowCipModal(false);
       setShowRejectModal(false);
@@ -777,10 +785,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                       return (
                         <tr
                           key={t.id}
-                          onClick={() => {
-                            setSelectedTankerId(t.id);
-                            setShowQcModal(true);
-                          }}
+                          onClick={() => openQcModal(t)}
                           style={{
                             borderBottom: '1px solid #f1f5f9',
                             cursor: 'pointer',
@@ -815,8 +820,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedTankerId(t.id);
-                                setShowQcModal(true);
+                                openQcModal(t);
                               }}
                               className="btn btn-primary btn-sm"
                               style={{ backgroundColor: '#65a30d', borderColor: '#4d7c0f', fontWeight: 700, padding: '4px 12px' }}
@@ -866,10 +870,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                       return (
                         <tr
                           key={t.id}
-                          onClick={() => {
-                            setSelectedTankerId(t.id);
-                            setShowCipModal(true);
-                          }}
+                          onClick={() => openCipModal(t)}
                           style={{
                             borderBottom: '1px solid #f1f5f9',
                             cursor: 'pointer',
@@ -898,8 +899,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedTankerId(t.id);
-                                setShowCipModal(true);
+                                openCipModal(t);
                               }}
                               className="btn btn-primary btn-sm"
                               style={{ backgroundColor: '#0284c7', borderColor: '#0369a1', fontWeight: 700, padding: '4px 12px' }}
