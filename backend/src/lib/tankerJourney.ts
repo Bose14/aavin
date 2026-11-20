@@ -161,6 +161,10 @@ export interface TankerTripInput {
   receipt_time?: string | null;
   received_fat_pct?: number | null;
   received_snf_pct?: number | null;
+  gross_weight_kg?: number | null;
+  tare_weight_kg?: number | null;
+  net_weight_kg?: number | null;
+  unloaded_litres?: number | null;
   compartments?: CompartmentDetail[];
   trip_status?: TripStatus;
   stage_data?: Record<string, unknown>;
@@ -575,10 +579,10 @@ export function deriveTankerJourneyState(
 
   const calculated = calculateTankerMetrics({
     dispatchedLitres: trip.quantity_dispatched,
-    grossWeightKg: (grossStep?.data?.gross_weight_kg as number) ?? trip.gross_weight_kg,
-    tareWeightKg: (tareStep?.data?.tare_weight_kg as number) ?? trip.tare_weight_kg,
-    unloadedLitres: (unloadStep?.data?.unloaded_litres as number) ?? trip.unloaded_litres,
-    fallbackReceivedQty: trip.received_qty,
+    grossWeightKg: (grossStep?.data?.gross_weight_kg as number | undefined) ?? (trip.gross_weight_kg != null ? Number(trip.gross_weight_kg) : null),
+    tareWeightKg: (tareStep?.data?.tare_weight_kg as number | undefined) ?? (trip.tare_weight_kg != null ? Number(trip.tare_weight_kg) : null),
+    unloadedLitres: (unloadStep?.data?.unloaded_litres as number | undefined) ?? (trip.unloaded_litres != null ? Number(trip.unloaded_litres) : null),
+    fallbackReceivedQty: trip.received_qty != null ? Number(trip.received_qty) : null,
     density,
     entryDoneAt: entryStep?.done_at,
     exitDoneAt: exitStep?.done_at,
