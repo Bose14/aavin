@@ -19,11 +19,8 @@ import {
   TableSkeleton,
 } from '../../components/UiPrimitives';
 import {
-  BmcVolumeComparisonChart,
-  ProcessPipelineBarChart,
-  ProcessTransitLossChart,
-  ProcessVolumeTrendChart,
-  QualityReconciliationChart,
+  MilkVolumeChart,
+  TransitLossTrendChart,
 } from '../../components/ProcessCharts';
 
 // ==========================================
@@ -944,29 +941,20 @@ export default function AdminDashboard() {
             )}
           </div>
 
-          {/* Graphical Analytics Charts */}
+          {/* Graphical Analytics (Clean & User-Friendly) */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
-            <ProcessVolumeTrendChart
+            <MilkVolumeChart
               data={processData.daily_trend}
-              title="Zone Milk Dispatch vs Silo Reception Volume Trend"
+              title="Daily Dairy Milk Volume: Dispatched vs Received"
               emptyActionLabel="Go to Tanker Records"
               onEmptyAction={() => navigate('/admin/tanker')}
             />
 
-            <ProcessTransitLossChart
+            <TransitLossTrendChart
               data={processData.daily_trend}
-              warnThreshold={settings.transit_loss_warn_pct ?? 0.5}
-              dangerThreshold={settings.transit_loss_danger_pct ?? 1.5}
+              threshold={settings.transit_loss_warn_pct ?? 0.5}
+              title="Daily Transit Loss Trend & Threshold"
             />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
-            <ProcessPipelineBarChart pipeline={processData.pipeline} />
-            <QualityReconciliationChart reconciliation={processData.quality_reconciliation} />
-          </div>
-
-          <div style={{ marginBottom: '1.5rem' }}>
-            <BmcVolumeComparisonChart data={processData.bmc_performance} />
           </div>
 
           {/* Live In-Plant Tankers Monitor Table */}

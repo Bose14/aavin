@@ -20,10 +20,8 @@ import {
 } from '../../components/UiPrimitives';
 import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
 import {
-  ProcessPipelineBarChart,
-  ProcessTransitLossChart,
-  ProcessVolumeTrendChart,
-  QualityReconciliationChart,
+  MilkVolumeChart,
+  TransitLossTrendChart,
 } from '../../components/ProcessCharts';
 
 // ==========================================
@@ -613,25 +611,20 @@ export default function UnitDashboard() {
             </div>
           </div>
 
-          {/* Graphical Analytics Charts */}
+          {/* Graphical Analytics (Clean & User-Friendly) */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.25rem', marginBottom: '1.25rem' }}>
-            <ProcessVolumeTrendChart
+            <MilkVolumeChart
               data={processData.daily_trend}
-              title="Unit Milk Dispatch vs Silo Reception Volume Trend"
+              title="Daily Milk Volume: Dispatched vs Received"
               emptyActionLabel="Dispatch Tanker"
               onEmptyAction={() => navigate('/unit/tanker')}
             />
 
-            <ProcessTransitLossChart
+            <TransitLossTrendChart
               data={processData.daily_trend}
-              warnThreshold={settings.transit_loss_warn_pct ?? 0.5}
-              dangerThreshold={settings.transit_loss_danger_pct ?? 1.5}
+              threshold={settings.transit_loss_warn_pct ?? 0.5}
+              title="Daily Transit Loss Trend & Threshold"
             />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.25rem', marginBottom: '1.25rem' }}>
-            <ProcessPipelineBarChart pipeline={processData.pipeline} />
-            <QualityReconciliationChart reconciliation={processData.quality_reconciliation} />
           </div>
 
           {/* 4. Outward Tanker Dispatches & Live Plant Status */}
