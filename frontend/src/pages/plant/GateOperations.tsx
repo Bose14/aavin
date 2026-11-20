@@ -1,8 +1,9 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import api from '../../lib/api';
 import { formatLitres, getLocalTodayIso } from '../../lib/format';
 import { ErrorBanner } from '../../components/UiPrimitives';
 import { useTranslation } from '../../context/LanguageContext';
+import { useAuth } from '../../context/AuthContext';
 import NewTankerRegistrationModal from '../../components/NewTankerRegistrationModal';
 
 export interface GrossQualityRow {
@@ -55,17 +56,86 @@ function computeTimeDifference(
   }
 }
 
+export function parseDispatchTime(
+  timeStr?: string | null,
+  ampmStr?: string | null,
+  createdAt?: string | null
+): { time: string; ampm: 'AM' | 'PM' } {
+  let detectedAmPm: 'AM' | 'PM' | null = null;
+  if (ampmStr) {
+    const upper = ampmStr.toUpperCase().trim();
+    if (upper === 'AM' || upper === 'PM') detectedAmPm = upper;
+  }
+
+  const raw = (timeStr || '').trim();
+  if (raw) {
+    if (raw.toUpperCase().includes('PM')) detectedAmPm = 'PM';
+    else if (raw.toUpperCase().includes('AM')) detectedAmPm = 'AM';
+
+    const clean = raw.replace(/(AM|PM)/gi, '').trim();
+    const parts = clean.split(':');
+    let h = parseInt(parts[0], 10);
+    const m = parts[1] ? parts[1].slice(0, 2) : '00';
+
+    if (!isNaN(h)) {
+      if (detectedAmPm) {
+        if (h > 12) h -= 12;
+        if (h === 0) h = 12;
+      } else {
+        if (h >= 12) {
+          detectedAmPm = 'PM';
+          if (h > 12) h -= 12;
+        } else {
+          detectedAmPm = 'AM';
+          if (h === 0) h = 12;
+        }
+      }
+      return {
+        time: `${String(h).padStart(2, '0')}:${m.padStart(2, '0')}`,
+        ampm: detectedAmPm || 'AM',
+      };
+    }
+  }
+
+  if (createdAt) {
+    const d = new Date(createdAt);
+    if (!isNaN(d.getTime())) {
+      let h = d.getHours();
+      const m = d.getMinutes();
+      const ap: 'AM' | 'PM' = h >= 12 ? 'PM' : 'AM';
+      if (h > 12) h -= 12;
+      if (h === 0) h = 12;
+      return {
+        time: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+        ampm: ap,
+      };
+    }
+  }
+
+  const now = new Date();
+  let h = now.getHours();
+  const ap: 'AM' | 'PM' = h >= 12 ? 'PM' : 'AM';
+  if (h > 12) h -= 12;
+  if (h === 0) h = 12;
+  return {
+    time: `${String(h).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+    ampm: ap,
+  };
+}
+
 interface GateOperationsProps {
   activeView?: 'receipt' | 'gross' | 'tare' | 'exit';
 }
 
 export default function GateOperations({ activeView = 'receipt' }: GateOperationsProps) {
   const { lang } = useTranslation();
+  const { profile } = useAuth();
   const [tankers, setTankers] = useState<any[]>([]);
   const [, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [selectedTankerId, setSelectedTankerId] = useState<string>('');
+  const lastLoadedTankerIdRef = useRef<string | null>(null);
 
   // Sub-navigation tabs: receipt, gross, tare, exit
   const [gateSubTab, setGateSubTab] = useState<'receipt' | 'gross' | 'tare' | 'exit'>(activeView);
@@ -145,7 +215,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
   const [exitTime, setExitTime] = useState('04:00');
   const [exitAmPm, setExitAmPm] = useState<'AM' | 'PM'>('PM');
   const [gatePassNo, setGatePassNo] = useState('');
-  const [securityGuardName, setSecurityGuardName] = useState('K. Muthu (Security)');
+  const [securityGuardName, setSecurityGuardName] = useState(() => profile?.full_name || 'Gate Security');
   const [exitRemarks, setExitRemarks] = useState('');
 
   // Sync prop changes
@@ -153,23 +223,23 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
     if (activeView) setGateSubTab(activeView);
   }, [activeView]);
 
-  const fetchTankers = async () => {
-    setLoading(true);
+  const fetchTankers = async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     setError('');
     try {
       const res = await api.get('/tanker');
       const list = Array.isArray(res.data) ? res.data : (res.data?.tankers || []);
       setTankers(list);
     } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Failed to load tankers');
+      if (!isBackground) setError(err.response?.data?.error || err.message || 'Failed to load tankers');
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
   useEffect(() => {
-    void fetchTankers();
-    const interval = setInterval(fetchTankers, 30000);
+    void fetchTankers(false);
+    const interval = setInterval(() => void fetchTankers(true), 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -213,8 +283,13 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
         t.journey?.isQcRejected ||
         t.qc_status === 'rejected' ||
         t.stage_data?.qc_completed?.qc_status === 'rejected';
+      const isCipUnsatisfied =
+        t.stage_data?.cip_completed?.cip_status === 'unsatisfied' ||
+        t.stage_data?.cip_completed?.status === 'rejected' ||
+        t.cip_status === 'unsatisfied';
       const cipDone =
-        t.stage_data?.cip_completed != null || t.journey?.completedStageKeys?.includes('cip_completed');
+        (t.stage_data?.cip_completed != null || t.journey?.completedStageKeys?.includes('cip_completed')) &&
+        !isCipUnsatisfied;
       const exitDone =
         t.stage_data?.vehicle_exit != null || t.journey?.completedStageKeys?.includes('vehicle_exit');
       return (cipDone || isQcRej) && !exitDone && t.journey?.tripStatus !== 'exited';
@@ -234,195 +309,210 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
     return tankers[0] || null;
   }, [selectedTankerId, tankers, gateSubTab, receiptWaiters, grossWaiters, tareWaiters, exitWaiters]);
 
-
-
-  // Pre-populate form when activeTanker changes
+  // Pre-populate form when activeTanker changes (guarded to avoid wiping active edits or polling reset)
   useEffect(() => {
-    if (activeTanker) {
-      setVehicleNo(activeTanker.tanker_number || '');
-      const resolvedDriverName =
-        activeTanker.driver_name ||
-        activeTanker.stage_data?.driver_name ||
-        activeTanker.stage_data?.vehicle_entered?.driver_name ||
-        '';
-      setDriverName(resolvedDriverName);
+    if (!activeTanker) return;
+    const isAnyModalOpen = showEntryModal || showGrossModal || showTareModal || showExitModal || showGrossReportModal;
+    if (isAnyModalOpen) return;
+    if (activeTanker.id === lastLoadedTankerIdRef.current) return;
+    lastLoadedTankerIdRef.current = activeTanker.id;
 
-      const resolvedSealNo =
-        activeTanker.seal_number ||
-        activeTanker.stage_data?.seal_number ||
-        activeTanker.stage_data?.outlet_seal_no ||
-        activeTanker.stage_data?.vehicle_entered?.seal_number ||
-        '';
-      setOutletSealNo(resolvedSealNo);
+    setVehicleNo(activeTanker.tanker_number || '');
+    const resolvedDriverName =
+      activeTanker.driver_name ||
+      activeTanker.stage_data?.driver_name ||
+      activeTanker.stage_data?.vehicle_entered?.driver_name ||
+      '';
+    setDriverName(resolvedDriverName);
 
-      const existingDc =
-        activeTanker.dc_number ||
-        activeTanker.stage_data?.dc_number ||
-        activeTanker.stage_data?.dc_no ||
-        activeTanker.stage_data?.vehicle_entered?.dc_number ||
-        activeTanker.journey?.dc_number ||
-        '';
-      setDcNumber(existingDc || (resolvedSealNo ? `DC-${resolvedSealNo.replace(/\D/g, '') || '101'}` : ''));
-      setDispatchDate(activeTanker.date || getLocalTodayIso());
+    const resolvedSealNo =
+      activeTanker.seal_number ||
+      activeTanker.stage_data?.seal_number ||
+      activeTanker.stage_data?.outlet_seal_no ||
+      activeTanker.stage_data?.vehicle_entered?.seal_number ||
+      '';
+    setOutletSealNo(resolvedSealNo);
 
-      // Parse dispatch time if available
-      const rawDispatchTime = activeTanker.dispatch_time || activeTanker.stage_data?.dispatch_time || '';
-      if (rawDispatchTime) {
-        const isPm = rawDispatchTime.toUpperCase().includes('PM');
-        const isAm = rawDispatchTime.toUpperCase().includes('AM');
-        const cleanTime = rawDispatchTime.replace(/(AM|PM)/gi, '').trim();
-        const parts = cleanTime.split(':');
-        let h = parseInt(parts[0], 10) || 9;
-        const m = parts[1] || '00';
-        if (isPm) {
-          setDispatchAmPm('PM');
-          if (h > 12) h -= 12;
-        } else if (isAm) {
-          setDispatchAmPm('AM');
-          if (h === 0) h = 12;
-          if (h > 12) h -= 12;
-        } else {
-          if (h >= 12) {
-            setDispatchAmPm('PM');
-            if (h > 12) h -= 12;
-          } else {
-            setDispatchAmPm('AM');
-            if (h === 0) h = 12;
-          }
-        }
-        setDispatchTime(`${String(h).padStart(2, '0')}:${m}`);
-      }
+    const existingDc =
+      activeTanker.dc_number ||
+      activeTanker.stage_data?.dc_number ||
+      activeTanker.stage_data?.dc_no ||
+      activeTanker.stage_data?.vehicle_entered?.dc_number ||
+      activeTanker.journey?.dc_number ||
+      '';
+    setDcNumber(existingDc || (resolvedSealNo ? `DC-${resolvedSealNo.replace(/\D/g, '')}` : ''));
+    setDispatchDate(activeTanker.date || getLocalTodayIso());
 
-      setGrossWeightKg(activeTanker.gross_weight_kg ? String(activeTanker.gross_weight_kg) : '');
-      setTareWeightKg(activeTanker.tare_weight_kg ? String(activeTanker.tare_weight_kg) : '');
+    // Parse dispatch time using robust helper
+    const parsedDisp = parseDispatchTime(
+      activeTanker.dispatch_time || activeTanker.stage_data?.dispatch_time,
+      activeTanker.dispatch_ampm || activeTanker.stage_data?.dispatch_ampm,
+      activeTanker.created_at
+    );
+    setDispatchTime(parsedDisp.time);
+    setDispatchAmPm(parsedDisp.ampm);
 
-      // Gross Weight Form pre-fills
-      const vNo = activeTanker.tanker_number || '';
-      setGrossVehicleNo(vNo);
+    setGrossWeightKg(activeTanker.gross_weight_kg ? String(activeTanker.gross_weight_kg) : '');
+    setTareWeightKg(activeTanker.tare_weight_kg ? String(activeTanker.tare_weight_kg) : '');
 
-      const resolvedDc =
-        activeTanker.dc_number ||
-        activeTanker.stage_data?.dc_number ||
-        activeTanker.stage_data?.dc_no ||
-        activeTanker.stage_data?.vehicle_entered?.dc_number ||
-        '';
-      setGrossDcNo(resolvedDc);
+    // Gross Weight Form pre-fills
+    const vNo = activeTanker.tanker_number || '';
+    setGrossVehicleNo(vNo);
 
-      const bmcSources: string[] = [];
-      if (activeTanker.units?.name) {
-        bmcSources.push(`${activeTanker.units.name.toUpperCase()} [${activeTanker.units.unit_code || '17226'}]`);
-      }
-      if (activeTanker.compartments && Array.isArray(activeTanker.compartments)) {
-        activeTanker.compartments.forEach((c: any) => {
-          if (c.bmc_name && !bmcSources.some((b) => b.includes(c.bmc_name.toUpperCase()))) {
-            bmcSources.push(`${c.bmc_name.toUpperCase()}`);
-          }
-        });
-      }
-      if (bmcSources.length === 0) {
-        bmcSources.push('MALLUR VADAKADU BMC [17226]');
-        bmcSources.push('ARIYANOOR [CC_BMC75]');
-        bmcSources.push('VEERAPANDI BMC [17225]');
-      }
-      setGrossReceivedFromList(bmcSources);
+    const resolvedDc =
+      activeTanker.dc_number ||
+      activeTanker.stage_data?.dc_number ||
+      activeTanker.stage_data?.dc_no ||
+      activeTanker.stage_data?.vehicle_entered?.dc_number ||
+      '';
+    setGrossDcNo(resolvedDc);
 
-      const dispQty = activeTanker.quantity_dispatched ?? activeTanker.stage_data?.dispatch_qty ?? 12000;
-      setGrossDispatchQty(String(dispQty));
-
-      // Build quality rows
-      const initialRows: GrossQualityRow[] = [];
-      const comps = activeTanker.compartments || activeTanker.stage_data?.compartments;
-      if (comps && Array.isArray(comps) && comps.length > 0) {
-        setNumberOfCells(comps.length);
-        comps.forEach((c: any, idx: number) => {
-          let cellLabel = 'FC';
-          if (c.cell && ['FC', 'MC', 'BC'].includes(String(c.cell).toUpperCase())) {
-            cellLabel = String(c.cell).toUpperCase();
-          } else {
-            const name = String(c.compartment_name || '').toLowerCase();
-            if (name.includes('front') || name.includes('fc') || name.includes('comp 1') || name.includes('comp1')) {
-              cellLabel = 'FC';
-            } else if (comps.length === 3 && (name.includes('middle') || name.includes('mc') || name.includes('comp 2') || name.includes('comp2'))) {
-              cellLabel = 'MC';
-            } else if (name.includes('rear') || name.includes('back') || name.includes('bc') || (comps.length === 3 && (name.includes('comp 3') || name.includes('comp3')))) {
-              cellLabel = 'BC';
-            } else if (comps.length === 3) {
-              cellLabel = idx === 0 ? 'FC' : idx === 1 ? 'MC' : 'BC';
-            } else if (comps.length === 2) {
-              cellLabel = idx === 0 ? 'FC' : 'BC';
-            } else {
-              cellLabel = 'FC';
-            }
-          }
-
-          initialRows.push({
-            id: `comp_${idx}`,
-            cell: cellLabel,
-            bmc: (c.bmc_name || activeTanker.units?.name || activeTanker.unit_name || 'RASIPURAM').toUpperCase(),
-            fat: String(c.fat_pct ?? c.fat ?? activeTanker.dispatch_fat_pct ?? '4.25'),
-            snf: String(c.snf_pct ?? c.snf ?? activeTanker.dispatch_snf_pct ?? '8.45'),
-            temp: String(c.temperature ?? c.temp ?? '4.0'),
-            qty: String(c.quantity_litres ?? c.qty ?? Math.round(dispQty / comps.length)),
-            dcNo: resolvedDc || '012748',
-          });
-        });
-      } else {
-        initialRows.push({
-          id: 'fc_1',
-          cell: 'FC',
-          bmc: 'ARIYANOOR',
-          fat: '4.30',
-          snf: '8.45',
-          temp: '4.0',
-          qty: '4500',
-          dcNo: resolvedDc || '012748',
-        });
-        initialRows.push({
-          id: 'fc_2',
-          cell: 'FC',
-          bmc: 'VEERAPANDI BMC',
-          fat: '4.25',
-          snf: '8.42',
-          temp: '4.1',
-          qty: '4500',
-          dcNo: resolvedDc || '012748',
-        });
-        initialRows.push({
-          id: 'bc_1',
-          cell: 'BC',
-          bmc: 'MALLUR VADAKADU B',
-          fat: '4.20',
-          snf: '8.40',
-          temp: '4.2',
-          qty: '4500',
-          dcNo: resolvedDc || '012748',
-        });
-      }
-      setGrossQualityRows(initialRows);
-
-      // Tare Weight Form pre-fills
-      setTareVehicleNo(vNo);
-      setTareDcNo(resolvedDc);
-      const grossKgFromStage = activeTanker.stage_data?.gross_weight?.gross_weight_kg || activeTanker.gross_weight_kg;
-      if (grossKgFromStage) {
-        setGrossWeightKg(String(grossKgFromStage));
-      }
-
-      // Exit Form pre-fills
-      setExitVehicleNo(vNo);
-      setExitDcNo(resolvedDc);
-      setGatePassNo(`GP-${vNo.slice(-4) || '9941'}`);
+    const bmcSources: string[] = [];
+    if (activeTanker.units?.name) {
+      bmcSources.push(`${activeTanker.units.name.toUpperCase()}${activeTanker.units.unit_code ? ` [${activeTanker.units.unit_code}]` : ''}`);
     }
+    if (activeTanker.compartments && Array.isArray(activeTanker.compartments)) {
+      activeTanker.compartments.forEach((c: any) => {
+        if (c.bmc_name && !bmcSources.some((b) => b.includes(c.bmc_name.toUpperCase()))) {
+          bmcSources.push(`${c.bmc_name.toUpperCase()}`);
+        }
+      });
+    }
+    setGrossReceivedFromList(bmcSources);
+
+    const dispQty = activeTanker.quantity_dispatched ?? activeTanker.stage_data?.dispatch_qty ?? 0;
+    setGrossDispatchQty(dispQty > 0 ? String(dispQty) : '');
+
+    // Build quality rows
+    const initialRows: GrossQualityRow[] = [];
+    const comps = activeTanker.compartments || activeTanker.stage_data?.compartments;
+    if (comps && Array.isArray(comps) && comps.length > 0) {
+      setNumberOfCells(comps.length);
+      comps.forEach((c: any, idx: number) => {
+        let cellLabel = 'FC';
+        if (c.cell && ['FC', 'MC', 'BC'].includes(String(c.cell).toUpperCase())) {
+          cellLabel = String(c.cell).toUpperCase();
+        } else if (comps.length === 3) {
+          cellLabel = idx === 0 ? 'FC' : idx === 1 ? 'MC' : 'BC';
+        } else if (comps.length === 2) {
+          cellLabel = idx === 0 ? 'FC' : 'BC';
+        }
+
+        initialRows.push({
+          id: `comp_${idx}`,
+          cell: cellLabel,
+          bmc: (c.bmc_name || activeTanker.units?.name || activeTanker.unit_name || '').toUpperCase(),
+          fat: String(c.fat_pct ?? c.fat ?? activeTanker.dispatch_fat_pct ?? ''),
+          snf: String(c.snf_pct ?? c.snf ?? activeTanker.dispatch_snf_pct ?? ''),
+          temp: String(c.temperature ?? c.temp ?? '4.0'),
+          qty: String(c.quantity_litres ?? c.qty ?? (dispQty > 0 ? Math.round(dispQty / comps.length) : '')),
+          dcNo: resolvedDc || '',
+        });
+      });
+    } else {
+      const defaultBmc = (activeTanker.units?.name || activeTanker.unit_name || '').toUpperCase();
+      const defaultFat = activeTanker.dispatch_fat_pct != null ? String(activeTanker.dispatch_fat_pct) : '';
+      const defaultSnf = activeTanker.dispatch_snf_pct != null ? String(activeTanker.dispatch_snf_pct) : '';
+      initialRows.push({
+        id: 'fc_1',
+        cell: 'FC',
+        bmc: defaultBmc,
+        fat: defaultFat,
+        snf: defaultSnf,
+        temp: '4.0',
+        qty: dispQty > 0 ? String(Math.round(dispQty / 2)) : '',
+        dcNo: resolvedDc || '',
+      });
+      initialRows.push({
+        id: 'bc_1',
+        cell: 'BC',
+        bmc: defaultBmc,
+        fat: defaultFat,
+        snf: defaultSnf,
+        temp: '4.0',
+        qty: dispQty > 0 ? String(Math.round(dispQty / 2)) : '',
+        dcNo: resolvedDc || '',
+      });
+    }
+    setGrossQualityRows(initialRows);
+
+    // Tare Weight Form pre-fills
+    setTareVehicleNo(vNo);
+    setTareDcNo(resolvedDc);
+    const grossKgFromStage = activeTanker.stage_data?.gross_weight?.gross_weight_kg || activeTanker.gross_weight_kg;
+    if (grossKgFromStage) {
+      setGrossWeightKg(String(grossKgFromStage));
+    }
+
+    // Exit Form pre-fills
+    setExitVehicleNo(vNo);
+    setExitDcNo(resolvedDc);
+    setGatePassNo(vNo ? `GP-${vNo.slice(-4)}` : '');
+    setSecurityGuardName(profile?.full_name || 'Gate Security');
   }, [
     activeTanker?.id,
-    activeTanker?.tanker_number,
-    activeTanker?.driver_name,
-    activeTanker?.seal_number,
-    activeTanker?.dc_number,
-    activeTanker?.dispatch_time,
-    activeTanker?.stage_data,
-    activeTanker,
+    showEntryModal,
+    showGrossModal,
+    showTareModal,
+    showExitModal,
+    showGrossReportModal,
   ]);
+
+  // Modal open handlers with instantaneous, deterministic field population
+  const openEntryModal = (t: any) => {
+    setSelectedTankerId(t.id);
+    lastLoadedTankerIdRef.current = t.id;
+    setVehicleNo(t.tanker_number || '');
+    setDriverName(t.driver_name || t.stage_data?.driver_name || t.stage_data?.vehicle_entered?.driver_name || '');
+    const seal = t.seal_number || t.stage_data?.seal_number || t.stage_data?.outlet_seal_no || t.stage_data?.vehicle_entered?.seal_number || '';
+    setOutletSealNo(seal);
+    const dc = t.dc_number || t.stage_data?.dc_number || t.stage_data?.dc_no || t.stage_data?.vehicle_entered?.dc_number || t.journey?.dc_number || '';
+    setDcNumber(dc || (seal ? `DC-${seal.replace(/\D/g, '')}` : ''));
+    setDispatchDate(t.date || getLocalTodayIso());
+    const parsedDisp = parseDispatchTime(
+      t.dispatch_time || t.stage_data?.dispatch_time,
+      t.dispatch_ampm || t.stage_data?.dispatch_ampm,
+      t.created_at
+    );
+    setDispatchTime(parsedDisp.time);
+    setDispatchAmPm(parsedDisp.ampm);
+    setShowEntryModal(true);
+  };
+
+  const openGrossModal = (t: any) => {
+    setSelectedTankerId(t.id);
+    lastLoadedTankerIdRef.current = t.id;
+    const vNo = t.tanker_number || '';
+    setGrossVehicleNo(vNo);
+    const dc = t.dc_number || t.stage_data?.dc_number || t.stage_data?.dc_no || t.stage_data?.vehicle_entered?.dc_number || '';
+    setGrossDcNo(dc);
+    const dispQty = t.quantity_dispatched ?? t.stage_data?.dispatch_qty ?? 0;
+    setGrossDispatchQty(dispQty > 0 ? String(dispQty) : '');
+    setShowGrossModal(true);
+  };
+
+  const openTareModal = (t: any) => {
+    setSelectedTankerId(t.id);
+    lastLoadedTankerIdRef.current = t.id;
+    setTareVehicleNo(t.tanker_number || '');
+    const dc = t.dc_number || t.stage_data?.dc_number || t.stage_data?.dc_no || t.stage_data?.vehicle_entered?.dc_number || '';
+    setTareDcNo(dc);
+    const grossKg = t.stage_data?.gross_weight?.gross_weight_kg || t.gross_weight_kg;
+    if (grossKg) setGrossWeightKg(String(grossKg));
+    setShowTareModal(true);
+  };
+
+  const openExitModal = (t: any) => {
+    setSelectedTankerId(t.id);
+    lastLoadedTankerIdRef.current = t.id;
+    const vNo = t.tanker_number || '';
+    setExitVehicleNo(vNo);
+    const dc = t.dc_number || t.stage_data?.dc_number || t.stage_data?.dc_no || t.stage_data?.vehicle_entered?.dc_number || '';
+    setExitDcNo(dc);
+    setGatePassNo(vNo ? `GP-${vNo.slice(-4)}` : '');
+    setSecurityGuardName(profile?.full_name || 'Gate Security');
+    setShowExitModal(true);
+  };
 
   // Live auto-calculated time difference between dispatch and entry
   const calculatedTimeDiff = useMemo(() => {
@@ -465,40 +555,26 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
     const count = Math.max(1, Math.min(4, newCount || 1));
     setNumberOfCells(count);
     const cellLabels = count === 1 ? ['FC'] : count === 2 ? ['FC', 'BC'] : count === 3 ? ['FC', 'MC', 'BC'] : ['FC', 'MC 1', 'MC 2', 'BC'];
-    const sampleBmcs = ['ARIYANOOR', 'VEERAPANDI BMC', 'MALLUR VADAKADU B'];
-    const defaultQty = grossDispatchQty ? String(Math.round(Number(grossDispatchQty) / count)) : '4500';
+    const defaultQty = grossDispatchQty ? String(Math.round(Number(grossDispatchQty) / count)) : '';
+    const defaultBmc = (activeTanker?.units?.name || activeTanker?.unit_name || '').toUpperCase();
+    const defaultFat = activeTanker?.dispatch_fat_pct != null ? String(activeTanker.dispatch_fat_pct) : '';
+    const defaultSnf = activeTanker?.dispatch_snf_pct != null ? String(activeTanker.dispatch_snf_pct) : '';
 
     const newRows: GrossQualityRow[] = cellLabels.map((lbl, idx) => ({
       id: `cell_${lbl}_${Date.now()}_${idx}`,
       cell: lbl,
-      bmc: sampleBmcs[idx % sampleBmcs.length],
-      fat: (4.25 - idx * 0.05).toFixed(2),
-      snf: (8.45 - idx * 0.03).toFixed(2),
+      bmc: defaultBmc,
+      fat: defaultFat,
+      snf: defaultSnf,
       temp: '4.0',
       qty: defaultQty,
-      dcNo: grossDcNo || '012748',
+      dcNo: grossDcNo || '',
     }));
     setGrossQualityRows(newRows);
   };
 
   const updateQualityRow = (id: string, field: keyof GrossQualityRow, val: string) => {
     setGrossQualityRows((rows) => rows.map((r) => (r.id === id ? { ...r, [field]: val } : r)));
-  };
-
-  const addQualityRowForCell = (cellLabel: string) => {
-    setGrossQualityRows((rows) => [
-      ...rows,
-      {
-        id: `row_${cellLabel}_${Date.now()}`,
-        cell: cellLabel,
-        bmc: '',
-        fat: '',
-        snf: '',
-        temp: '4.0',
-        qty: '',
-        dcNo: grossDcNo || '',
-      },
-    ]);
   };
 
   const deleteQualityRow = (id: string) => {
@@ -679,10 +755,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                       return (
                         <tr
                           key={t.id}
-                          onClick={() => {
-                            setSelectedTankerId(t.id);
-                            setShowEntryModal(true);
-                          }}
+                          onClick={() => openEntryModal(t)}
                           style={{
                             borderBottom: '1px solid #f1f5f9',
                             cursor: 'pointer',
@@ -717,8 +790,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedTankerId(t.id);
-                                setShowEntryModal(true);
+                                openEntryModal(t);
                               }}
                               className="btn btn-primary btn-sm"
                               style={{ backgroundColor: '#16a34a', borderColor: '#15803d', fontWeight: 700, padding: '4px 12px' }}
@@ -770,10 +842,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                       return (
                         <tr
                           key={t.id}
-                          onClick={() => {
-                            setSelectedTankerId(t.id);
-                            setShowGrossModal(true);
-                          }}
+                          onClick={() => openGrossModal(t)}
                           style={{
                             borderBottom: '1px solid #f1f5f9',
                             cursor: 'pointer',
@@ -808,8 +877,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedTankerId(t.id);
-                                setShowGrossModal(true);
+                                openGrossModal(t);
                               }}
                               className="btn btn-primary btn-sm"
                               style={{ backgroundColor: '#65a30d', borderColor: '#4d7c0f', fontWeight: 700, padding: '4px 12px' }}
@@ -861,10 +929,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                       return (
                         <tr
                           key={t.id}
-                          onClick={() => {
-                            setSelectedTankerId(t.id);
-                            setShowTareModal(true);
-                          }}
+                          onClick={() => openTareModal(t)}
                           style={{
                             borderBottom: '1px solid #f1f5f9',
                             cursor: 'pointer',
@@ -898,8 +963,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedTankerId(t.id);
-                                setShowTareModal(true);
+                                openTareModal(t);
                               }}
                               className="btn btn-primary btn-sm"
                               style={{ backgroundColor: '#0284c7', borderColor: '#0369a1', fontWeight: 700, padding: '4px 12px' }}
@@ -950,10 +1014,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                       return (
                         <tr
                           key={t.id}
-                          onClick={() => {
-                            setSelectedTankerId(t.id);
-                            setShowExitModal(true);
-                          }}
+                          onClick={() => openExitModal(t)}
                           style={{
                             borderBottom: '1px solid #f1f5f9',
                             cursor: 'pointer',
@@ -987,8 +1048,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedTankerId(t.id);
-                                setShowExitModal(true);
+                                openExitModal(t);
                               }}
                               className="btn btn-primary btn-sm"
                               style={{ backgroundColor: '#0f766e', borderColor: '#115e59', fontWeight: 700, padding: '4px 12px' }}
@@ -1676,20 +1736,6 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                             <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.9rem' }}>
                               {cellKey}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => addQualityRowForCell(cellKey)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                color: '#0284c7',
-                                fontSize: '0.78rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              + Add Source BMC row
-                            </button>
                           </div>
 
                           {cellRows.map((row) => (
@@ -1785,23 +1831,6 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
 
                 {/* Action Buttons matching photo */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px', marginTop: '1.5rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0' }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowGrossReportModal(true)}
-                    style={{
-                      backgroundColor: '#65a30d',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: 3,
-                      padding: '6px 16px',
-                      fontWeight: 700,
-                      fontSize: '0.85rem',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Gross Weight Report
-                  </button>
-
                   <button
                     type="button"
                     onClick={() => setShowGrossModal(false)}
@@ -2539,7 +2568,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px dashed #cbd5e1' }}>
               <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                Weighbridge Operator: <strong>Bose (AV_GT_001)</strong>
+                Weighbridge Operator: <strong>{profile?.full_name || 'Weighbridge Staff'}</strong>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button

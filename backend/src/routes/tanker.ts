@@ -1217,6 +1217,9 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
 
   const existingStages = (await getTankerStagesForTrip(id)) as StageRecordItem[];
   const existingKeys = new Set(existingStages.map((s) => s.stage_name));
+  const existingDoneKeys = new Set(
+    existingStages.filter((s) => s.status === 'done').map((s) => s.stage_name)
+  );
   const qcStage = existingStages.find((s) => s.stage_name === 'qc_completed');
   const isQcRejected = qcStage?.status === 'rejected';
 
@@ -1242,12 +1245,13 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
     return;
   }
 
-  if (existingKeys.has(stageKey)) {
+  // Only done (passing) stages block re-recording. If CIP was unsatisfied/rejected, allow re-recording.
+  if (existingDoneKeys.has(stageKey)) {
     res.status(400).json({ error: `Stage ${stageDef.title} has already been completed for this tanker` });
     return;
   }
 
-  if (!isAdmin && journey.currentStageKey !== stageKey) {
+  if (!isAdmin && journey.currentStageKey !== stageKey && !(stageKey === 'cip_completed' && (trip.cip_status === 'unsatisfied' || trip.trip_status === 'cip_unsatisfied'))) {
     res.status(400).json({
       error: `Cannot record ${stageDef.title}: Trip is currently waiting for stage "${journey.currentStageTitle}" (${journey.currentStageKey})`,
       current_stage: journey.currentStageKey,
@@ -1303,8 +1307,8 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
       }
       break;
     case 'vehicle_exit':
-      if (!existingKeys.has('cip_completed')) {
-        res.status(400).json({ error: 'Cannot record Vehicle Exit before CIP Completed' });
+      if (!existingDoneKeys.has('cip_completed')) {
+        res.status(400).json({ error: 'Cannot record Vehicle Exit: CIP cleaning must be successfully passed (Satisfied) first' });
         return;
       }
       break;
@@ -1466,7 +1470,25 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
     updateTripFields.net_weight_kg = netKg;
     updateTripFields.trip_status = 'tare_done';
   } else if (stageKey === 'cip_completed') {
-    stageData.cip_status = payload.cip_status || (payload.qc_inspection === 'SATISFIED' ? 'pass' : 'pass');
+    const isUnsatisfied =
+      payload.qc_inspection === 'UNSATISFIED' ||
+      payload.qc_inspection === 'UNSATISFACTORY' ||
+      payload.cip_status === 'fail' ||
+      payload.cip_status === 'unsatisfied';
+
+    if (isUnsatisfied) {
+      stageStatus = 'rejected';
+      stageData.cip_status = 'unsatisfied';
+      stageData.qc_inspection = 'UNSATISFIED';
+      updateTripFields.cip_status = 'unsatisfied';
+      updateTripFields.trip_status = 'cip_unsatisfied';
+    } else {
+      stageStatus = 'done';
+      stageData.cip_status = 'pass';
+      stageData.qc_inspection = 'SATISFIED';
+      updateTripFields.cip_status = 'pass';
+      updateTripFields.trip_status = 'cip_done';
+    }
     stageData.chemical_used = payload.chemical_used || 'Caustic Soda 1.5%';
     if (payload.vehicle_no) stageData.vehicle_no = payload.vehicle_no;
     if (payload.received_from) stageData.received_from = payload.received_from;
@@ -1476,12 +1498,10 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
     if (payload.cip_date) stageData.cip_date = payload.cip_date;
     if (payload.cip_time) stageData.cip_time = payload.cip_time;
     if (payload.cip_operator) stageData.cip_operator = payload.cip_operator;
-    if (payload.qc_inspection) stageData.qc_inspection = payload.qc_inspection;
     if (payload.cip_clean_types) stageData.cip_clean_types = payload.cip_clean_types;
     if (payload.is_cip_checked != null) stageData.is_cip_checked = payload.is_cip_checked;
     if (payload.remarks) stageData.remarks = payload.remarks;
     if (payload.ph_test) stageData.ph_test = payload.ph_test;
-    updateTripFields.trip_status = 'cip_done';
   } else if (stageKey === 'vehicle_exit') {
     stageData.gate_pass_number = payload.gate_pass_number || `GP-${Date.now().toString().slice(-6)}`;
     stageData.exit_time = new Date().toISOString();
