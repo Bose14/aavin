@@ -19,6 +19,12 @@ import {
   TableSkeleton,
 } from '../../components/UiPrimitives';
 import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
+import {
+  ProcessPipelineBarChart,
+  ProcessTransitLossChart,
+  ProcessVolumeTrendChart,
+  QualityReconciliationChart,
+} from '../../components/ProcessCharts';
 
 // ==========================================
 // BMC Process Analytics Interfaces
@@ -104,7 +110,7 @@ export default function UnitDashboard() {
   const { profile } = useAuth();
   const { t } = useTranslation();
   const navigate = useNavigate();
-  useZoneSettings();
+  const { settings } = useZoneSettings();
 
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('today');
   const [customFrom, setCustomFrom] = useState(() => getLocalTodayIso());
@@ -605,6 +611,27 @@ export default function UnitDashboard() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Graphical Analytics Charts */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.25rem', marginBottom: '1.25rem' }}>
+            <ProcessVolumeTrendChart
+              data={processData.daily_trend}
+              title="Unit Milk Dispatch vs Silo Reception Volume Trend"
+              emptyActionLabel="Dispatch Tanker"
+              onEmptyAction={() => navigate('/unit/tanker')}
+            />
+
+            <ProcessTransitLossChart
+              data={processData.daily_trend}
+              warnThreshold={settings.transit_loss_warn_pct ?? 0.5}
+              dangerThreshold={settings.transit_loss_danger_pct ?? 1.5}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.25rem', marginBottom: '1.25rem' }}>
+            <ProcessPipelineBarChart pipeline={processData.pipeline} />
+            <QualityReconciliationChart reconciliation={processData.quality_reconciliation} />
           </div>
 
           {/* 4. Outward Tanker Dispatches & Live Plant Status */}

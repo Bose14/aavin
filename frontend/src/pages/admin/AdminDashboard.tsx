@@ -18,6 +18,13 @@ import {
   StatusBadge,
   TableSkeleton,
 } from '../../components/UiPrimitives';
+import {
+  BmcVolumeComparisonChart,
+  ProcessPipelineBarChart,
+  ProcessTransitLossChart,
+  ProcessVolumeTrendChart,
+  QualityReconciliationChart,
+} from '../../components/ProcessCharts';
 
 // ==========================================
 // Process Analytics Interfaces
@@ -935,6 +942,31 @@ export default function AdminDashboard() {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Graphical Analytics Charts */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
+            <ProcessVolumeTrendChart
+              data={processData.daily_trend}
+              title="Zone Milk Dispatch vs Silo Reception Volume Trend"
+              emptyActionLabel="Go to Tanker Records"
+              onEmptyAction={() => navigate('/admin/tanker')}
+            />
+
+            <ProcessTransitLossChart
+              data={processData.daily_trend}
+              warnThreshold={settings.transit_loss_warn_pct ?? 0.5}
+              dangerThreshold={settings.transit_loss_danger_pct ?? 1.5}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
+            <ProcessPipelineBarChart pipeline={processData.pipeline} />
+            <QualityReconciliationChart reconciliation={processData.quality_reconciliation} />
+          </div>
+
+          <div style={{ marginBottom: '1.5rem' }}>
+            <BmcVolumeComparisonChart data={processData.bmc_performance} />
           </div>
 
           {/* Live In-Plant Tankers Monitor Table */}
