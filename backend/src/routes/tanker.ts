@@ -292,6 +292,15 @@ function enrichTankerRow(row: Record<string, unknown>, stages?: StageRecordItem[
       ? Number(fbMeta.received_qty)
       : null;
 
+  const stagesMap: Record<string, any> = {};
+  if (Array.isArray(stages)) {
+    for (const s of stages) {
+      if (s.stage_name && s.stage_data && typeof s.stage_data === 'object') {
+        stagesMap[s.stage_name] = s.stage_data;
+      }
+    }
+  }
+
   const tripInput: TankerTripInput = {
     id: String(row.id),
     date: String(row.date),
@@ -315,6 +324,7 @@ function enrichTankerRow(row: Record<string, unknown>, stages?: StageRecordItem[
     stage_data: {
       ...rowStageData,
       ...(fbMeta?.stage_data || {}),
+      ...stagesMap,
       ...(driverName ? { driver_name: driverName } : {}),
       ...(sealNumber ? { seal_number: sealNumber } : {}),
       ...(dcNumber ? { dc_number: dcNumber } : {}),
@@ -1519,24 +1529,34 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
   updateTripFields.stage_data = mergedStageData;
 
   let updatedTrip: any = null;
-  const initialUpdate = await supabase
-    .from('tanker_dispatches')
-    .update(updateTripFields)
-    .eq('id', id)
-    .select('*, units(name, unit_code)')
-    .single();
-
-  if (initialUpdate.error && initialUpdate.error.message?.includes('column')) {
-    const { dc_number, ...safeFields } = updateTripFields;
-    const fallbackUpdate = await supabase
+  try {
+    const initialUpdate = await supabase
       .from('tanker_dispatches')
-      .update(safeFields)
+      .update(updateTripFields)
       .eq('id', id)
       .select('*, units(name, unit_code)')
       .single();
-    updatedTrip = fallbackUpdate.data;
-  } else {
-    updatedTrip = initialUpdate.data;
+
+    if (initialUpdate.error) {
+      const knownBaseCols = ['quantity_dispatched', 'destination', 'date', 'tanker_number'];
+      const safeBaseFields: Record<string, any> = {};
+      for (const k of knownBaseCols) {
+        if (k in updateTripFields) safeBaseFields[k] = updateTripFields[k];
+      }
+      if (Object.keys(safeBaseFields).length > 0) {
+        const fallbackUpdate = await supabase
+          .from('tanker_dispatches')
+          .update(safeBaseFields)
+          .eq('id', id)
+          .select('*, units(name, unit_code)')
+          .single();
+        updatedTrip = fallbackUpdate.data;
+      }
+    } else {
+      updatedTrip = initialUpdate.data;
+    }
+  } catch (err) {
+    console.warn('[tanker] Supabase update warning:', (err as Error).message);
   }
 
   // Persist updated stage details in fallback store

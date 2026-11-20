@@ -9,6 +9,7 @@ import {
   updateTeamStatusInDb,
   getZoneSettings,
   getTankerStagesForTrips,
+  getTankerDispatchMetadata,
   writeAuditLog,
   isMissingSchemaError,
   isCheckConstraintError,
@@ -46,8 +47,7 @@ async function computeWaitingTankersPerTeam(zoneId: string): Promise<Record<stri
     const { data, error } = await supabase
       .from('tanker_dispatches')
       .select('*')
-      .eq('zone_id', zoneId)
-      .neq('trip_status', 'exited');
+      .eq('zone_id', zoneId);
 
     if (error || !data) {
       return counts;
@@ -63,17 +63,31 @@ async function computeWaitingTankersPerTeam(zoneId: string): Promise<Record<stri
     for (const row of rows) {
       const tripId = String(row.id);
       const stages = (stagesMap[tripId] ?? []) as StageRecordItem[];
+      const tankerNum = String(row.tanker_number ?? '').toUpperCase().trim();
+      const fbMeta = getTankerDispatchMetadata(tripId) || (tankerNum ? getTankerDispatchMetadata(tankerNum) : null);
+
+      const stagesMapObj: Record<string, any> = {};
+      for (const s of stages) {
+        if (s.stage_name && s.stage_data && typeof s.stage_data === 'object') {
+          stagesMapObj[s.stage_name] = s.stage_data;
+        }
+      }
+
       const tripInput: TankerTripInput = {
         id: tripId,
         date: String(row.date),
         tanker_number: String(row.tanker_number ?? ''),
-        driver_name: (row.driver_name as string) || null,
-        seal_number: (row.seal_number as string) || null,
+        driver_name: (row.driver_name as string) || fbMeta?.driver_name || null,
+        seal_number: (row.seal_number as string) || fbMeta?.seal_number || null,
         quantity_dispatched: Number(row.quantity_dispatched || 0),
-        trip_status: row.trip_status as any,
+        trip_status: (row.trip_status as any) || (fbMeta?.trip_status as any),
         current_stage: row.current_stage as any,
         waiting_team: row.waiting_team as any,
-        stage_data: (row.stage_data as Record<string, unknown>) || {},
+        stage_data: {
+          ...((row.stage_data as Record<string, unknown>) || {}),
+          ...(fbMeta?.stage_data || {}),
+          ...stagesMapObj,
+        },
         stages,
         created_at: (row.created_at as string) || undefined,
       };

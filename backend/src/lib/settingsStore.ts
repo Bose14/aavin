@@ -260,17 +260,34 @@ export function saveTankerDispatchMetadata(meta: TankerDispatchMetadata): void {
     const numKey = meta.tanker_number ? meta.tanker_number.toUpperCase().trim() : '';
 
     const existing: any = (idKey ? store.tankerDispatches[idKey] : null) || (numKey ? store.tankerDispatchesByNumber[numKey] : null) || {};
+
+    const cleanMeta: Record<string, any> = {};
+    for (const [k, v] of Object.entries(meta)) {
+      if (v !== undefined) {
+        if (k === 'tanker_number') {
+          if (typeof v === 'string' && v.trim() !== '') {
+            cleanMeta[k] = v.trim().toUpperCase();
+          }
+        } else {
+          cleanMeta[k] = v;
+        }
+      }
+    }
+
     const merged: TankerDispatchMetadata = {
       ...existing,
-      ...meta,
+      ...cleanMeta,
+      tanker_number: cleanMeta.tanker_number || existing.tanker_number || numKey || '',
       stage_data: {
         ...(existing.stage_data || {}),
         ...(meta.stage_data || {}),
       },
     };
 
+    const finalNumKey = (merged.tanker_number || '').toUpperCase().trim();
+
     if (idKey) store.tankerDispatches[idKey] = merged;
-    if (numKey) store.tankerDispatchesByNumber[numKey] = merged;
+    if (finalNumKey) store.tankerDispatchesByNumber[finalNumKey] = merged;
 
     writeFallback(store);
   } catch (err) {
@@ -640,6 +657,29 @@ export async function recordTankerStageInDb(stage: TankerStageRecordRow): Promis
       if (existingIdx >= 0) list[existingIdx] = row;
       else list.push(row);
       writeFallback(store);
+
+      if (stage.stage_data && typeof stage.stage_data === 'object') {
+        const sd = stage.stage_data as Record<string, any>;
+        saveTankerDispatchMetadata({
+          id: stage.trip_id,
+          tanker_number: sd.tanker_number || '',
+          driver_name: sd.driver_name,
+          driver_phone: sd.driver_phone,
+          dc_number: sd.dc_number || sd.dc_no,
+          seal_number: sd.seal_number || sd.outlet_seal_no,
+          dispatch_time: sd.dispatch_time,
+          dispatch_ampm: sd.dispatch_ampm,
+          compartments: sd.compartments,
+          gross_weight_kg: sd.gross_weight_kg,
+          tare_weight_kg: sd.tare_weight_kg,
+          qc_status: sd.qc_status,
+          received_qty: sd.unloaded_litres,
+          received_fat_pct: sd.received_fat_pct,
+          received_snf_pct: sd.received_snf_pct,
+          stage_data: { [stage.stage_name]: stage.stage_data },
+        });
+      }
+
       return row;
     }
 
