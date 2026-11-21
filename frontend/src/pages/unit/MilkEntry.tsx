@@ -773,15 +773,16 @@ export default function MilkEntry() {
                           <th style={sh}>AMOUNT</th>
                           <th style={sh}>LT.FAT</th>
                           <th style={sh}>LT.SNF</th>
+                          <th style={{ ...sh, width: 40 }} />
                         </tr>
                       </thead>
                       <tbody>
                         {societiesLoading && (
-                          <tr><td colSpan={10} style={{ ...sd, textAlign: 'center', padding: 16 }}>Loading societies…</td></tr>
+                          <tr><td colSpan={11} style={{ ...sd, textAlign: 'center', padding: 16 }}>Loading societies…</td></tr>
                         )}
                         {!societiesLoading && computed.length === 0 && (
                           <tr>
-                            <td colSpan={10} style={{ ...sd, textAlign: 'center', padding: 16 }}>
+                            <td colSpan={11} style={{ ...sd, textAlign: 'center', padding: 16 }}>
                               {societies.length === 0
                                 ? 'This BMC has no societies yet. Click “Society not in the list? Add new” below to add the first one.'
                                 : 'Select a society from the dropdown above to start.'}
@@ -794,18 +795,9 @@ export default function MilkEntry() {
                           return (
                             <tr key={c.society.id} style={{ borderBottom: '1px solid #f1f5f9', background: bg }}>
                               <td style={{ ...sd, textAlign: 'left', position: 'sticky', left: 0, background: bg, fontWeight: 600, color: '#0f172a' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => removeSocietyRow(c.society.id)}
-                                  aria-label={`Remove ${c.society.name}`}
-                                  title="Remove"
-                                  style={{ border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', marginRight: 6, fontSize: 14 }}
-                                >
-                                  ✕
-                                </button>
                                 {c.society.name}
                                 <div style={{ fontSize: 11, color: c.problem ? '#b91c1c' : '#94a3b8', fontWeight: 400 }}>
-                                  {c.problem || c.society.code}
+                                  {c.problem || `Code: ${c.society.code}`}
                                 </div>
                               </td>
                               <td style={sd}><input style={cellInput} type="number" inputMode="numeric" min="0" step="1" value={r.cans} onChange={e => setCell(c.society.id, 'cans', e.target.value)} /></td>
@@ -817,6 +809,17 @@ export default function MilkEntry() {
                               <td style={{ ...sd, fontWeight: 700, color: '#0f172a' }}>{c.ok ? formatINR(c.amount) : '–'}</td>
                               <td style={sd}>{c.ok ? fmt(c.ltFat, 3) : '–'}</td>
                               <td style={sd}>{c.ok ? fmt(c.ltSnf, 3) : '–'}</td>
+                              <td style={{ ...sd, textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => removeSocietyRow(c.society.id)}
+                                  aria-label={`Remove ${c.society.name}`}
+                                  title="Remove this society"
+                                  style={{ border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', fontSize: 16, fontWeight: 700 }}
+                                >
+                                  ✕
+                                </button>
+                              </td>
                             </tr>
                           );
                         })}
@@ -835,6 +838,7 @@ export default function MilkEntry() {
                           <td style={{ ...sd, color: '#0f172a' }}>{formatINR(totals.amount)}</td>
                           <td style={{ ...sd, color: '#0f172a' }}>{fmt(totals.ltFat, 3)}</td>
                           <td style={{ ...sd, color: '#0f172a' }}>{fmt(totals.ltSnf, 3)}</td>
+                          <td style={sd} />
                         </tr>
                       </tfoot>
                     </table>
