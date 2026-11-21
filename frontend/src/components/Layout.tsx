@@ -22,6 +22,7 @@ const adminNav: NavItem[] = [
 
 const unitNav: NavItem[] = [
   { to: '/bmc/tanker', labelKey: 'navTankerDispatch', fallbackLabel: 'Tanker Dispatch' },
+  { to: '/bmc/milk-entry', labelKey: 'navMilkEntry', fallbackLabel: 'Milk Entry' },
   { to: '/bmc/analytics', labelKey: 'navAnalytics', fallbackLabel: 'Analytics' },
   { to: '/bmc/records', labelKey: 'navMyRecords', fallbackLabel: 'My Records' },
 ];
