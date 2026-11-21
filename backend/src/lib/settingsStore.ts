@@ -11,7 +11,7 @@ import type { SellingRateRule, ZoneSettings } from '../config/defaults';
 export interface AuditLogEntry {
   id: string;
   zone_id: string;
-  unit_id?: string | null;
+  bmc_id?: string | null;
   entity_type: string;
   entity_id?: string | null;
   action: string;
@@ -25,7 +25,7 @@ export interface CorrectionRequest {
   id: string;
   milk_entry_id: string;
   zone_id: string;
-  unit_id: string;
+  bmc_id: string;
   requested_by?: string | null;
   requested_by_name?: string | null;
   reason: string;
@@ -38,22 +38,17 @@ export interface CorrectionRequest {
 
 export interface TeamRow {
   id: string;
-  code: string;
+  id_token: string;
+  code: 'ADMIN' | 'GATE' | 'QC' | 'UNLOADING' | 'BMC';
   name: string;
   active: boolean;
   created_at?: string;
 }
 
-export const DEFAULT_TEAMS: TeamRow[] = [
-  { id: '11111111-1111-4111-8111-111111111111', code: 'GATE', name: 'Gate Operations Team', active: true },
-  { id: '22222222-2222-4222-8222-222222222222', code: 'QC', name: 'Quality Control (QC) Team', active: true },
-  { id: '33333333-3333-4333-8333-333333333333', code: 'UNLOADING', name: 'Milk Unloading Team', active: true },
-];
-
 export interface TankerDispatchMetadata {
   id: string;
   tanker_number: string;
-  unit_id?: string | null;
+  bmc_id?: string | null;
   zone_id?: string | null;
   date?: string | null;
   driver_name?: string | null;
@@ -85,7 +80,6 @@ interface FallbackStoreData {
   auditLogs: AuditLogEntry[];
   correctionRequests: CorrectionRequest[];
   tankerStages: Record<string, any[]>;
-  teams?: Record<string, TeamRow>;
   tankerDispatches?: Record<string, TankerDispatchMetadata>;
   tankerDispatchesByNumber?: Record<string, TankerDispatchMetadata>;
   registeredTankers?: Record<string, RegisteredTanker>;
@@ -114,116 +108,16 @@ export function isMissingSchemaError(err: { code?: string; message?: string } | 
   );
 }
 
-export function isCheckConstraintError(err: { code?: string; message?: string } | null | undefined): boolean {
-  if (!err) return false;
-  const code = err.code ?? '';
-  const msg = (err.message ?? '').toLowerCase();
-  return (
-    code === '23514' ||
-    msg.includes('check constraint') ||
-    msg.includes('violates check constraint') ||
-    msg.includes('profiles_role_check') ||
-    msg.includes('profiles_shift_check')
-  );
-}
-
-/**
- * Resiliently inserts a profile into PostgreSQL.
- * Gracefully handles legacy schemas where:
- * 1. Columns like shift, team_id, username are missing from profiles
- * 2. profiles_role_check only allows ('superadmin', 'admin', 'unit')
- */
-export async function insertProfileResiliently(params: {
-  id: string;
-  role: string;
-  zone_id: string;
-  unit_id?: string | null;
-  full_name: string;
-  phone?: string | null;
-  team_id?: string | null;
-  shift?: string | null;
-  username?: string | null;
-  email?: string | null;
-  sub_role?: string | null;
-  is_active?: boolean;
-  must_change_password?: boolean;
-  user_type?: 'internal' | 'bmc';
-}): Promise<{ error: any }> {
-  const extendedObj: Record<string, unknown> = {
-    id: params.id,
-    role: params.role,
-    zone_id: params.zone_id,
-    full_name: params.full_name,
-    phone: params.phone ?? null,
-  };
-  if (params.unit_id !== undefined) extendedObj.unit_id = params.unit_id;
-  if (params.team_id !== undefined) extendedObj.team_id = params.team_id;
-  if (params.shift !== undefined) extendedObj.shift = params.shift;
-  if (params.username !== undefined) extendedObj.username = params.username;
-  if (params.email !== undefined) extendedObj.email = params.email;
-  if (params.sub_role !== undefined) extendedObj.sub_role = params.sub_role;
-  if (params.is_active !== undefined) extendedObj.is_active = params.is_active;
-  if (params.must_change_password !== undefined) extendedObj.must_change_password = params.must_change_password;
-  if (params.user_type !== undefined) extendedObj.user_type = params.user_type;
-
-  let res = await supabase.from('profiles').insert(extendedObj);
-  if (!res.error) return { error: null };
-
-  let lastErr = res.error;
-
-  // Step 2: If check constraint failed on role, retry extended insert with fallback role 'unit'
-  if (isCheckConstraintError(lastErr)) {
-    console.warn('[insertProfileResiliently] Database check constraint rejected role "' + params.role + '", retrying with fallback role "unit":', lastErr.message);
-    const withUnitRole = { ...extendedObj, role: 'unit' };
-    res = await supabase.from('profiles').insert(withUnitRole);
-    if (!res.error) return { error: null };
-    lastErr = res.error;
-  }
-
-  // Step 3: If missing schema error (columns missing in profiles table), retry with base columns
-  if (isMissingSchemaError(lastErr)) {
-    console.warn('[insertProfileResiliently] Schema columns missing, retrying with base columns:', lastErr.message);
-    const baseObj: Record<string, unknown> = {
-      id: params.id,
-      role: params.role,
-      zone_id: params.zone_id,
-      full_name: params.full_name,
-      phone: params.phone ?? null,
-    };
-    if (params.unit_id !== undefined) baseObj.unit_id = params.unit_id;
-
-    res = await supabase.from('profiles').insert(baseObj);
-    if (!res.error) return { error: null };
-    lastErr = res.error;
-
-    // Step 4: If base insert also violated role check constraint, retry base columns with role 'unit'
-    if (isCheckConstraintError(lastErr)) {
-      console.warn('[insertProfileResiliently] Base insert rejected role "' + params.role + '", retrying base with role "unit":', lastErr.message);
-      baseObj.role = 'unit';
-      res = await supabase.from('profiles').insert(baseObj);
-      if (!res.error) return { error: null };
-      lastErr = res.error;
-    }
-  }
-
-  return { error: lastErr };
-}
-
 export function readFallback(): FallbackStoreData {
   try {
     if (fs.existsSync(FALLBACK_FILE)) {
       const parsed = JSON.parse(fs.readFileSync(FALLBACK_FILE, 'utf8')) as Partial<FallbackStoreData>;
-      const teams = parsed.teams ?? {};
-      for (const def of DEFAULT_TEAMS) {
-        if (!teams[def.code]) teams[def.code] = { ...def };
-      }
       return {
         zoneSettings: parsed.zoneSettings ?? {},
         sellingRates: parsed.sellingRates ?? {},
         auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
         correctionRequests: Array.isArray(parsed.correctionRequests) ? parsed.correctionRequests : [],
         tankerStages: parsed.tankerStages && typeof parsed.tankerStages === 'object' ? parsed.tankerStages : {},
-        teams,
         tankerDispatches: parsed.tankerDispatches && typeof parsed.tankerDispatches === 'object' ? parsed.tankerDispatches : {},
         tankerDispatchesByNumber: parsed.tankerDispatchesByNumber && typeof parsed.tankerDispatchesByNumber === 'object' ? parsed.tankerDispatchesByNumber : {},
         registeredTankers: parsed.registeredTankers && typeof parsed.registeredTankers === 'object' ? parsed.registeredTankers : {},
@@ -232,15 +126,12 @@ export function readFallback(): FallbackStoreData {
   } catch {
     // Corrupted fallback ignored; return empty store
   }
-  const teams: Record<string, TeamRow> = {};
-  for (const def of DEFAULT_TEAMS) teams[def.code] = { ...def };
   return {
     zoneSettings: {},
     sellingRates: {},
     auditLogs: [],
     correctionRequests: [],
     tankerStages: {},
-    teams,
     tankerDispatches: {},
     tankerDispatchesByNumber: {},
     registeredTankers: {},
@@ -573,14 +464,14 @@ export async function listCorrectionRequests(zoneId: string, unitId?: string | n
     .select('*')
     .eq('zone_id', zoneId)
     .order('created_at', { ascending: false });
-  if (unitId) query = query.eq('unit_id', unitId);
+  if (unitId) query = query.eq('bmc_id', unitId);
 
   const { data, error } = await query;
   if (error) {
     if (isMissingSchemaError(error)) {
       const store = readFallback();
       return store.correctionRequests.filter(
-        (c) => c.zone_id === zoneId && (!unitId || c.unit_id === unitId),
+        (c) => c.zone_id === zoneId && (!unitId || c.bmc_id === unitId),
       );
     }
     throw new Error(error.message);
@@ -826,66 +717,30 @@ async function withTimeout<T>(thenable: any, ms = 800): Promise<T> {
 }
 
 export async function getTeamsFromDb(): Promise<TeamRow[]> {
-  try {
-    const res: any = await withTimeout(supabase.from('teams').select('*').order('code'));
-    if (!res?.error && res?.data && res.data.length > 0) {
-      return res.data as TeamRow[];
-    }
-  } catch {
-    // fallback
-  }
-
-  const store = readFallback();
-  return Object.values(store.teams || {});
+  const { data, error } = await supabase.from('teams').select('*').order('id');
+  if (error) throw new Error(`Could not load teams: ${error.message}`);
+  return (data ?? []) as TeamRow[];
 }
 
 export async function getTeamByCode(code: string): Promise<TeamRow | null> {
-  const norm = code.trim().toUpperCase();
-  try {
-    const res: any = await withTimeout(supabase.from('teams').select('*').eq('code', norm).maybeSingle());
-    if (!res?.error && res?.data) {
-      return res.data as TeamRow;
-    }
-  } catch {
-    // fallback
-  }
-
-  const store = readFallback();
-  return store.teams?.[norm] || DEFAULT_TEAMS.find((t) => t.code === norm) || null;
+  const { data, error } = await supabase
+    .from('teams')
+    .select('*')
+    .eq('code', code.trim().toUpperCase())
+    .maybeSingle();
+  if (error) throw new Error(`Could not load team ${code}: ${error.message}`);
+  return (data as TeamRow | null) ?? null;
 }
 
 export async function updateTeamStatusInDb(code: string, active: boolean): Promise<TeamRow> {
-  const norm = code.trim().toUpperCase();
-  let updatedRow: TeamRow | null = null;
-  try {
-    const res: any = await withTimeout(
-      supabase
-        .from('teams')
-        .update({ active })
-        .eq('code', norm)
-        .select()
-        .maybeSingle()
-    );
-    if (!res?.error && res?.data) {
-      updatedRow = res.data as TeamRow;
-    }
-  } catch {
-    // fallback
-  }
-
-  const store = readFallback();
-  if (!store.teams) store.teams = {};
-  const current = store.teams[norm] || DEFAULT_TEAMS.find((t) => t.code === norm) || {
-    id: norm === 'GATE' ? '11111111-1111-4111-8111-111111111111' : norm === 'QC' ? '22222222-2222-4222-8222-222222222222' : '33333333-3333-4333-8333-333333333333',
-    code: norm,
-    name: norm === 'GATE' ? 'Gate Operations Team' : norm === 'QC' ? 'Quality Control (QC) Team' : 'Milk Unloading Team',
-    active: true,
-  };
-  current.active = active;
-  store.teams[norm] = current;
-  writeFallback(store);
-
-  return updatedRow || current;
+  const { data, error } = await supabase
+    .from('teams')
+    .update({ active })
+    .eq('code', code.trim().toUpperCase())
+    .select()
+    .single();
+  if (error) throw new Error(`Could not update team ${code}: ${error.message}`);
+  return data as TeamRow;
 }
 
 export interface RegisteredTanker {

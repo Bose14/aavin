@@ -23,7 +23,7 @@ router.get('/', async (req, res) => {
     ]);
 
     const role = (req.profile.role || '').toLowerCase();
-    const isAdmin = role === 'admin' || role === 'superadmin';
+    const isAdmin = role === 'admin';
 
     // Strip financial rate coefficients for non-admin roles (gate, qc, unloading, unit)
     const safeSettings = isAdmin ? settings : (() => {
@@ -130,7 +130,7 @@ router.post('/selling-rates', requireRole('admin'), async (req, res) => {
 });
 
 // GET /settings/audit-logs?entity_type=...&entity_id=...
-router.get('/audit-logs', requireRole('admin', 'superadmin'), async (req, res) => {
+router.get('/audit-logs', requireRole('admin'), async (req, res) => {
   try {
     const { entity_type, entity_id } = req.query as Record<string, string>;
     const logs = await listAuditLogs(req.profile.zone_id, entity_type, entity_id);

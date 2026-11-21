@@ -25,9 +25,9 @@ export interface DailyProfitDatum {
 }
 
 export interface UnitProfitDatum {
-  unit_id: string;
+  bmc_id: string;
   name: string;
-  unit_code: string;
+  bmc_code: string;
   revenue: number;
   cost: number;
   profit: number;
@@ -177,7 +177,7 @@ function UnitTooltip({
   return (
     <FinancialTooltipCard
       title={item.name}
-      subtitle={item.unit_code || undefined}
+      subtitle={item.bmc_code || undefined}
       revenue={item.revenue}
       cost={item.cost}
       profit={item.profit}
@@ -418,7 +418,7 @@ export function UnitProfitLossChart({
     containerProps,
   } = useChartSlotSelection({
     data,
-    getKey: d => d.unit_id,
+    getKey: d => d.bmc_id,
     layout: 'vertical',
     marginLeft: 94, // left: 4 + YAxis width: 90
     marginRight: 16,
@@ -487,8 +487,8 @@ export function UnitProfitLossChart({
             >
               {data.map(entry => (
                 <Cell
-                  key={entry.unit_id}
-                  opacity={selectedUnitId ? (selectedUnitId === entry.unit_id ? 1 : 0.28) : 1}
+                  key={entry.bmc_id}
+                  opacity={selectedUnitId ? (selectedUnitId === entry.bmc_id ? 1 : 0.28) : 1}
                   cursor="pointer"
                 />
               ))}

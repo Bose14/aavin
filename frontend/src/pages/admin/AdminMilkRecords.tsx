@@ -19,12 +19,12 @@ import { ErrorBanner, InfoTooltip, StatusBadge, TableSkeleton } from '../../comp
 interface Unit {
   id: string;
   name: string;
-  unit_code: string;
+  bmc_code: string;
 }
 
 interface MilkRecord {
   id: string;
-  unit_id: string;
+  bmc_id: string;
   date: string;
   shift: 'AM' | 'PM';
   fat_pct: number;
@@ -43,13 +43,13 @@ interface MilkRecord {
   profit: number | null;
   status?: string;
   entered_by?: string;
-  units: { name: string; unit_code: string } | null;
+  bmcs: { name: string; bmc_code: string } | null;
 }
 
 interface CorrectionRequestItem {
   id: string;
   milk_entry_id: string;
-  unit_id: string;
+  bmc_id: string;
   requested_by_name: string;
   reason: string;
   status: 'pending' | 'approved' | 'rejected';
@@ -73,7 +73,7 @@ export default function AdminMilkRecords() {
   const [units, setUnits] = useState<Unit[]>([]);
   const [corrections, setCorrections] = useState<CorrectionRequestItem[]>([]);
 
-  const [unitId, setUnitId] = useState(() => searchParams.get('unit_id') || '');
+  const [unitId, setUnitId] = useState(() => searchParams.get('bmc_id') || '');
   const [shiftFilter, setShiftFilter] = useState(() => searchParams.get('shift') || 'ALL');
   const [qualityFilter, setQualityFilter] = useState(() => searchParams.get('quality') || 'all');
   const [from, setFrom] = useState(() => searchParams.get('from') || '');
@@ -103,12 +103,12 @@ export default function AdminMilkRecords() {
       const params: Record<string, string> = {};
       if (from) params.from = from;
       if (to) params.to = to;
-      if (unitId) params.unit_id = unitId;
+      if (unitId) params.bmc_id = unitId;
       if (shiftFilter !== 'ALL') params.shift = shiftFilter;
 
       const [rRes, uRes, cRes] = await Promise.all([
         api.get<MilkRecord[]>('/milk', { params }),
-        api.get<Unit[]>('/units'),
+        api.get<Unit[]>('/bmcs'),
         api.get<CorrectionRequestItem[]>('/milk/correction-requests').catch(() => ({ data: [] as CorrectionRequestItem[] })),
       ]);
       setRecords(rRes.data);
@@ -159,7 +159,7 @@ export default function AdminMilkRecords() {
   const handleVerify = async (r: MilkRecord) => {
     try {
       await api.patch(`/milk/${r.id}/verify`);
-      setActionMsg(`Verified entry for ${r.units?.name ?? ''} on ${formatDateDDMMYYYY(r.date)} (${r.shift}).`);
+      setActionMsg(`Verified entry for ${r.bmcs?.name ?? ''} on ${formatDateDDMMYYYY(r.date)} (${r.shift}).`);
       await fetchAll();
     } catch (err: unknown) {
       setError((err as Error)?.message || 'Verification failed');
@@ -224,7 +224,7 @@ export default function AdminMilkRecords() {
         {
           from,
           to,
-          unit_id: unitId,
+          bmc_id: unitId,
           shift: shiftFilter === 'ALL' ? '' : shiftFilter,
           quality: qualityFilter === 'all' ? '' : qualityFilter,
           format,
@@ -246,13 +246,13 @@ export default function AdminMilkRecords() {
       footerCell: <strong>Totals ({filteredRecords.length})</strong>,
     },
     {
-      key: 'unit',
+      key: 'bmc',
       header: 'Unit',
-      sortValue: r => r.units?.name ?? '',
-      searchValue: r => `${r.units?.name ?? ''} ${r.units?.unit_code ?? ''}`,
+      sortValue: r => r.bmcs?.name ?? '',
+      searchValue: r => `${r.bmcs?.name ?? ''} ${r.bmcs?.bmc_code ?? ''}`,
       render: r => (
         <span>
-          {r.units?.name ?? '—'} <span className="unit-code">{r.units?.unit_code}</span>
+          {r.bmcs?.name ?? '—'} <span className="unit-code">{r.bmcs?.bmc_code}</span>
         </span>
       ),
     },
@@ -400,7 +400,7 @@ export default function AdminMilkRecords() {
             <option value="">All Units</option>
             {units.map(u => (
               <option key={u.id} value={u.id}>
-                {u.name} ({u.unit_code})
+                {u.name} ({u.bmc_code})
               </option>
             ))}
           </select>
@@ -552,7 +552,7 @@ export default function AdminMilkRecords() {
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal-card">
             <h3 className="modal-title">
-              Audit History — {auditTarget.units?.name ?? ''} ({formatDateDDMMYYYY(auditTarget.date)} {auditTarget.shift})
+              Audit History — {auditTarget.bmcs?.name ?? ''} ({formatDateDDMMYYYY(auditTarget.date)} {auditTarget.shift})
             </h3>
             {loadingAudit ? (
               <p className="modal-body-text">Loading audit log…</p>

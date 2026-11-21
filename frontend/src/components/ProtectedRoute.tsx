@@ -9,12 +9,11 @@ interface Props {
 
 export function roleHome(role: string) {
   const r = (role || '').toLowerCase();
-  if (r === 'superadmin') return '/superadmin';
   if (r === 'admin') return '/admin/tanker';
   if (r === 'gate') return '/gate';
   if (r === 'qc') return '/qc';
   if (r === 'unloading') return '/unloading';
-  return '/unit/tanker';
+  return '/bmc/tanker';
 }
 
 export default function ProtectedRoute({ children, role, allowPasswordChange = false }: Props) {

@@ -28,9 +28,9 @@ export interface CollectionTrendDatum {
 }
 
 export interface UnitQuantityDatum {
-  unit_id: string;
+  bmc_id: string;
   name: string;
-  unit_code: string;
+  bmc_code: string;
   quantity: number;
   net_quantity: number;
   rejection: number;
@@ -126,7 +126,7 @@ function UnitQuantityTooltip({
     <div className="chart-tooltip">
       <div className="chart-tooltip-header">
         <span className="chart-tooltip-title">{item.name}</span>
-        {item.unit_code && <span className="chart-tooltip-sub">{item.unit_code}</span>}
+        {item.bmc_code && <span className="chart-tooltip-sub">{item.bmc_code}</span>}
       </div>
       <TooltipRow color={CHART_COLORS.primary} label="Collected" value={formatLitres(item.quantity)} />
       <TooltipRow color={CHART_COLORS.profit} label="Net Accepted" value={formatLitres(item.net_quantity)} tone="positive" />
@@ -138,13 +138,13 @@ function UnitQuantityTooltip({
 /** Stacked AM/PM daily collection bars; missing calendar dates remain empty gaps ("No entry"). */
 export function MilkCollectionTrendChart({
   data,
-  mode = 'unit',
+  mode = 'bmc',
   title = 'Milk Collection Trend (AM + PM)',
   emptyActionLabel,
   onEmptyAction,
 }: {
   data: CollectionTrendDatum[];
-  mode?: 'unit' | 'admin';
+  mode?: 'bmc' | 'admin';
   title?: string;
   emptyActionLabel?: string;
   onEmptyAction?: () => void;
@@ -178,7 +178,7 @@ export function MilkCollectionTrendChart({
     <ChartCardShell
       title={title}
       subtitle={
-        mode === 'unit'
+        mode === 'bmc'
           ? 'Daily Morning (AM) + Evening (PM) stacked collection bars · blank days indicate No entry'
           : 'Zone-wide daily Morning (AM) + Evening (PM) stacked collection · blank days indicate No entry'
       }
@@ -453,7 +453,7 @@ export function UnitQuantityBarChart({
     containerProps,
   } = useChartSlotSelection({
     data,
-    getKey: d => d.unit_id,
+    getKey: d => d.bmc_id,
     layout: 'vertical',
     marginLeft: 94, // left: 4 + YAxis width: 90
     marginRight: 16,
@@ -468,7 +468,7 @@ export function UnitQuantityBarChart({
       badge={
         data.length > 0 ? (
           <span className="chart-badge neutral">
-            {data.length} {data.length === 1 ? 'unit' : 'units'} · {formatLitres(totalQty)}
+            {data.length} {data.length === 1 ? 'bmc' : 'units'} · {formatLitres(totalQty)}
           </span>
         ) : undefined
       }
@@ -515,11 +515,11 @@ export function UnitQuantityBarChart({
             <Bar dataKey="quantity" name="Collected (L)" fill={CHART_COLORS.primary} radius={[0, 6, 6, 0]} maxBarSize={20}>
               {data.map(entry => (
                 <Cell
-                  key={entry.unit_id}
+                  key={entry.bmc_id}
                   fill={CHART_COLORS.primary}
-                  opacity={selectedUnitId ? (selectedUnitId === entry.unit_id ? 1 : 0.28) : 1}
-                  stroke={selectedUnitId === entry.unit_id ? '#312e81' : undefined}
-                  strokeWidth={selectedUnitId === entry.unit_id ? 2 : 0}
+                  opacity={selectedUnitId ? (selectedUnitId === entry.bmc_id ? 1 : 0.28) : 1}
+                  stroke={selectedUnitId === entry.bmc_id ? '#312e81' : undefined}
+                  strokeWidth={selectedUnitId === entry.bmc_id ? 2 : 0}
                   cursor="pointer"
                 />
               ))}
@@ -527,11 +527,11 @@ export function UnitQuantityBarChart({
             <Bar dataKey="rejection" name="Rejected (L)" fill={CHART_COLORS.loss} radius={[0, 6, 6, 0]} maxBarSize={20}>
               {data.map(entry => (
                 <Cell
-                  key={entry.unit_id}
+                  key={entry.bmc_id}
                   fill={CHART_COLORS.loss}
-                  opacity={selectedUnitId ? (selectedUnitId === entry.unit_id ? 1 : 0.28) : 1}
-                  stroke={selectedUnitId === entry.unit_id ? '#991b1b' : undefined}
-                  strokeWidth={selectedUnitId === entry.unit_id ? 1.5 : 0}
+                  opacity={selectedUnitId ? (selectedUnitId === entry.bmc_id ? 1 : 0.28) : 1}
+                  stroke={selectedUnitId === entry.bmc_id ? '#991b1b' : undefined}
+                  strokeWidth={selectedUnitId === entry.bmc_id ? 1.5 : 0}
                   cursor="pointer"
                 />
               ))}

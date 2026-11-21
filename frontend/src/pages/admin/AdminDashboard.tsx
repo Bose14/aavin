@@ -98,9 +98,9 @@ interface QualityReconciliation {
 }
 
 interface BmcScorecardRow {
-  unit_id: string;
+  bmc_id: string;
   name: string;
-  unit_code: string;
+  bmc_code: string;
   dispatched_count: number;
   dispatched_litres: number;
   received_litres: number;
@@ -208,15 +208,15 @@ export default function AdminDashboard() {
       key: 'name',
       header: 'Collection Unit (BMC)',
       sortValue: (b) => b.name,
-      searchValue: (b) => `${b.name} ${b.unit_code}`,
+      searchValue: (b) => `${b.name} ${b.bmc_code}`,
       render: (b) => (
         <button
           type="button"
           className="btn-link"
           style={{ marginLeft: 0, textAlign: 'left', fontWeight: 600 }}
-          onClick={() => navigate(`/admin/tanker?unit_id=${b.unit_id}`)}
+          onClick={() => navigate(`/admin/tanker?bmc_id=${b.bmc_id}`)}
         >
-          {b.name} <span className="unit-code">{b.unit_code}</span>
+          {b.name} <span className="unit-code">{b.bmc_code}</span>
         </button>
       ),
       footerCell: <strong>Total Units ({processData?.bmc_performance.length || 0})</strong>,
@@ -1001,7 +1001,7 @@ export default function AdminDashboard() {
             <DataTable
               rows={processData.bmc_performance}
               columns={bmcProcessColumns}
-              getRowKey={(b) => b.unit_id}
+              getRowKey={(b) => b.bmc_id}
               getRowClassName={(b) => (b.health === 'danger' ? 'row-danger' : b.health === 'warn' ? 'row-warn' : '')}
               emptyMessage="No tanker dispatches recorded for this period."
               showTotalsRow

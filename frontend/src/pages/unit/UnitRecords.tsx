@@ -196,7 +196,7 @@ export default function UnitRecords() {
           to,
           format,
         },
-        `${profile?.units?.unit_code || 'BMC'}_tanker_records.${format}`,
+        `${profile?.bmcs?.bmc_code || 'BMC'}_tanker_records.${format}`,
       );
     } catch (err: unknown) {
       setError((err as Error)?.message || 'Export failed');
@@ -476,7 +476,7 @@ export default function UnitRecords() {
       <div className="page-header" style={{ marginBottom: '1.25rem', paddingBottom: '0.5rem' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>
-            {profile?.units ? `${profile.units.name} · ${profile.units.unit_code} — ` : ''}
+            {profile?.bmcs ? `${profile.bmcs.name} · ${profile.bmcs.bmc_code} — ` : ''}
             My Tanker Process Records
           </h1>
           <p className="page-subtitle" style={{ margin: '2px 0 0 0', fontSize: '0.86rem', color: '#64748b' }}>
@@ -489,7 +489,7 @@ export default function UnitRecords() {
           <button
             type="button"
             className="btn btn-primary btn-sm"
-            onClick={() => navigate('/unit/tanker')}
+            onClick={() => navigate('/bmc/tanker')}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', height: '34px', padding: '0 14px' }}
           >
             <span>+</span> Dispatch Tanker
@@ -692,7 +692,7 @@ export default function UnitRecords() {
             }}
             emptyMessage="No tanker process records found for the selected filter."
             emptyActionLabel="Dispatch Tanker"
-            onEmptyAction={() => navigate('/unit/tanker')}
+            onEmptyAction={() => navigate('/bmc/tanker')}
             showTotalsRow
           />
         </div>

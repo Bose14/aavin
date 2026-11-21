@@ -36,47 +36,47 @@ import { formatDateDDMMYYYY } from '../lib/calculations';
 const router = Router();
 router.use(authMiddleware);
 
-const DYNAMIC_JOIN_TANKER_SELECT = `*, units(name, unit_code)`;
+const DYNAMIC_JOIN_TANKER_SELECT = `*, bmcs(name, bmc_code)`;
 
 const DYNAMIC_BARE_TANKER_SELECT = `*`;
 
 const FULL_TANKER_SELECT = `
-  id, unit_id, zone_id, date, tanker_number, driver_name, driver_phone, dc_number, seal_number, dispatch_time, dispatch_ampm,
+  id, bmc_id, zone_id, date, tanker_number, driver_name, driver_phone, dc_number, seal_number, dispatch_time, dispatch_ampm,
   quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct, compartments,
   received_qty, receipt_time, received_fat_pct, received_snf_pct, received_by, created_at,
   gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, current_stage, waiting_team, stage_data,
-  units(name, unit_code)
+  bmcs(name, bmc_code)
 `;
 
 const EXTENDED_TANKER_SELECT = `
-  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dc_number, dispatch_time,
+  id, bmc_id, zone_id, date, tanker_number, driver_name, seal_number, dc_number, dispatch_time,
   quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct,
   received_qty, receipt_time, received_fat_pct, received_snf_pct, received_by, created_at,
   gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data,
-  units(name, unit_code)
+  bmcs(name, bmc_code)
 `;
 
 const OPERATIONAL_TANKER_SELECT = `
-  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dc_number, dispatch_time,
+  id, bmc_id, zone_id, date, tanker_number, driver_name, seal_number, dc_number, dispatch_time,
   quantity_dispatched, destination,
   received_qty, receipt_time, received_fat_pct, received_snf_pct, received_by, created_at,
   gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data,
-  units(name, unit_code)
+  bmcs(name, bmc_code)
 `;
 
 const V2_TANKER_SELECT = `
-  id, unit_id, zone_id, date, tanker_number, driver_name, seal_number, dc_number,
+  id, bmc_id, zone_id, date, tanker_number, driver_name, seal_number, dc_number,
   quantity_dispatched, destination, stage_data, created_at,
-  units(name, unit_code)
+  bmcs(name, bmc_code)
 `;
 
 const MINIMAL_TANKER_SELECT = `
-  id, unit_id, zone_id, date, tanker_number, quantity_dispatched, destination, stage_data, created_at,
-  units(name, unit_code)
+  id, bmc_id, zone_id, date, tanker_number, quantity_dispatched, destination, stage_data, created_at,
+  bmcs(name, bmc_code)
 `;
 
 const BARE_TANKER_SELECT = `
-  id, unit_id, zone_id, date, tanker_number, quantity_dispatched, destination, created_at
+  id, bmc_id, zone_id, date, tanker_number, quantity_dispatched, destination, created_at
 `;
 
 export async function runResilientTankerQuery(
@@ -390,7 +390,7 @@ export async function computeAvailableStock(zoneId: string, unitId?: string | nu
   try {
     let milkQ = supabase.from('milk_entries').select('quantity_litres, rejection_qty').eq('zone_id', zoneId);
     if (unitId) {
-      milkQ = milkQ.eq('unit_id', unitId);
+      milkQ = milkQ.eq('bmc_id', unitId);
     }
     const mRes = await milkQ;
     if (!mRes.error && mRes.data) {
@@ -437,13 +437,13 @@ export async function computeAvailableStock(zoneId: string, unitId?: string | nu
       totalDispatched += Number((r as any).quantity_dispatched ?? 0);
     } else {
       if (Array.isArray(bmcList) && bmcList.length > 0) {
-        const myEntries = bmcList.filter((b: any) => b.unit_id === unitId);
+        const myEntries = bmcList.filter((b: any) => b.bmc_id === unitId);
         if (myEntries.length > 0) {
           totalDispatched += myEntries.reduce((s: number, b: any) => s + Number(b.quantity_dispatched || b.quantity || 0), 0);
-        } else if ((r as any).unit_id === unitId) {
+        } else if ((r as any).bmc_id === unitId) {
           totalDispatched += Number((r as any).quantity_dispatched ?? 0);
         }
-      } else if ((r as any).unit_id === unitId) {
+      } else if ((r as any).bmc_id === unitId) {
         totalDispatched += Number((r as any).quantity_dispatched ?? 0);
       }
     }
@@ -538,7 +538,7 @@ export async function enrichRegisteredTankersWithCapacity(zoneId: string, regist
           const matched = comps.find((c: any) => c.cell_key === cd.cell_key || c.compartment_no === idx + 1) || comps[idx];
           if (matched && (matched.quantity_litres || matched.quantity)) {
             filled = Number(matched.quantity_litres || matched.quantity) || 0;
-            bmcName = matched.bmc_name || activeTrip.units?.name || 'Prior BMC';
+            bmcName = matched.bmc_name || activeTrip.bmcs?.name || 'Prior BMC';
             dcNo = matched.dc_number || activeTrip.dc_number || null;
             fatPct = matched.fat_pct != null ? Number(matched.fat_pct) : null;
             snfPct = matched.snf_pct != null ? Number(matched.snf_pct) : null;
@@ -597,7 +597,7 @@ export async function enrichRegisteredTankersWithCapacity(zoneId: string, regist
 // GET /tanker/stock — available milk stock
 router.get('/stock', async (req, res) => {
   try {
-    const unitId = req.profile.role === 'unit' ? req.profile.unit_id : (req.query.unit_id as string | undefined);
+    const unitId = req.profile.role === 'bmc' ? req.profile.bmc_id : (req.query.bmc_id as string | undefined);
     const stock = await computeAvailableStock(req.profile.zone_id, unitId);
     res.json(stock);
   } catch (err) {
@@ -674,7 +674,7 @@ router.post('/registration', async (req, res) => {
 // GET /tanker/stats — Chip counts, waiting-too-long badges, and KPI summary
 router.get('/stats', async (req, res) => {
   try {
-    const { from, to, unit_id } = req.query as Record<string, string>;
+    const { from, to, bmc_id } = req.query as Record<string, string>;
     const zoneId = req.profile.zone_id;
     const settings = await getZoneSettings(zoneId);
 
@@ -684,10 +684,10 @@ router.get('/stats', async (req, res) => {
         .select(selectStr)
         .eq('zone_id', zoneId);
 
-      if (req.profile.role === 'unit') {
-        query = query.eq('unit_id', req.profile.unit_id!);
-      } else if (unit_id) {
-        query = query.eq('unit_id', unit_id);
+      if (req.profile.role === 'bmc') {
+        query = query.eq('bmc_id', req.profile.bmc_id!);
+      } else if (bmc_id) {
+        query = query.eq('bmc_id', bmc_id);
       }
       if (from) query = query.gte('date', from);
       if (to) query = query.lte('date', to);
@@ -847,7 +847,7 @@ router.get('/', async (req, res) => {
     const {
       from,
       to,
-      unit_id,
+      bmc_id,
       stage,
       waiting_team,
       status, // 'waiting' | 'processed' | 'rejected' | 'all'
@@ -868,10 +868,10 @@ router.get('/', async (req, res) => {
         .order('date', { ascending: false })
         .order('created_at', { ascending: false });
 
-      if (req.profile.role === 'unit') {
-        // Query dispatches for this zone; filtered below by primary unit_id or multi-BMC entry
-      } else if (unit_id) {
-        query = query.eq('unit_id', unit_id);
+      if (req.profile.role === 'bmc') {
+        // Query dispatches for this zone; filtered below by primary bmc_id or multi-BMC entry
+      } else if (bmc_id) {
+        query = query.eq('bmc_id', bmc_id);
       }
 
       if (from) query = query.gte('date', from);
@@ -896,12 +896,12 @@ router.get('/', async (req, res) => {
     });
 
     // For BMC unit role, show trips initiated by this unit OR multi-BMC contributions
-    if (req.profile.role === 'unit') {
-      const myUnit = req.profile.unit_id!;
+    if (req.profile.role === 'bmc') {
+      const myUnit = req.profile.bmc_id!;
       enriched = enriched.filter((r) => {
-        if (r.unit_id === myUnit) return true;
+        if (r.bmc_id === myUnit) return true;
         const bmcList = r.stage_data?.bmc_dispatches;
-        if (Array.isArray(bmcList) && bmcList.some((b: any) => b.unit_id === myUnit)) {
+        if (Array.isArray(bmcList) && bmcList.some((b: any) => b.bmc_id === myUnit)) {
           return true;
         }
         return false;
@@ -944,7 +944,7 @@ router.get('/', async (req, res) => {
         const driver = String(r.driver_name || '').toLowerCase();
         const dcNo = String(r.dc_number || (r.stage_data as any)?.dc_number || (r.stage_data as any)?.vehicle_entered?.dc_number || '').toLowerCase();
         const gatePass = String((r.stage_data as any)?.gate_pass_number || (r.stage_data as any)?.vehicle_exit?.gate_pass_number || '').toLowerCase();
-        const unitName = String((r.units as any)?.name || '').toLowerCase();
+        const unitName = String((r.bmcs as any)?.name || '').toLowerCase();
         return (
           tankerNo.includes(q) ||
           sealNo.includes(q) ||
@@ -1010,8 +1010,8 @@ router.get('/:id', async (req, res) => {
 
     for (const selectStr of tiers) {
       let query = supabase.from('tanker_dispatches').select(selectStr).eq('id', id);
-      if (req.profile.role === 'unit') {
-        query = query.eq('unit_id', req.profile.unit_id!);
+      if (req.profile.role === 'bmc') {
+        query = query.eq('bmc_id', req.profile.bmc_id!);
       } else {
         query = query.eq('zone_id', zoneId);
       }
@@ -1120,15 +1120,15 @@ router.post('/', async (req, res) => {
     return;
   }
 
-  const unit_id = req.profile.role === 'unit' ? req.profile.unit_id : req.body.unit_id;
-  if (!unit_id) {
-    res.status(400).json({ error: 'unit_id required' });
+  const bmc_id = req.profile.role === 'bmc' ? req.profile.bmc_id : req.body.bmc_id;
+  if (!bmc_id) {
+    res.status(400).json({ error: 'bmc_id required' });
     return;
   }
 
   let stockWarning: string | null = null;
   try {
-    const stock = await computeAvailableStock(req.profile.zone_id, unit_id);
+    const stock = await computeAvailableStock(req.profile.zone_id, bmc_id);
     if (Number(computedQty) > stock.available_stock_qty) {
       stockWarning = `Dispatched quantity (${Number(computedQty).toFixed(1)} L) exceeds available stock (${stock.available_stock_qty.toFixed(1)} L).`;
     }
@@ -1141,10 +1141,10 @@ router.post('/', async (req, res) => {
 
   // Look up BMC unit name for compartment attribution
   let unitName = 'BMC Unit';
-  if (unit_id) {
+  if (bmc_id) {
     try {
-      const { data: uRec } = await supabase.from('units').select('name, unit_code').eq('id', unit_id).maybeSingle();
-      if (uRec?.name) unitName = `${uRec.name}${uRec.unit_code ? ` [${uRec.unit_code}]` : ''}`;
+      const { data: uRec } = await supabase.from('bmcs').select('name, bmc_code').eq('id', bmc_id).maybeSingle();
+      if (uRec?.name) unitName = `${uRec.name}${uRec.bmc_code ? ` [${uRec.bmc_code}]` : ''}`;
     } catch {
       // non-fatal
     }
@@ -1152,7 +1152,7 @@ router.post('/', async (req, res) => {
 
   const taggedCompartments = compartments.map((c: any) => ({
     ...c,
-    bmc_id: unit_id,
+    bmc_id: bmc_id,
     bmc_name: unitName,
     dc_number: dcNo,
   }));
@@ -1226,7 +1226,7 @@ router.post('/', async (req, res) => {
 
     const existingBmcList = Array.isArray(existingTrip.stage_data?.bmc_dispatches) ? existingTrip.stage_data.bmc_dispatches : [];
     const bmcDispatchEntry = {
-      unit_id,
+      bmc_id,
       unit_name: unitName,
       dc_number: dcNo,
       quantity_dispatched: +Number(computedQty).toFixed(2),
@@ -1291,7 +1291,7 @@ router.post('/', async (req, res) => {
     saveTankerDispatchMetadata({
       id: mergedTripObj.id,
       tanker_number: mergedTripObj.tanker_number,
-      unit_id: mergedTripObj.unit_id,
+      bmc_id: mergedTripObj.bmc_id,
       zone_id: req.profile.zone_id,
       date: mergedTripObj.date,
       driver_name: mergedTripObj.driver_name,
@@ -1318,7 +1318,7 @@ router.post('/', async (req, res) => {
 
   const bmcInitialList = [
     {
-      unit_id,
+      bmc_id,
       unit_name: unitName,
       dc_number: dcNo,
       quantity_dispatched: +Number(computedQty).toFixed(2),
@@ -1347,7 +1347,7 @@ router.post('/', async (req, res) => {
   };
 
   const insertTier1: Record<string, any> = {
-    unit_id,
+    bmc_id,
     zone_id: req.profile.zone_id,
     date,
     tanker_number: tanker_number.trim().toUpperCase(),
@@ -1368,7 +1368,7 @@ router.post('/', async (req, res) => {
   if (taggedCompartments.length > 0) insertTier1.compartments = taggedCompartments;
 
   const insertTier2 = {
-    unit_id,
+    bmc_id,
     zone_id: req.profile.zone_id,
     date,
     tanker_number: tanker_number.trim().toUpperCase(),
@@ -1387,7 +1387,7 @@ router.post('/', async (req, res) => {
 
   // Tier 4: Without dispatch_time and dc_number (if dispatch_time not present in schema)
   const insertTier4 = {
-    unit_id,
+    bmc_id,
     zone_id: req.profile.zone_id,
     date,
     tanker_number: tanker_number.trim().toUpperCase(),
@@ -1401,7 +1401,7 @@ router.post('/', async (req, res) => {
 
   // Tier 5: Without driver_name & seal_number (safely preserved in stage_data)
   const insertTier5 = {
-    unit_id,
+    bmc_id,
     zone_id: req.profile.zone_id,
     date,
     tanker_number: tanker_number.trim().toUpperCase(),
@@ -1413,7 +1413,7 @@ router.post('/', async (req, res) => {
 
   // Tier 6: Absolute baseline table (guaranteed on any bare tanker_dispatches table)
   const insertTier6 = {
-    unit_id,
+    bmc_id,
     zone_id: req.profile.zone_id,
     date,
     tanker_number: tanker_number.trim().toUpperCase(),
@@ -1452,7 +1452,7 @@ router.post('/', async (req, res) => {
     saveTankerDispatchMetadata({
       id: data.id,
       tanker_number: data.tanker_number || tanker_number.trim().toUpperCase(),
-      unit_id,
+      bmc_id,
       zone_id: req.profile.zone_id,
       date,
       driver_name: data.driver_name || driver_name?.trim() || null,
@@ -1535,7 +1535,7 @@ router.post('/', async (req, res) => {
 
   await writeAuditLog({
     zone_id: req.profile.zone_id,
-    unit_id,
+    bmc_id,
     entity_type: 'tanker_dispatch',
     entity_id: data.id,
     action: 'create',
@@ -1576,7 +1576,7 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
   // QC can do qc_completed, cip_completed
   // UNLOADING can do unloaded
   // ADMIN and SUPERADMIN can do any stage
-  const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+  const isAdmin = userRole === 'admin';
   if (!isAdmin) {
     if (stageDef.team.toLowerCase() !== userRole) {
       res.status(403).json({
@@ -1942,7 +1942,7 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
       .from('tanker_dispatches')
       .update(updateTripFields)
       .eq('id', id)
-      .select('*, units(name, unit_code)')
+      .select('*, bmcs(name, bmc_code)')
       .single();
 
     if (initialUpdate.error) {
@@ -1956,7 +1956,7 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
           .from('tanker_dispatches')
           .update(safeBaseFields)
           .eq('id', id)
-          .select('*, units(name, unit_code)')
+          .select('*, bmcs(name, bmc_code)')
           .single();
         updatedTrip = fallbackUpdate.data;
       }
@@ -1978,7 +1978,7 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
   // 8. Audit log
   await writeAuditLog({
     zone_id: zoneId,
-    unit_id: trip.unit_id,
+    bmc_id: trip.bmc_id,
     entity_type: 'tanker_stage',
     entity_id: `${id}_${stageKey}`,
     action: `stage_${stageKey}_${stageStatus}`,
@@ -1998,7 +1998,7 @@ router.post('/:id/stages/:stageKey', async (req, res) => {
 });
 
 // POST /tanker/:id/correct — Admin corrects stage data with mandatory reason
-router.post('/:id/correct', requireRole('admin', 'superadmin'), async (req, res) => {
+router.post('/:id/correct', requireRole('admin'), async (req, res) => {
   const id = String(req.params.id);
   const zoneId = req.profile.zone_id;
   const { stage_name, changes, reason } = req.body as {
@@ -2059,7 +2059,7 @@ router.post('/:id/correct', requireRole('admin', 'superadmin'), async (req, res)
   // Write audit log
   await writeAuditLog({
     zone_id: zoneId,
-    unit_id: trip.unit_id,
+    bmc_id: trip.bmc_id,
     entity_type: 'tanker_stage_correction',
     entity_id: `${id}_${stage_name}`,
     action: 'correct_stage',
@@ -2085,7 +2085,7 @@ router.post('/:id/correct', requireRole('admin', 'superadmin'), async (req, res)
 });
 
 // POST /tanker/:id/remark — Admin adds remark or flags exception
-router.post('/:id/remark', requireRole('admin', 'superadmin'), async (req, res) => {
+router.post('/:id/remark', requireRole('admin'), async (req, res) => {
   const id = String(req.params.id);
   const zoneId = req.profile.zone_id;
   const { remark, is_exception } = req.body as {
@@ -2112,7 +2112,7 @@ router.post('/:id/remark', requireRole('admin', 'superadmin'), async (req, res) 
 
   await writeAuditLog({
     zone_id: zoneId,
-    unit_id: trip.unit_id,
+    bmc_id: trip.bmc_id,
     entity_type: 'tanker_dispatch',
     entity_id: id,
     action: is_exception ? 'mark_exception' : 'add_remark',
@@ -2130,14 +2130,14 @@ router.post('/:id/remark', requireRole('admin', 'superadmin'), async (req, res) 
 // GET /tanker/export/stage-wise — Export CSV with complete stage progression
 router.get('/export/stage-wise', async (req, res) => {
   try {
-    const { from, to, unit_id } = req.query as Record<string, string>;
+    const { from, to, bmc_id } = req.query as Record<string, string>;
     const zoneId = req.profile.zone_id;
     const settings = await getZoneSettings(zoneId);
 
     const { data, error } = await runResilientTankerQuery((selectStr) => {
       let query = supabase.from('tanker_dispatches').select(selectStr).eq('zone_id', zoneId);
-      if (req.profile.role === 'unit') query = query.eq('unit_id', req.profile.unit_id!);
-      else if (unit_id) query = query.eq('unit_id', unit_id);
+      if (req.profile.role === 'bmc') query = query.eq('bmc_id', req.profile.bmc_id!);
+      else if (bmc_id) query = query.eq('bmc_id', bmc_id);
       if (from) query = query.gte('date', from);
       if (to) query = query.lte('date', to);
       return query;
@@ -2155,13 +2155,13 @@ router.get('/export/stage-wise', async (req, res) => {
       const tripId = String(r.id);
       const stages = (stageMap[tripId] ?? []) as StageRecordItem[];
       const enriched = enrichTankerRow(r, stages, settings);
-      const u = r.units as { name: string; unit_code: string } | null;
+      const u = r.bmcs as { name: string; bmc_code: string } | null;
 
       const rowOut: Record<string, any> = {
         'Date': formatDateDDMMYYYY(String(r.date)),
         'Tanker Number': r.tanker_number,
         'BMC': u?.name ?? '',
-        'BMC Code': u?.unit_code ?? '',
+        'BMC Code': u?.bmc_code ?? '',
         'Driver': r.driver_name ?? '',
         'Seal Number': r.seal_number ?? '',
         'Dispatched (L)': r.quantity_dispatched,
@@ -2204,7 +2204,7 @@ router.get('/export/stage-wise', async (req, res) => {
 // GET /tanker/export/pdf — PDF / Register format export
 router.get('/export/pdf', async (req, res) => {
   try {
-    const { from, to, unit_id } = req.query as Record<string, string>;
+    const { from, to, bmc_id } = req.query as Record<string, string>;
     const zoneId = req.profile.zone_id;
     const settings = await getZoneSettings(zoneId);
 
@@ -2212,7 +2212,7 @@ router.get('/export/pdf', async (req, res) => {
       let query = supabase.from('tanker_dispatches').select(selectStr).eq('zone_id', zoneId);
       if (from) query = query.gte('date', from);
       if (to) query = query.lte('date', to);
-      if (unit_id) query = query.eq('unit_id', unit_id);
+      if (bmc_id) query = query.eq('bmc_id', bmc_id);
       return query;
     });
 
@@ -2241,246 +2241,8 @@ router.get('/export/pdf', async (req, res) => {
   }
 });
 
-// POST /tanker/seed — Injects test data covering every stage, delayed, and QC rejected
-router.post('/seed', requireRole('admin', 'superadmin'), async (req, res) => {
-  const zoneId = req.profile.zone_id;
-  try {
-    // 1. Get or create a default unit
-    let { data: units } = await supabase.from('units').select('id').eq('zone_id', zoneId).limit(1);
-    let unitId = units?.[0]?.id;
-    if (!unitId) {
-      const { data: newUnit } = await supabase
-        .from('units')
-        .insert({
-          zone_id: zoneId,
-          name: 'Tiruvannamalai Village Unit',
-          unit_code: 'TVM-001',
-          contact_number: '9876543210',
-        })
-        .select()
-        .single();
-      unitId = newUnit?.id;
-    }
-
-    const today = new Date().toISOString().slice(0, 10);
-    const nowMs = Date.now();
-    const actorId = req.user.id;
-    const actorName = req.profile.full_name || 'Admin';
-
-    // Helper to generate ISO time offset in minutes from now
-    const offsetIso = (minsAgo: number) => new Date(nowMs - minsAgo * 60000).toISOString();
-
-    const seedConfigs: Array<{
-      tanker_number: string;
-      driver_name: string;
-      seal_number: string;
-      quantity: number;
-      stagesToApply: Array<{
-        stage_name: TankerStageKey;
-        team: PlantTeam;
-        status: 'done' | 'rejected' | 'skipped';
-        data: Record<string, unknown>;
-        minsAgo: number;
-      }>;
-    }> = [
-      {
-        tanker_number: 'TN-25-A-1001',
-        driver_name: 'Murugan K',
-        seal_number: 'SL-9001',
-        quantity: 9000,
-        stagesToApply: [], // 1. On the way
-      },
-      {
-        tanker_number: 'TN-25-B-1002',
-        driver_name: 'Ravi Chandran',
-        seal_number: 'SL-9002',
-        quantity: 8500,
-        stagesToApply: [
-          // 2. Vehicle Entered
-          { stage_name: 'vehicle_entered', team: 'gate', status: 'done', data: { seal_verified: true }, minsAgo: 10 },
-        ],
-      },
-      {
-        tanker_number: 'TN-25-C-1003',
-        driver_name: 'Karthik S',
-        seal_number: 'SL-9003',
-        quantity: 9200,
-        stagesToApply: [
-          // 3. Gross Done
-          { stage_name: 'vehicle_entered', team: 'gate', status: 'done', data: { seal_verified: true }, minsAgo: 25 },
-          { stage_name: 'gross_weight', team: 'gate', status: 'done', data: { gross_weight_kg: 24500, weighbridge_slip_no: 'WB-101' }, minsAgo: 15 },
-        ],
-      },
-      {
-        tanker_number: 'TN-25-D-1004',
-        driver_name: 'Selvam P',
-        seal_number: 'SL-9004',
-        quantity: 8800,
-        stagesToApply: [
-          // 4. QC Done
-          { stage_name: 'vehicle_entered', team: 'gate', status: 'done', data: { seal_verified: true }, minsAgo: 50 },
-          { stage_name: 'gross_weight', team: 'gate', status: 'done', data: { gross_weight_kg: 24100 }, minsAgo: 40 },
-          { stage_name: 'qc_completed', team: 'qc', status: 'done', data: { qc_status: 'accepted', received_fat_pct: 4.5, received_snf_pct: 8.4 }, minsAgo: 20 },
-        ],
-      },
-      {
-        tanker_number: 'TN-25-E-1005',
-        driver_name: 'Gopal R',
-        seal_number: 'SL-9005',
-        quantity: 9500,
-        stagesToApply: [
-          // 5. Unloaded
-          { stage_name: 'vehicle_entered', team: 'gate', status: 'done', data: { seal_verified: true }, minsAgo: 80 },
-          { stage_name: 'gross_weight', team: 'gate', status: 'done', data: { gross_weight_kg: 25000 }, minsAgo: 70 },
-          { stage_name: 'qc_completed', team: 'qc', status: 'done', data: { qc_status: 'accepted', received_fat_pct: 4.6, received_snf_pct: 8.5 }, minsAgo: 50 },
-          { stage_name: 'unloaded', team: 'unloading', status: 'done', data: { silo_or_bay: 'Silo-2', unloaded_litres: 9480 }, minsAgo: 15 },
-        ],
-      },
-      {
-        tanker_number: 'TN-25-F-1006',
-        driver_name: 'Mani V',
-        seal_number: 'SL-9006',
-        quantity: 8900,
-        stagesToApply: [
-          // 6. Tare Done
-          { stage_name: 'vehicle_entered', team: 'gate', status: 'done', data: { seal_verified: true }, minsAgo: 110 },
-          { stage_name: 'gross_weight', team: 'gate', status: 'done', data: { gross_weight_kg: 24200 }, minsAgo: 95 },
-          { stage_name: 'qc_completed', team: 'qc', status: 'done', data: { qc_status: 'accepted', received_fat_pct: 4.45, received_snf_pct: 8.42 }, minsAgo: 75 },
-          { stage_name: 'unloaded', team: 'unloading', status: 'done', data: { silo_or_bay: 'Silo-1', unloaded_litres: 8880 }, minsAgo: 45 },
-          { stage_name: 'tare_weight', team: 'gate', status: 'done', data: { tare_weight_kg: 15050, net_weight_kg: 9150 }, minsAgo: 10 },
-        ],
-      },
-      {
-        tanker_number: 'TN-25-G-1007',
-        driver_name: 'Anbuchelvan',
-        seal_number: 'SL-9007',
-        quantity: 9100,
-        stagesToApply: [
-          // 7. CIP Done
-          { stage_name: 'vehicle_entered', team: 'gate', status: 'done', data: { seal_verified: true }, minsAgo: 140 },
-          { stage_name: 'gross_weight', team: 'gate', status: 'done', data: { gross_weight_kg: 24600 }, minsAgo: 125 },
-          { stage_name: 'qc_completed', team: 'qc', status: 'done', data: { qc_status: 'accepted', received_fat_pct: 4.52, received_snf_pct: 8.48 }, minsAgo: 105 },
-          { stage_name: 'unloaded', team: 'unloading', status: 'done', data: { silo_or_bay: 'Silo-3', unloaded_litres: 9080 }, minsAgo: 70 },
-          { stage_name: 'tare_weight', team: 'gate', status: 'done', data: { tare_weight_kg: 15230, net_weight_kg: 9370 }, minsAgo: 45 },
-          { stage_name: 'cip_completed', team: 'qc', status: 'done', data: { cip_status: 'pass', chemical_used: 'Nitric Acid 1%' }, minsAgo: 5 },
-        ],
-      },
-      {
-        tanker_number: 'TN-25-H-1008',
-        driver_name: 'Sundaram P',
-        seal_number: 'SL-9008',
-        quantity: 9400,
-        stagesToApply: [
-          // 8. Exited
-          { stage_name: 'vehicle_entered', team: 'gate', status: 'done', data: { seal_verified: true }, minsAgo: 180 },
-          { stage_name: 'gross_weight', team: 'gate', status: 'done', data: { gross_weight_kg: 24900 }, minsAgo: 165 },
-          { stage_name: 'qc_completed', team: 'qc', status: 'done', data: { qc_status: 'accepted', received_fat_pct: 4.5, received_snf_pct: 8.4 }, minsAgo: 145 },
-          { stage_name: 'unloaded', team: 'unloading', status: 'done', data: { silo_or_bay: 'Silo-1', unloaded_litres: 9380 }, minsAgo: 115 },
-          { stage_name: 'tare_weight', team: 'gate', status: 'done', data: { tare_weight_kg: 15220, net_weight_kg: 9680 }, minsAgo: 90 },
-          { stage_name: 'cip_completed', team: 'qc', status: 'done', data: { cip_status: 'pass' }, minsAgo: 50 },
-          { stage_name: 'vehicle_exit', team: 'gate', status: 'done', data: { gate_pass_number: 'GP-889901' }, minsAgo: 20 },
-        ],
-      },
-      {
-        tanker_number: 'TN-25-R-9999',
-        driver_name: 'Dharmalingam',
-        seal_number: 'SL-REJ-01',
-        quantity: 8000,
-        stagesToApply: [
-          // 9. QC Rejected (Unloaded Skipped)
-          { stage_name: 'vehicle_entered', team: 'gate', status: 'done', data: { seal_verified: true }, minsAgo: 70 },
-          { stage_name: 'gross_weight', team: 'gate', status: 'done', data: { gross_weight_kg: 23200 }, minsAgo: 55 },
-          { stage_name: 'qc_completed', team: 'qc', status: 'rejected', data: { qc_status: 'rejected', rejection_reason: 'Sour milk / Acidity 0.18% exceeds limit' }, minsAgo: 35 },
-          { stage_name: 'unloaded', team: 'unloading', status: 'skipped', data: { note: 'Skipped (QC rejected)' }, minsAgo: 35 },
-        ],
-      },
-      {
-        tanker_number: 'TN-25-L-8888',
-        driver_name: 'Govindan V',
-        seal_number: 'SL-DELAY-01',
-        quantity: 9100,
-        stagesToApply: [
-          // 10. Delayed trip: entered 120 minutes ago, Gate gross weight still pending (> 15 min limit!)
-          { stage_name: 'vehicle_entered', team: 'gate', status: 'done', data: { seal_verified: true }, minsAgo: 120 },
-        ],
-      },
-    ];
-
-    const insertedTrips = [];
-
-    for (const sc of seedConfigs) {
-      let tripRec: any = null;
-      const { data: extRec, error: insErr } = await supabase
-        .from('tanker_dispatches')
-        .insert({
-          zone_id: zoneId,
-          unit_id: unitId,
-          date: today,
-          tanker_number: sc.tanker_number,
-          driver_name: sc.driver_name,
-          seal_number: sc.seal_number,
-          quantity_dispatched: sc.quantity,
-          dispatch_time: '07:30',
-          destination: 'Main Processing Plant',
-          dispatch_fat_pct: 4.5,
-          dispatch_snf_pct: 8.5,
-          created_by: actorId,
-        })
-        .select()
-        .single();
-
-      if (!insErr && extRec) {
-        tripRec = extRec;
-      } else {
-        const { data: minRec, error: minErr } = await supabase
-          .from('tanker_dispatches')
-          .insert({
-            zone_id: zoneId,
-            unit_id: unitId,
-            date: today,
-            tanker_number: sc.tanker_number,
-            quantity_dispatched: sc.quantity,
-            destination: 'Main Processing Plant',
-            created_by: actorId,
-          })
-          .select()
-          .single();
-        if (minErr) {
-          console.warn('Seed insert minimal dispatch error:', minErr.message);
-          continue;
-        }
-        tripRec = minRec;
-      }
-
-      const tripId = tripRec.id;
-      for (const st of sc.stagesToApply) {
-        await recordTankerStageInDb({
-          trip_id: tripId,
-          stage_name: st.stage_name,
-          team: st.team,
-          status: st.status,
-          stage_data: st.data,
-          done_by: actorId,
-          done_by_name: actorName,
-          done_at: offsetIso(st.minsAgo),
-        });
-      }
-
-      insertedTrips.push(tripRec.id);
-    }
-
-    res.json({
-      success: true,
-      message: `Seeded ${insertedTrips.length} test tanker journeys covering every stage, QC rejection, and delayed trips.`,
-      trips_created: insertedTrips.length,
-    });
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
-  }
-});
-
 // PATCH /tanker/:id/receive — Admin legacy endpoint maintained for compatibility
-router.patch('/:id/receive', requireRole('admin', 'superadmin'), async (req, res) => {
+router.patch('/:id/receive', requireRole('admin'), async (req, res) => {
   const id = String(req.params.id);
   const { received_qty, receipt_time, received_fat_pct, received_snf_pct } = req.body as {
     received_qty?: number;
@@ -2523,7 +2285,7 @@ router.patch('/:id/receive', requireRole('admin', 'superadmin'), async (req, res
     .update(updateFields)
     .eq('id', id)
     .eq('zone_id', req.profile.zone_id)
-    .select('*, units(name, unit_code)')
+    .select('*, bmcs(name, bmc_code)')
     .single();
 
   if (error && !isMissingSchemaError(error)) {
@@ -2533,7 +2295,7 @@ router.patch('/:id/receive', requireRole('admin', 'superadmin'), async (req, res
 
   await writeAuditLog({
     zone_id: req.profile.zone_id,
-    unit_id: existing.unit_id,
+    bmc_id: existing.bmc_id,
     entity_type: 'tanker_dispatch',
     entity_id: id,
     action: 'record_receipt',
@@ -2548,10 +2310,10 @@ router.patch('/:id/receive', requireRole('admin', 'superadmin'), async (req, res
 });
 
 // DELETE /tanker/:id
-router.delete('/:id', requireRole('admin', 'superadmin', 'unit'), async (req, res) => {
+router.delete('/:id', requireRole('admin', 'bmc'), async (req, res) => {
   const id = String(req.params.id);
   let query = supabase.from('tanker_dispatches').delete().eq('id', id);
-  if (req.profile.role === 'unit') query = query.eq('unit_id', req.profile.unit_id!);
+  if (req.profile.role === 'bmc') query = query.eq('bmc_id', req.profile.bmc_id!);
   else query = query.eq('zone_id', req.profile.zone_id);
 
   const { error } = await query;

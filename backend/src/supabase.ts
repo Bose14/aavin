@@ -83,8 +83,55 @@ const serverAuthOptions = {
   detectSessionInUrl: false,
 };
 
+/**
+ * Database ids are bigint (1, 2, 3 ...), which PostgREST returns as JSON numbers.
+ * The API and the frontend treat ids as strings everywhere, so this fetch wrapper
+ * converts numeric `id` / `*_id` values in REST responses to strings. Filters and
+ * inserts accept strings for bigint columns, so nothing else needs to change.
+ */
+const ID_KEY = /^(id|[a-z0-9_]+_id)$/;
+
+export function stringifyIds(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stringifyIds);
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = typeof val === 'number' && ID_KEY.test(key) ? String(val) : stringifyIds(val);
+    }
+    return out;
+  }
+  return value;
+}
+
+const idsAsStringsFetch: typeof fetch = async (input, init) => {
+  const res = await fetch(input, init);
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  const contentType = res.headers.get('content-type') ?? '';
+  if (!url.includes('/rest/v1/') || !contentType.includes('json')) return res;
+
+  const text = await res.text();
+  const headers = new Headers(res.headers);
+  headers.delete('content-length');
+  headers.delete('content-encoding');
+
+  let body = text;
+  if (text) {
+    try {
+      body = JSON.stringify(stringifyIds(JSON.parse(text)));
+    } catch {
+      body = text;
+    }
+  }
+  return new Response(res.status === 204 || res.status === 205 ? null : body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+  });
+};
+
 export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   auth: serverAuthOptions,
+  global: { fetch: idsAsStringsFetch },
 });
 
 /**
@@ -95,6 +142,7 @@ export function createUserScopedClient(accessToken: string) {
   return createClient(supabaseUrl, supabaseServiceKey, {
     auth: serverAuthOptions,
     global: {
+      fetch: idsAsStringsFetch,
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },

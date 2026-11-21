@@ -6,28 +6,38 @@ import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
 import { normalizeIndianPhone } from '../../lib/format';
 
+type TeamCode = 'ADMIN' | 'GATE' | 'QC' | 'UNLOADING' | 'BMC';
+
 interface Unit {
   id: string;
+  id_token: string;
   name: string;
-  unit_code: string;
+  bmc_code: string;
 }
+
+const TEAM_OPTIONS: { code: TeamCode; label: string }[] = [
+  { code: 'GATE', label: 'GATE — Vehicle Entry & Weighbridge' },
+  { code: 'QC', label: 'QC — Quality Testing & CIP' },
+  { code: 'UNLOADING', label: 'UNLOADING — Silo & Milk Reception' },
+  { code: 'BMC', label: 'BMC — Bulk Milk Cooler Staff' },
+  { code: 'ADMIN', label: 'ADMIN — Administration' },
+];
 
 interface MergedUserRecord {
   id: string;
+  id_token: string;
   full_name: string;
-  username: string | null;
   email: string | null;
   phone: string | null;
   role: string;
-  unit_id: string | null;
+  bmc_id: string | null;
   team_id: string | null;
-  team: { id: string; code: 'GATE' | 'QC' | 'UNLOADING'; name: string } | null;
-  units: { name: string; unit_code: string } | null;
+  team: { id: string; id_token: string; code: TeamCode; name: string } | null;
+  bmc: { id_token: string; name: string; bmc_code: string } | null;
   shift: 'Morning' | 'Evening' | 'General' | null;
   is_active: boolean;
   created_at: string;
-  last_sign_in_at: string | null;
-  user_type?: 'plant' | 'unit' | 'admin';
+  user_type?: 'plant' | 'bmc' | 'admin';
 }
 
 const TEAM_COLOR_CONFIG: Record<string, { tone: 'indigo' | 'amber' | 'blue'; border: string; bg: string; dot: string }> = {
@@ -35,8 +45,6 @@ const TEAM_COLOR_CONFIG: Record<string, { tone: 'indigo' | 'amber' | 'blue'; bor
   QC: { tone: 'amber', border: '#fbbf24', bg: '#fffbeb', dot: '#d97706' },
   UNLOADING: { tone: 'blue', border: '#60a5fa', bg: '#eff6ff', dot: '#2563eb' },
 };
-
-const DEFAULT_PASSWORD = 'Aavin123';
 
 export default function AdminTeams() {
   const { lang } = useTranslation();
@@ -49,7 +57,7 @@ export default function AdminTeams() {
   const [successMsg, setSuccessMsg] = useState('');
 
   // Scope & Filters
-  const [userScope, setUserScope] = useState<'all' | 'plant' | 'unit' | 'admin'>('all');
+  const [userScope, setUserScope] = useState<'all' | 'plant' | 'bmc' | 'admin'>('all');
   const [filterTeam, setFilterTeam] = useState<string>('');
   const [filterUnit, setFilterUnit] = useState<string>('');
   const [filterShift, setFilterShift] = useState<string>('');
@@ -58,19 +66,19 @@ export default function AdminTeams() {
 
   // Add User Modal State
   const [showAddModal, setShowAddModal] = useState(false);
-  const [addUserType, setAddUserType] = useState<'plant' | 'unit'>('plant');
-  const [addTeam, setAddTeam] = useState<'GATE' | 'QC' | 'UNLOADING'>('GATE');
+  const [addTeam, setAddTeam] = useState<TeamCode>('GATE');
+  const [addShift, setAddShift] = useState<'Morning' | 'Evening' | 'General'>('General');
   const [addUnitId, setAddUnitId] = useState('');
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
   const [addPhone, setAddPhone] = useState('');
-  const [addPassword, setAddPassword] = useState(DEFAULT_PASSWORD);
+  const [addPassword, setAddPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [savingUser, setSavingUser] = useState(false);
   const [addUserError, setAddUserError] = useState('');
   const [userCreatedAlert, setUserCreatedAlert] = useState<{
     name: string;
-    username: string;
+    idToken: string;
     email: string;
     teamOrUnit: string;
     password?: string;
@@ -79,7 +87,6 @@ export default function AdminTeams() {
   // Edit User Modal State
   const [editTarget, setEditTarget] = useState<MergedUserRecord | null>(null);
   const [editName, setEditName] = useState('');
-  const [editUserId, setEditUserId] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editUnitId, setEditUnitId] = useState('');
   const [editShift, setEditShift] = useState<'Morning' | 'Evening' | 'General'>('General');
@@ -89,7 +96,8 @@ export default function AdminTeams() {
 
   // Move Team Modal State
   const [moveTarget, setMoveTarget] = useState<MergedUserRecord | null>(null);
-  const [newTeam, setNewTeam] = useState<'GATE' | 'QC' | 'UNLOADING'>('GATE');
+  const [newTeam, setNewTeam] = useState<TeamCode>('GATE');
+  const [moveUnitId, setMoveUnitId] = useState('');
   const [moveReason, setMoveReason] = useState('');
   const [movingTeam, setMovingTeam] = useState(false);
   const [moveError, setMoveError] = useState('');
@@ -115,7 +123,7 @@ export default function AdminTeams() {
 
   const fetchUnits = async () => {
     try {
-      const res = await api.get<Unit[]>('/units');
+      const res = await api.get<Unit[]>('/bmcs');
       setUnits(res.data || []);
       if (res.data && res.data.length > 0 && !addUnitId) {
         setAddUnitId(res.data[0].id);
@@ -128,26 +136,12 @@ export default function AdminTeams() {
   const fetchAllUsers = async () => {
     setLoadingUsers(true);
     try {
-      // Fetch users from /users (which contains both unit staff and plant team operators)
-      const res = await api.get<{ users: MergedUserRecord[] } | MergedUserRecord[]>('/users');
-      const rawList = Array.isArray(res.data) ? res.data : (res.data as any)?.users || [];
+      const res = await api.get<MergedUserRecord[]>('/users');
+      const list = Array.isArray(res.data) ? res.data : [];
 
-      // If /users returned empty, fallback to /teams/users
-      let list = rawList;
-      if (list.length === 0) {
-        const teamsUsersRes = await api.get<MergedUserRecord[]>('/teams/users');
-        list = teamsUsersRes.data || [];
-      }
-
-      // Enrich user type
-      const enriched: MergedUserRecord[] = list.map((u: any) => {
-        const roleLower = (u.role || '').toLowerCase();
-        let uType: 'plant' | 'unit' | 'admin' = 'unit';
-        if (['gate', 'qc', 'unloading'].includes(roleLower) || u.team_id || u.team) {
-          uType = 'plant';
-        } else if (['admin', 'superadmin'].includes(roleLower)) {
-          uType = 'admin';
-        }
+      const enriched: MergedUserRecord[] = list.map((u) => {
+        const code = u.team?.code;
+        const uType: 'plant' | 'bmc' | 'admin' = code === 'BMC' ? 'bmc' : code === 'ADMIN' ? 'admin' : 'plant';
         return {
           ...u,
           user_type: uType,
@@ -157,7 +151,7 @@ export default function AdminTeams() {
       });
 
       setTeamUsers(enriched);
-    } catch (err: any) {
+    } catch (err) {
       console.warn('Failed to load users:', err);
     } finally {
       setLoadingUsers(false);
@@ -169,16 +163,16 @@ export default function AdminTeams() {
     void fetchAllUsers();
   }, []);
 
-  const openAddUserModal = (preselectedTeam?: 'GATE' | 'QC' | 'UNLOADING') => {
-    setAddUserType(preselectedTeam ? 'plant' : 'plant');
+  const openAddUserModal = (preselectedTeam?: TeamCode) => {
     setAddTeam(preselectedTeam || 'GATE');
+    setAddShift('General');
     setAddName('');
     setAddEmail('');
     setAddPhone('');
-    setAddPassword(DEFAULT_PASSWORD);
+    setAddPassword('');
     setShowPassword(false);
     setAddUserError('');
-    if (units.length > 0) setAddUnitId(units[0].id);
+    setAddUnitId(units[0]?.id ?? '');
     setShowAddModal(true);
   };
 
@@ -193,61 +187,43 @@ export default function AdminTeams() {
       setAddUserError('Email address is required');
       return;
     }
-    if (!addPassword.trim() || addPassword.trim().length < 6) {
-      setAddUserError('Password must be at least 6 characters');
+    if (addPassword.trim() && addPassword.trim().length < 6) {
+      setAddUserError('Password must be at least 6 characters (or leave it blank to auto-generate one)');
       return;
     }
-    if (addUserType === 'unit' && !addUnitId) {
-      setAddUserError('Please select a BMC unit');
+    if (addTeam === 'BMC' && !addUnitId) {
+      setAddUserError('Please select a BMC');
       return;
     }
 
     setSavingUser(true);
     try {
-      if (addUserType === 'plant') {
-        const payload = {
-          full_name: addName.trim(),
-          email: addEmail.trim().toLowerCase(),
-          phone: addPhone.trim() || undefined,
-          team: addTeam,
-          shift: 'General',
-          password: addPassword.trim(),
-          force_password_change: true,
-        };
+      // One form, one endpoint: the team decides whether a BMC is needed
+      const res = await api.post<{
+        full_name: string;
+        id_token: string;
+        email: string;
+        temp_password?: string;
+      }>('/users', {
+        full_name: addName.trim(),
+        email: addEmail.trim().toLowerCase(),
+        phone: addPhone.trim() || undefined,
+        team: addTeam,
+        bmc_id: addTeam === 'BMC' ? addUnitId : undefined,
+        shift: addShift,
+        password: addPassword.trim() || undefined,
+        force_password_change: true,
+      });
+      const created = res.data;
+      const assignedUnit = units.find((u) => u.id === addUnitId);
 
-        const res = await api.post('/teams/users', payload);
-        const created = res.data;
-
-        setUserCreatedAlert({
-          name: created.full_name || addName,
-          username: created.username || '',
-          email: created.email || payload.email,
-          teamOrUnit: `Team ${addTeam}`,
-          password: created.temp_password || addPassword,
-        });
-      } else {
-        // BMC Unit User
-        const payload = {
-          full_name: addName.trim(),
-          email: addEmail.trim().toLowerCase(),
-          phone: addPhone.trim() || undefined,
-          unit_id: addUnitId,
-          password: addPassword.trim(),
-          force_password_change: true,
-        };
-
-        const res = await api.post('/users/create', payload);
-        const created = res.data;
-        const assignedUnit = units.find((u) => u.id === addUnitId);
-
-        setUserCreatedAlert({
-          name: created.full_name || addName,
-          username: created.username || addEmail,
-          email: created.email || addEmail,
-          teamOrUnit: `BMC: ${assignedUnit?.name || 'Assigned BMC'}`,
-          password: created.temp_password || addPassword,
-        });
-      }
+      setUserCreatedAlert({
+        name: created.full_name || addName,
+        idToken: created.id_token,
+        email: created.email,
+        teamOrUnit: addTeam === 'BMC' ? `BMC: ${assignedUnit?.name || 'Assigned BMC'}` : `Team ${addTeam}`,
+        password: created.temp_password,
+      });
 
       setShowAddModal(false);
       setSuccessMsg(
@@ -257,8 +233,9 @@ export default function AdminTeams() {
       );
 
       await fetchAllUsers();
-    } catch (err: any) {
-      setAddUserError(err.response?.data?.error || err.message || 'Failed to create user');
+    } catch (err) {
+      const e2 = err as { response?: { data?: { error?: string } }; message?: string };
+      setAddUserError(e2.response?.data?.error || e2.message || 'Failed to create user');
     } finally {
       setSavingUser(false);
     }
@@ -267,9 +244,8 @@ export default function AdminTeams() {
   const openEditModal = (u: MergedUserRecord) => {
     setEditTarget(u);
     setEditName(u.full_name || '');
-    setEditUserId(u.username || '');
     setEditPhone(u.phone ? u.phone.replace('+91', '').trim() : '');
-    setEditUnitId(u.unit_id || (units[0]?.id ?? ''));
+    setEditUnitId(u.bmc_id || (units[0]?.id ?? ''));
     setEditShift(u.shift || 'General');
     setEditActive(u.is_active !== false);
     setEditError('');
@@ -280,12 +256,11 @@ export default function AdminTeams() {
     setSavingEdit(true);
     setEditError('');
     try {
-      await api.patch(`/users/${editTarget.id}`, {
+      await api.patch(`/users/${editTarget.id_token}`, {
         full_name: editName.trim(),
-        username: editUserId.trim().toUpperCase() || null,
         phone: editPhone.trim() || null,
-        unit_id: editTarget.user_type === 'unit' ? editUnitId : undefined,
-        shift: editTarget.user_type === 'plant' ? editShift : undefined,
+        bmc_id: editTarget.team?.code === 'BMC' ? editUnitId : undefined,
+        shift: editShift,
         is_active: editActive,
       });
 
@@ -305,9 +280,10 @@ export default function AdminTeams() {
 
   const openMoveModal = (u: MergedUserRecord) => {
     setMoveTarget(u);
-    const curr = (u.team?.code || u.role || 'GATE').toUpperCase() as 'GATE' | 'QC' | 'UNLOADING';
-    const next = curr === 'GATE' ? 'QC' : curr === 'QC' ? 'UNLOADING' : 'GATE';
+    const curr = u.team?.code ?? 'GATE';
+    const next = TEAM_OPTIONS.find((t) => t.code !== curr)?.code ?? 'GATE';
     setNewTeam(next);
+    setMoveUnitId(u.bmc_id || (units[0]?.id ?? ''));
     setMoveReason('');
     setMoveError('');
   };
@@ -318,12 +294,17 @@ export default function AdminTeams() {
       setMoveError('Reason is required for the audit log');
       return;
     }
+    if (newTeam === 'BMC' && !moveUnitId) {
+      setMoveError('Please select a BMC');
+      return;
+    }
 
     setMovingTeam(true);
     setMoveError('');
     try {
-      await api.post(`/users/${moveTarget.id}/move-team`, {
-        target_team: newTeam,
+      await api.patch(`/users/${moveTarget.id_token}`, {
+        team: newTeam,
+        bmc_id: newTeam === 'BMC' ? moveUnitId : undefined,
         reason: moveReason.trim(),
       });
 
@@ -334,8 +315,9 @@ export default function AdminTeams() {
       );
       setMoveTarget(null);
       await fetchAllUsers();
-    } catch (err: any) {
-      setMoveError(err.response?.data?.error || err.message || 'Failed to move user');
+    } catch (err) {
+      const e2 = err as { response?: { data?: { error?: string } }; message?: string };
+      setMoveError(e2.response?.data?.error || e2.message || 'Failed to move user');
     } finally {
       setMovingTeam(false);
     }
@@ -348,9 +330,9 @@ export default function AdminTeams() {
     setResetError('');
     try {
       const res = await api.post<{ temp_password?: string; temporaryPassword?: string }>(
-        `/users/${resetTarget.id}/reset-password`
+        `/users/${resetTarget.id_token}/reset-password`
       );
-      const tempPwd = res.data?.temp_password || res.data?.temporaryPassword || DEFAULT_PASSWORD;
+      const tempPwd = res.data?.temp_password || res.data?.temporaryPassword || '';
       setResetTempPwd(tempPwd);
     } catch (err: any) {
       setResetError(err.response?.data?.error || err.message || 'Failed to reset password');
@@ -364,7 +346,7 @@ export default function AdminTeams() {
     setTogglingUser(true);
     try {
       const nextActive = !toggleUserTarget.is_active;
-      await api.patch(`/users/${toggleUserTarget.id}`, { is_active: nextActive });
+      await api.patch(`/users/${toggleUserTarget.id_token}`, { is_active: nextActive });
       setSuccessMsg(
         lang === 'ta'
           ? `பயனர் ${toggleUserTarget.full_name} ${nextActive ? 'செயல்படுத்தப்பட்டார்' : 'முடக்கப்பட்டார்'}!`
@@ -384,7 +366,7 @@ export default function AdminTeams() {
     return {
       all: teamUsers.length,
       plant: teamUsers.filter((u) => u.user_type === 'plant').length,
-      unit: teamUsers.filter((u) => u.user_type === 'unit').length,
+      unit: teamUsers.filter((u) => u.user_type === 'bmc').length,
       admin: teamUsers.filter((u) => u.user_type === 'admin').length,
     };
   }, [teamUsers]);
@@ -409,7 +391,7 @@ export default function AdminTeams() {
 
     // BMC Unit Filter
     if (filterUnit) {
-      list = list.filter((u) => u.unit_id === filterUnit);
+      list = list.filter((u) => u.bmc_id === filterUnit);
     }
 
     // Shift Filter
@@ -430,10 +412,10 @@ export default function AdminTeams() {
       list = list.filter(
         (u) =>
           u.full_name.toLowerCase().includes(q) ||
-          (u.username || '').toLowerCase().includes(q) ||
+          (u.id_token || '').toLowerCase().includes(q) ||
           (u.email || '').toLowerCase().includes(q) ||
           (u.phone || '').toLowerCase().includes(q) ||
-          (u.units?.name || '').toLowerCase().includes(q)
+          (u.bmc?.name || '').toLowerCase().includes(q)
       );
     }
     return list;
@@ -442,9 +424,9 @@ export default function AdminTeams() {
   // Data Table Columns
   const userColumns: DataColumn<MergedUserRecord>[] = [
     {
-      key: 'username',
-      header: 'Unique User ID',
-      sortValue: (u) => u.username || '',
+      key: 'id_token',
+      header: 'User ID',
+      sortValue: (u) => u.id_token || '',
       render: (u) => (
         <code
           style={{
@@ -457,7 +439,7 @@ export default function AdminTeams() {
             border: '1px solid #cbd5e1',
           }}
         >
-          {u.username || (u.units?.unit_code ? `BMC_${u.units.unit_code}` : '—')}
+          {u.id_token}
         </code>
       ),
     },
@@ -475,7 +457,7 @@ export default function AdminTeams() {
     {
       key: 'team_or_unit',
       header: 'Role & Team / BMC',
-      sortValue: (u) => u.team?.name || u.units?.name || u.role,
+      sortValue: (u) => u.team?.name || u.bmc?.name || u.role,
       render: (u) => {
         if (u.user_type === 'plant') {
           const tCode = (u.team?.code || u.role).toUpperCase();
@@ -500,7 +482,7 @@ export default function AdminTeams() {
             </span>
           );
         }
-        if (u.user_type === 'unit') {
+        if (u.user_type === 'bmc') {
           return (
             <span
               style={{
@@ -516,7 +498,7 @@ export default function AdminTeams() {
                 color: '#166534',
               }}
             >
-              🏢 {u.units?.name ? `BMC: ${u.units.name}` : 'BMC Staff'}
+              🏢 {u.bmc?.name ? `BMC: ${u.bmc.name}` : 'BMC Staff'}
             </span>
           );
         }
@@ -545,7 +527,7 @@ export default function AdminTeams() {
       header: 'Shift',
       sortValue: (u) => u.shift || '',
       render: (u) =>
-        u.user_type === 'plant' && u.shift ? (
+        u.shift ? (
           <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
             {u.shift === 'Morning' ? '🌅 Morning' : u.shift === 'Evening' ? '🌇 Evening' : '🕒 General'}
           </span>
@@ -586,13 +568,13 @@ export default function AdminTeams() {
             ✏️
           </button>
 
-          {/* Move Team (plant operators only) */}
-          {u.user_type === 'plant' && (
+          {/* Change team */}
+          {(
             <button
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={() => openMoveModal(u)}
-              title="Move to another plant team"
+              title="Change team"
               style={{ width: '30px', height: '30px', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem' }}
             >
               ⇄
@@ -710,7 +692,7 @@ export default function AdminTeams() {
               </div>
               <div style={{ marginTop: '0.4rem', fontSize: '0.85rem', display: 'flex', flexWrap: 'wrap', gap: '1.25rem' }}>
                 <div>Name: <strong>{userCreatedAlert.name}</strong></div>
-                <div>User ID: <code style={{ background: '#d1fae5', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>{userCreatedAlert.username}</code></div>
+                <div>User ID: <code style={{ background: '#d1fae5', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>{userCreatedAlert.idToken}</code></div>
                 <div>Assignment: <strong>{userCreatedAlert.teamOrUnit}</strong></div>
                 <div>Email: <strong>{userCreatedAlert.email}</strong></div>
                 {userCreatedAlert.password && (
@@ -812,17 +794,17 @@ export default function AdminTeams() {
             </button>
             <button
               type="button"
-              onClick={() => setUserScope('unit')}
+              onClick={() => setUserScope('bmc')}
               style={{
                 border: 'none',
-                background: userScope === 'unit' ? '#ffffff' : 'transparent',
-                fontWeight: userScope === 'unit' ? 700 : 500,
-                color: userScope === 'unit' ? '#0f172a' : '#64748b',
+                background: userScope === 'bmc' ? '#ffffff' : 'transparent',
+                fontWeight: userScope === 'bmc' ? 700 : 500,
+                color: userScope === 'bmc' ? '#0f172a' : '#64748b',
                 padding: '0.35rem 0.75rem',
                 borderRadius: 6,
                 fontSize: '0.8rem',
                 cursor: 'pointer',
-                boxShadow: userScope === 'unit' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                boxShadow: userScope === 'bmc' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
               }}
             >
               BMC Staff ({scopeCounts.unit})
@@ -877,7 +859,7 @@ export default function AdminTeams() {
               <option value="">All BMCs</option>
               {units.map((u) => (
                 <option key={u.id} value={u.id}>
-                  BMC: {u.name} ({u.unit_code})
+                  BMC: {u.name} ({u.bmc_code})
                 </option>
               ))}
             </select>
@@ -971,46 +953,6 @@ export default function AdminTeams() {
               </button>
             </div>
 
-            {/* Type Tabs */}
-            <div style={{ display: 'flex', gap: 0, background: '#f1f5f9', borderRadius: 8, padding: 3, marginBottom: '1.25rem' }}>
-              <button
-                type="button"
-                onClick={() => setAddUserType('plant')}
-                style={{
-                  flex: 1,
-                  border: 'none',
-                  background: addUserType === 'plant' ? '#ffffff' : 'transparent',
-                  fontWeight: addUserType === 'plant' ? 700 : 500,
-                  color: addUserType === 'plant' ? '#0f172a' : '#64748b',
-                  padding: '0.4rem 0',
-                  borderRadius: 6,
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                  boxShadow: addUserType === 'plant' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                }}
-              >
-                🏭 Plant Team (Gate / QC / Unloading)
-              </button>
-              <button
-                type="button"
-                onClick={() => setAddUserType('unit')}
-                style={{
-                  flex: 1,
-                  border: 'none',
-                  background: addUserType === 'unit' ? '#ffffff' : 'transparent',
-                  fontWeight: addUserType === 'unit' ? 700 : 500,
-                  color: addUserType === 'unit' ? '#0f172a' : '#64748b',
-                  padding: '0.4rem 0',
-                  borderRadius: 6,
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                  boxShadow: addUserType === 'unit' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                }}
-              >
-                🏢 BMC Unit Staff
-              </button>
-            </div>
-
             {addUserError && <ErrorBanner message={addUserError} />}
 
             <form onSubmit={handleCreateUser} className="entry-form">
@@ -1032,7 +974,7 @@ export default function AdminTeams() {
                   type="email"
                   value={addEmail}
                   onChange={(e) => setAddEmail(e.target.value)}
-                  placeholder={addUserType === 'plant' ? 'e.g. raman@aavin.internal' : 'e.g. kumar@bmc.aavin.in'}
+                  placeholder="e.g. raman@aavin.in"
                   required
                 />
               </div>
@@ -1049,35 +991,32 @@ export default function AdminTeams() {
                 />
               </div>
 
-              {/* Team (plant) OR BMC Unit (unit) */}
-              {addUserType === 'plant' ? (
+              {/* Team (decides the role) */}
+              <div className="form-group">
+                <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'குழு' : 'Team'} *</label>
+                <select
+                  value={addTeam}
+                  onChange={(e) => setAddTeam(e.target.value as TeamCode)}
+                  required
+                  style={{ fontWeight: 600 }}
+                >
+                  {TEAM_OPTIONS.map((t) => (
+                    <option key={t.code} value={t.code}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* BMC (only for BMC team) */}
+              {addTeam === 'BMC' && (
                 <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'குழு' : 'Team'} *</label>
-                  <select
-                    value={addTeam}
-                    onChange={(e) => setAddTeam(e.target.value as any)}
-                    required
-                    style={{ fontWeight: 600 }}
-                  >
-                    <option value="GATE">GATE — Vehicle Entry &amp; Weighbridge</option>
-                    <option value="QC">QC — Quality Testing &amp; CIP</option>
-                    <option value="UNLOADING">UNLOADING — Silo &amp; Milk Reception</option>
-                  </select>
-                </div>
-              ) : (
-                <div className="form-group">
-                  <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'பி.எம்.சி அலகு' : 'BMC Unit'} *</label>
+                  <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'பி.எம்.சி' : 'BMC'} *</label>
                   {units.length === 0 ? (
-                    <p style={{ fontSize: '0.84rem', color: '#94a3b8', margin: 0 }}>No BMC units found. Add units first.</p>
+                    <p style={{ fontSize: '0.84rem', color: '#94a3b8', margin: 0 }}>No BMCs found. Add a BMC first.</p>
                   ) : (
-                    <select
-                      value={addUnitId}
-                      onChange={(e) => setAddUnitId(e.target.value)}
-                      required
-                    >
+                    <select value={addUnitId} onChange={(e) => setAddUnitId(e.target.value)} required>
                       {units.map((u) => (
                         <option key={u.id} value={u.id}>
-                          {u.name} ({u.unit_code})
+                          {u.name} ({u.bmc_code})
                         </option>
                       ))}
                     </select>
@@ -1085,16 +1024,25 @@ export default function AdminTeams() {
                 </div>
               )}
 
+              {/* Shift */}
+              <div className="form-group">
+                <label style={{ fontWeight: 600 }}>Shift</label>
+                <select value={addShift} onChange={(e) => setAddShift(e.target.value as 'Morning' | 'Evening' | 'General')}>
+                  <option value="General">General</option>
+                  <option value="Morning">Morning</option>
+                  <option value="Evening">Evening</option>
+                </select>
+              </div>
+
               {/* Password */}
               <div className="form-group">
-                <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'கடவுச்சொல்' : 'Password'} *</label>
+                <label style={{ fontWeight: 600 }}>{lang === 'ta' ? 'கடவுச்சொல்' : 'Password'}</label>
                 <div style={{ display: 'flex', gap: '0.4rem' }}>
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={addPassword}
                     onChange={(e) => setAddPassword(e.target.value)}
-                    placeholder="Min 6 characters"
-                    required
+                    placeholder="Leave blank to auto-generate"
                     minLength={6}
                     style={{ flex: 1 }}
                   />
@@ -1108,7 +1056,7 @@ export default function AdminTeams() {
                   </button>
                 </div>
                 <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '3px', display: 'block' }}>
-                  Default: <code>Aavin123</code> — user can change after first login.
+                  A random temporary password is generated if left blank. The user must change it at first login.
                 </span>
               </div>
 
@@ -1117,7 +1065,7 @@ export default function AdminTeams() {
                   Cancel
                 </button>
                 <button type="submit" className="btn-primary" disabled={savingUser} style={{ minWidth: 130 }}>
-                  {savingUser ? 'Creating…' : `Create ${addUserType === 'plant' ? 'Operator' : 'BMC User'}`}
+                  {savingUser ? 'Creating…' : 'Create User'}
                 </button>
               </div>
             </form>
@@ -1141,22 +1089,13 @@ export default function AdminTeams() {
                 <input value={editName} onChange={(e) => setEditName(e.target.value)} required />
               </div>
 
-              <div className="form-group">
-                <label>Unique User ID / Username</label>
-                <input
-                  value={editUserId}
-                  onChange={(e) => setEditUserId(e.target.value.toUpperCase())}
-                  placeholder="e.g. AV_IT_001"
-                />
-              </div>
-
-              {editTarget.user_type === 'unit' && units.length > 0 && (
+              {editTarget.team?.code === 'BMC' && units.length > 0 && (
                 <div className="form-group">
                   <label>Assign to BMC</label>
                   <select value={editUnitId} onChange={(e) => setEditUnitId(e.target.value)}>
                     {units.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.name} ({u.unit_code})
+                        {u.name} ({u.bmc_code})
                       </option>
                     ))}
                   </select>
@@ -1168,7 +1107,7 @@ export default function AdminTeams() {
                   <label>Mobile Number</label>
                   <input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="9876543210" />
                 </div>
-                {editTarget.user_type === 'plant' && (
+                {(
                   <div className="form-group">
                     <label>Shift</label>
                     <select value={editShift} onChange={(e) => setEditShift(e.target.value as any)}>
@@ -1214,7 +1153,7 @@ export default function AdminTeams() {
               Move {moveTarget.full_name} to Another Team
             </h3>
             <p style={{ margin: '0 0 1rem 0', fontSize: '0.84rem', color: '#64748b' }}>
-              Current Team: <strong>{(moveTarget.team?.code || moveTarget.role).toUpperCase()}</strong>
+              Current Team: <strong>{moveTarget.team?.code}</strong>
             </p>
 
             {moveError && <ErrorBanner message={moveError} />}
@@ -1222,12 +1161,23 @@ export default function AdminTeams() {
             <div className="entry-form">
               <div className="form-group">
                 <label>Select New Team</label>
-                <select value={newTeam} onChange={(e) => setNewTeam(e.target.value as any)}>
-                  <option value="GATE">GATE — Vehicle Entry & Weighbridge</option>
-                  <option value="QC">QC — Quality Testing & CIP</option>
-                  <option value="UNLOADING">UNLOAD — Silo & Milk Reception</option>
+                <select value={newTeam} onChange={(e) => setNewTeam(e.target.value as TeamCode)}>
+                  {TEAM_OPTIONS.map((t) => (
+                    <option key={t.code} value={t.code}>{t.label}</option>
+                  ))}
                 </select>
               </div>
+
+              {newTeam === 'BMC' && (
+                <div className="form-group">
+                  <label>BMC</label>
+                  <select value={moveUnitId} onChange={(e) => setMoveUnitId(e.target.value)}>
+                    {units.map((u) => (
+                      <option key={u.id} value={u.id}>{u.name} ({u.bmc_code})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="form-group">
                 <label>Reason for Moving (Required for Audit Log) *</label>

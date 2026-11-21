@@ -10,7 +10,7 @@ import { ConfirmDialog, ErrorBanner, StatusBadge, TableSkeleton } from '../../co
 interface Unit {
   id: string;
   name: string;
-  unit_code: string;
+  bmc_code: string;
   location: string | null;
   is_active: boolean;
   users_count: number;
@@ -19,7 +19,7 @@ interface Unit {
   created_at: string;
 }
 
-export default function AdminUnits() {
+export default function AdminBmcs() {
   const { settings } = useZoneSettings();
   const [units, setUnits] = useState<Unit[]>([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -48,7 +48,7 @@ export default function AdminUnits() {
     setLoadingList(true);
     setError('');
     try {
-      const resUnits = await api.get<Unit[]>('/units');
+      const resUnits = await api.get<Unit[]>('/bmcs');
       setUnits(resUnits.data);
     } catch (err: unknown) {
       setError((err as Error)?.message || 'Failed to load units');
@@ -67,9 +67,9 @@ export default function AdminUnits() {
     setError('');
     setSaving(true);
     try {
-      await api.post('/units', {
+      await api.post('/bmcs', {
         name: name.trim(),
-        unit_code: unitCode.trim().toUpperCase(),
+        bmc_code: unitCode.trim().toUpperCase(),
       });
       setName('');
       setUnitCode('');
@@ -85,7 +85,7 @@ export default function AdminUnits() {
   const openEdit = (u: Unit) => {
     setEditTarget(u);
     setEditName(u.name);
-    setEditCode(u.unit_code);
+    setEditCode(u.bmc_code);
     setEditLocation(u.location ?? settings.locations[0] ?? '');
   };
 
@@ -94,9 +94,9 @@ export default function AdminUnits() {
     setSavingEdit(true);
     setError('');
     try {
-      await api.patch(`/units/${editTarget.id}`, {
+      await api.patch(`/bmcs/${editTarget.id}`, {
         name: editName.trim(),
-        unit_code: editCode.trim().toUpperCase(),
+        bmc_code: editCode.trim().toUpperCase(),
         location: editLocation.trim() || null,
       });
       setEditTarget(null);
@@ -112,7 +112,7 @@ export default function AdminUnits() {
     if (!toggleTarget) return;
     setToggling(true);
     try {
-      await api.patch(`/units/${toggleTarget.id}`, { is_active: !toggleTarget.is_active });
+      await api.patch(`/bmcs/${toggleTarget.id}`, { is_active: !toggleTarget.is_active });
       setToggleTarget(null);
       await fetchUnits();
     } catch (err: unknown) {
@@ -136,7 +136,7 @@ export default function AdminUnits() {
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchName = u.name.toLowerCase().includes(q);
-        const matchCode = u.unit_code.toLowerCase().includes(q);
+        const matchCode = u.bmc_code.toLowerCase().includes(q);
         const matchLoc = (u.location || '').toLowerCase().includes(q);
         if (!matchName && !matchCode && !matchLoc) return false;
       }
@@ -160,7 +160,7 @@ export default function AdminUnits() {
         </div>
       ),
     },
-    { key: 'code', header: 'Code', sortValue: u => u.unit_code, render: u => <code>{u.unit_code}</code> },
+    { key: 'code', header: 'Code', sortValue: u => u.bmc_code, render: u => <code>{u.bmc_code}</code> },
     { key: 'location', header: 'Taluk / Village', sortValue: u => u.location ?? '', render: u => u.location || '—' },
     { key: 'users', header: 'Users', sortValue: u => u.users_count, render: u => u.users_count },
     {

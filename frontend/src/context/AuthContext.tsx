@@ -4,16 +4,35 @@ import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../supabase';
 
 export interface UserProfile {
+  /** users.id */
   id: string;
-  role: 'superadmin' | 'admin' | 'unit' | 'gate' | 'qc' | 'unloading';
+  /** Public identifier, e.g. US00ASCF123 */
+  id_token: string;
+  /** Derived from the user's team */
+  role: 'admin' | 'bmc' | 'gate' | 'qc' | 'unloading';
+  team_code: 'ADMIN' | 'GATE' | 'QC' | 'UNLOADING' | 'BMC';
   zone_id: string | null;
-  unit_id: string | null;
+  bmc_id: string | null;
   full_name: string | null;
+  email?: string | null;
   sub_role?: 'operator' | 'supervisor' | null;
   is_active?: boolean;
   must_change_password?: boolean;
   zones?: { name: string } | null;
-  units?: { name: string; unit_code: string; is_active?: boolean } | null;
+  bmcs?: { id_token: string; name: string; bmc_code: string; is_active?: boolean } | null;
+}
+
+const ROLE_BY_TEAM: Record<string, UserProfile['role']> = {
+  ADMIN: 'admin',
+  GATE: 'gate',
+  QC: 'qc',
+  UNLOADING: 'unloading',
+  BMC: 'bmc',
+};
+
+type One<T> = T | T[] | null | undefined;
+function first<T>(value: One<T>): T | null {
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
 }
 
 interface AuthContextType {
@@ -37,47 +56,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authError, setAuthError] = useState('');
 
   const fetchProfile = async (authUser: User) => {
-    // Try extended columns first; fall back cleanly if patch_v2_ux.sql hasn't been applied yet
-    let { data, error } = await supabase
-      .from('profiles')
-      .select('id, role, zone_id, unit_id, full_name, sub_role, is_active, must_change_password, zones(name), units(name, unit_code, is_active)')
-      .eq('id', authUser.id)
-      .single();
+    const { data, error } = await supabase
+      .from('users')
+      .select(
+        'id, id_token, zone_id, bmc_id, full_name, email, sub_role, is_active, must_change_password, ' +
+          'teams(code, active), zones(name), bmcs(id_token, name, bmc_code, is_active)',
+      )
+      .eq('auth_user_id', authUser.id)
+      .maybeSingle();
 
-    if (error && (error.code === '42703' || error.code === 'PGRST204' || error.message?.includes('column'))) {
-      const fb = await supabase
-        .from('profiles')
-        .select('id, role, zone_id, unit_id, full_name, zones(name), units(name, unit_code, is_active)')
-        .eq('id', authUser.id)
-        .single();
-      data = fb.data as unknown as typeof data;
-      error = fb.error;
-    }
-
-    if (error) {
-      if (error.code === 'PGRST116') setProfile(null);
-      return;
-    }
-    if (!data) {
+    if (error || !data) {
       setProfile(null);
       return;
     }
 
     const raw = data as unknown as Record<string, unknown>;
-    const rawZones = raw.zones as { name: string } | { name: string }[] | null | undefined;
-    const zones = Array.isArray(rawZones) ? (rawZones[0] ?? null) : (rawZones ?? null);
-    const rawUnits = raw.units as { name: string; unit_code: string; is_active?: boolean } | { name: string; unit_code: string; is_active?: boolean }[] | null | undefined;
-    const units = Array.isArray(rawUnits) ? (rawUnits[0] ?? null) : (rawUnits ?? null);
+    const team = first(raw.teams as One<{ code: UserProfile['team_code']; active: boolean }>);
+    const zones = first(raw.zones as One<{ name: string }>);
+    const bmcs = first(raw.bmcs as One<NonNullable<UserProfile['bmcs']>>);
 
     const meta = (authUser.user_metadata ?? {}) as Record<string, unknown>;
     const userActive = meta.is_active !== false && raw.is_active !== false;
-    const unitActive = !units || units.is_active !== false;
+    const bmcActive = !bmcs || bmcs.is_active !== false;
+    const teamActive = !team || team.active !== false || team.code === 'ADMIN';
 
-    if (!userActive || !unitActive) {
+    if (!team || !userActive || !bmcActive || !teamActive) {
       setAuthError(
-        !unitActive
-          ? 'Your collection unit has been deactivated. Contact your zone admin.'
-          : 'Your account has been deactivated. Contact your zone admin.',
+        !team
+          ? 'Your account has no team assigned. Contact your zone admin.'
+          : !bmcActive
+            ? 'Your BMC has been deactivated. Contact your zone admin.'
+            : !teamActive
+              ? 'Your team has been deactivated. Contact your zone admin.'
+              : 'Your account has been deactivated. Contact your zone admin.',
       );
       await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
       setUser(null);
@@ -87,27 +98,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const mustChange = meta.must_change_password === true || raw.must_change_password === true;
-    const subRoleRaw = (raw.sub_role ?? meta.sub_role) as string | undefined;
-
-    // Resilient role resolution: if legacy database constraint stored role as 'unit',
-    // resolve true plant team role from auth metadata 'team'
-    const teamInMeta = typeof meta.team === 'string' ? meta.team.trim().toLowerCase() : undefined;
-    const resolvedRole = (teamInMeta && ['gate', 'qc', 'unloading'].includes(teamInMeta)
-      ? teamInMeta
-      : raw.role) as UserProfile['role'];
+    const subRoleRaw = raw.sub_role as string | undefined;
 
     setAuthError('');
     setProfile({
       id: String(raw.id),
-      role: resolvedRole,
-      zone_id: (raw.zone_id as string | null) ?? null,
-      unit_id: (raw.unit_id as string | null) ?? null,
+      id_token: String(raw.id_token),
+      role: ROLE_BY_TEAM[team.code],
+      team_code: team.code,
+      zone_id: raw.zone_id != null ? String(raw.zone_id) : null,
+      bmc_id: raw.bmc_id != null ? String(raw.bmc_id) : null,
       full_name: (raw.full_name as string | null) ?? null,
+      email: (raw.email as string | null) ?? null,
       sub_role: subRoleRaw === 'supervisor' ? 'supervisor' : subRoleRaw === 'operator' ? 'operator' : null,
       is_active: true,
       must_change_password: mustChange,
       zones,
-      units,
+      bmcs,
     });
   };
 

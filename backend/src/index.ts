@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import authRouter from './routes/auth';
 import zonesRouter from './routes/zones';
-import unitsRouter from './routes/units';
+import bmcsRouter from './routes/bmcs';
 import milkRouter from './routes/milk';
 import tankerRouter from './routes/tanker';
 import analyticsRouter from './routes/analytics';
@@ -67,7 +67,7 @@ app.get('/health', (_req, res) => { res.json({ status: 'ok' }); });
 
 app.use('/auth', authRouter);
 app.use('/zones', zonesRouter);
-app.use('/units', unitsRouter);
+app.use('/bmcs', bmcsRouter);
 app.use('/milk', milkRouter);
 app.use('/tanker', tankerRouter);
 app.use('/analytics', analyticsRouter);

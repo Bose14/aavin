@@ -52,7 +52,7 @@ export default function PlantRecords() {
       list = list.filter((t) => {
         const tNo = String(t.tanker_number || '').toLowerCase();
         const dName = String(t.driver_name || '').toLowerCase();
-        const uName = String(t.units?.name || '').toLowerCase();
+        const uName = String(t.bmcs?.name || '').toLowerCase();
         const gp = String(t.gate_pass_no || t.exit_gate_pass_no || '').toLowerCase();
         return tNo.includes(q) || dName.includes(q) || uName.includes(q) || gp.includes(q);
       });
@@ -173,7 +173,7 @@ export default function PlantRecords() {
                         <td style={{ padding: '0.75rem 1rem' }}>
                           <strong style={{ color: '#0f172a' }}>{t.tanker_number}</strong>
                           <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                            {t.units?.name || 'Unit'} {t.units?.unit_code ? `(${t.units.unit_code})` : ''}
+                            {t.bmcs?.name || 'Unit'} {t.bmcs?.bmc_code ? `(${t.bmcs.bmc_code})` : ''}
                           </div>
                         </td>
                         <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>
@@ -239,7 +239,7 @@ export default function PlantRecords() {
                   {selectedTrip.tanker_number}
                 </h3>
                 <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                  {selectedTrip.units?.name} · {formatDateDDMMYYYY(selectedTrip.date)}
+                  {selectedTrip.bmcs?.name} · {formatDateDDMMYYYY(selectedTrip.date)}
                 </span>
               </div>
               <button
