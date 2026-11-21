@@ -129,6 +129,7 @@ export interface DerivedTankerJourney {
   isOverLimit: boolean;
   isQcRejected: boolean;
   qcRejectionReason: string | null;
+  isCipUnsatisfied: boolean;
   timelineSteps: DerivedTimelineStep[];
   completedStepsCount: number;
   completedStageKeys: TankerStageKey[];
@@ -350,6 +351,15 @@ export function deriveTankerJourneyState(
   const isQcRejected = qcRec?.status === 'rejected' || (qcRec?.stage_data?.qc_status === 'rejected') || trip.qc_status === 'rejected';
   const qcRejectionReason = (qcRec?.stage_data?.rejection_reason as string) || (trip.qc_rejection_reason as string) || null;
 
+  // Check CIP status
+  const cipRec = stageRecordMap.get('cip_completed');
+  const isCipUnsatisfied =
+    cipRec?.status === 'rejected' ||
+    (cipRec?.stage_data?.cip_status === 'unsatisfied') ||
+    (cipRec?.stage_data?.qc_inspection === 'UNSATISFIED') ||
+    trip.cip_status === 'unsatisfied' ||
+    trip.trip_status === 'cip_unsatisfied';
+
   // Derive steps in order
   const timelineSteps: DerivedTimelineStep[] = [];
   let foundCurrent = false;
@@ -524,6 +534,31 @@ export function deriveTankerJourneyState(
       else if (def.key === 'cip_completed') tripStatus = isRejectStep ? 'cip_unsatisfied' : 'cip_done';
       else if (def.key === 'vehicle_exit') tripStatus = 'exited';
     } else if (!foundCurrent) {
+      if (isCipUnsatisfied && def.key === 'vehicle_exit') {
+        // Vehicle exit is blocked when CIP is unsatisfied!
+        // The active stage remains CIP re-cleaning & re-inspection
+        currentStageKey = 'cip_completed';
+        currentStageTitle = 'CIP Re-cleaning & Inspection';
+        waitingTeam = 'unloading';
+        foundCurrent = true;
+
+        timelineSteps.push({
+          key: def.key,
+          stepNumber: def.stepNumber,
+          title: def.title,
+          team: def.team,
+          teamLabel: def.teamLabel,
+          status: 'pending',
+          statusIcon: 'circle',
+          timeLimitMin: limit,
+          isOverLimit: false,
+          ariaLabel: `${def.title}, blocked pending CIP re-cleaning`,
+          keyDataSummary: 'Blocked (CIP Unsatisfied)',
+          data: {},
+        });
+        continue;
+      }
+
       // First uncompleted stage is the CURRENT active waiting step
       foundCurrent = true;
       currentStageKey = def.key;
@@ -688,6 +723,7 @@ export function deriveTankerJourneyState(
     isOverLimit: activeIsOverLimit,
     isQcRejected,
     qcRejectionReason,
+    isCipUnsatisfied,
     timelineSteps,
     completedStepsCount: completedCount,
     completedStageKeys: timelineSteps

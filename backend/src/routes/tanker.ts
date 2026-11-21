@@ -385,39 +385,66 @@ export function enrichTankerRow(row: Record<string, unknown>, stages?: StageReco
   };
 }
 
-async function computeAvailableStock(zoneId: string, unitId?: string | null) {
-  let milkQ = supabase.from('milk_entries').select('quantity_litres, rejection_qty').eq('zone_id', zoneId);
-  let tankerQ = supabase.from('tanker_dispatches').select('quantity_dispatched, unit_id, stage_data').eq('zone_id', zoneId);
-
-  if (unitId) {
-    milkQ = milkQ.eq('unit_id', unitId);
+export async function computeAvailableStock(zoneId: string, unitId?: string | null) {
+  let totalCollectedNet = 0;
+  try {
+    let milkQ = supabase.from('milk_entries').select('quantity_litres, rejection_qty').eq('zone_id', zoneId);
+    if (unitId) {
+      milkQ = milkQ.eq('unit_id', unitId);
+    }
+    const mRes = await milkQ;
+    if (!mRes.error && mRes.data) {
+      totalCollectedNet = mRes.data.reduce(
+        (sum, r) => sum + Math.max(0, Number(r.quantity_litres ?? 0) - Number(r.rejection_qty ?? 0)),
+        0,
+      );
+    }
+  } catch (mErr) {
+    console.warn('[tanker/stock] milk_entries query warning:', (mErr as Error).message);
   }
 
-  const [mRes, tRes] = await Promise.all([milkQ, tankerQ]);
-  if (mRes.error || tRes.error) {
-    throw new Error(mRes.error?.message || tRes.error?.message || 'Failed to compute stock');
+  let tankerRows: any[] = [];
+  try {
+    const tankerQueryResult = await runResilientTankerQuery((selectStr) => {
+      let q = supabase.from('tanker_dispatches').select(selectStr);
+      if (zoneId) q = q.eq('zone_id', zoneId);
+      return q;
+    });
+    tankerRows = tankerQueryResult.data ?? [];
+  } catch (tErr) {
+    console.warn('[tanker/stock] tanker_dispatches query warning:', (tErr as Error).message);
   }
 
-  const totalCollectedNet = (mRes.data ?? []).reduce(
-    (sum, r) => sum + Math.max(0, Number(r.quantity_litres ?? 0) - Number(r.rejection_qty ?? 0)),
-    0,
-  );
+  // Read fallback store for any multi-BMC dispatches or fallback stage_data
+  let fallbackMap: Record<string, any> = {};
+  try {
+    const store = readFallback();
+    if (store.tankerDispatches) {
+      fallbackMap = store.tankerDispatches as Record<string, any>;
+    }
+  } catch {
+    // non-fatal
+  }
 
   let totalDispatched = 0;
-  for (const r of (tRes.data ?? [])) {
+  for (const r of tankerRows) {
+    const id = String((r as any).id);
+    const fb = fallbackMap[id];
+    const stageData = (r as any).stage_data || fb?.stage_data;
+    const bmcList = stageData?.bmc_dispatches;
+
     if (!unitId) {
-      totalDispatched += Number(r.quantity_dispatched ?? 0);
+      totalDispatched += Number((r as any).quantity_dispatched ?? 0);
     } else {
-      const bmcList = (r as any).stage_data?.bmc_dispatches;
       if (Array.isArray(bmcList) && bmcList.length > 0) {
         const myEntries = bmcList.filter((b: any) => b.unit_id === unitId);
         if (myEntries.length > 0) {
           totalDispatched += myEntries.reduce((s: number, b: any) => s + Number(b.quantity_dispatched || b.quantity || 0), 0);
         } else if ((r as any).unit_id === unitId) {
-          totalDispatched += Number(r.quantity_dispatched ?? 0);
+          totalDispatched += Number((r as any).quantity_dispatched ?? 0);
         }
       } else if ((r as any).unit_id === unitId) {
-        totalDispatched += Number(r.quantity_dispatched ?? 0);
+        totalDispatched += Number((r as any).quantity_dispatched ?? 0);
       }
     }
   }
@@ -433,7 +460,7 @@ async function computeAvailableStock(zoneId: string, unitId?: string | null) {
 }
 
 // Helper to enrich registered tankers with live cell capacity, filled volume, and multi-BMC dispatch status
-async function enrichRegisteredTankersWithCapacity(zoneId: string, registered: any[]) {
+export async function enrichRegisteredTankersWithCapacity(zoneId: string, registered: any[]) {
   let tripList: any[] = [];
   try {
     const { data } = await runResilientTankerQuery((selectStr) => {
@@ -466,7 +493,7 @@ async function enrichRegisteredTankersWithCapacity(zoneId: string, registered: a
     // non-fatal
   }
 
-  return registered.map((reg) => {
+  return (registered || []).filter(Boolean).map((reg) => {
     const normReg = (reg.vehicle_number || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     const activeTrip = tripList.find((t) => {
       const normTrip = (t.tanker_number || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -1222,17 +1249,34 @@ router.post('/', async (req, res) => {
       bmc_dispatches: updatedBmcList,
     };
 
-    await supabase
-      .from('tanker_dispatches')
-      .update({
-        quantity_dispatched: newTotalQty,
-        dispatch_fat_pct: combinedFat,
-        dispatch_snf_pct: combinedSnf,
-        dc_number: combinedDc,
-        compartments: mergedComps,
-        stage_data: updatedStageData,
-      })
-      .eq('id', existingTrip.id);
+    try {
+      const upRes = await supabase
+        .from('tanker_dispatches')
+        .update({
+          quantity_dispatched: newTotalQty,
+          dispatch_fat_pct: combinedFat,
+          dispatch_snf_pct: combinedSnf,
+          dc_number: combinedDc,
+          compartments: mergedComps,
+          stage_data: updatedStageData,
+        })
+        .eq('id', existingTrip.id);
+
+      if (upRes.error) {
+        // Fallback update with standard base columns if extra columns don't exist in Supabase
+        await supabase
+          .from('tanker_dispatches')
+          .update({
+            quantity_dispatched: newTotalQty,
+            ...(combinedFat != null ? { dispatch_fat_pct: combinedFat } : {}),
+            ...(combinedSnf != null ? { dispatch_snf_pct: combinedSnf } : {}),
+            ...(combinedDc ? { dc_number: combinedDc } : {}),
+          })
+          .eq('id', existingTrip.id);
+      }
+    } catch (uErr) {
+      console.warn('[tanker] multi-BMC append update warning:', (uErr as Error).message);
+    }
 
     const mergedTripObj = {
       ...existingTrip,
