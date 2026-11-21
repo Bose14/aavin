@@ -464,34 +464,60 @@ export async function enrichRegisteredTankersWithCapacity(zoneId: string, regist
   let tripList: any[] = [];
   try {
     const { data } = await runResilientTankerQuery((selectStr) => {
-      let q = supabase
+      return supabase
         .from('tanker_dispatches')
         .select(selectStr)
         .neq('trip_status', 'exited')
         .order('created_at', { ascending: false });
-      if (zoneId) q = q.eq('zone_id', zoneId);
-      return q;
     });
     if (data) tripList = data;
   } catch (err) {
     console.warn('Error fetching active trips for capacity calculation:', err);
   }
 
-  // Also include active trips from fallback store
+  // Also merge and include active trips from fallback store with rich metadata
   try {
     const store = readFallback();
+    tripList = tripList.map((t) => {
+      const fb = (t.id ? store.tankerDispatches?.[t.id] : null) ||
+                 (t.tanker_number ? store.tankerDispatchesByNumber?.[t.tanker_number.trim().toUpperCase()] : null);
+      if (fb) {
+        return {
+          ...fb,
+          ...t,
+          trip_status: t.trip_status || fb.trip_status || 'on_the_way',
+          compartments: t.compartments || fb.compartments || t.stage_data?.compartments || fb.stage_data?.compartments,
+          stage_data: { ...(fb.stage_data || {}), ...(t.stage_data || {}) },
+          dc_number: t.dc_number || fb.dc_number,
+          driver_name: t.driver_name || fb.driver_name,
+          driver_phone: t.driver_phone || fb.driver_phone,
+        };
+      }
+      return {
+        ...t,
+        trip_status: t.trip_status || 'on_the_way',
+      };
+    });
+
     if (store.tankerDispatches) {
       for (const [id, meta] of Object.entries(store.tankerDispatches as Record<string, any>)) {
-        if (!tripList.some((t) => t.id === id) && meta.trip_status !== 'exited') {
-          if (!zoneId || meta.zone_id === zoneId) {
-            tripList.push(meta);
-          }
+        if (!tripList.some((t) => String(t.id) === String(id)) && meta.trip_status !== 'exited') {
+          tripList.push({
+            ...meta,
+            trip_status: meta.trip_status || 'on_the_way',
+          });
         }
       }
     }
   } catch {
     // non-fatal
   }
+
+  const plantStatuses = new Set([
+    'vehicle_entered', 'gross_done', 'gross_weight', 'qc_done', 'qc_completed',
+    'qc_rejected', 'unloaded', 'tare_done', 'tare_weight', 'cip_done',
+    'cip_completed', 'cip_unsatisfied',
+  ]);
 
   return (registered || []).filter(Boolean).map((reg) => {
     const normReg = (reg.vehicle_number || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -513,14 +539,11 @@ export async function enrichRegisteredTankersWithCapacity(zoneId: string, regist
       ...(numCells >= 2 ? [{ cell_index: numCells === 3 ? 2 : 1, cell_key: 'BC', cell_name: numCells === 3 ? 'Rear Compartment (Comp 3)' : 'Rear Compartment (Comp 2)', capacity: bcCap }] : []),
     ];
 
-    let isAtPlant = false;
-    let totalFilled = 0;
-
-    if (activeTrip) {
-      if (activeTrip.trip_status !== 'on_the_way' || activeTrip.stage_data?.vehicle_entered != null) {
-        isAtPlant = true;
-      }
-    }
+    const isAtPlant = Boolean(
+      activeTrip?.stage_data?.vehicle_entered != null ||
+      activeTrip?.stage_data?.gross_weight != null ||
+      (activeTrip?.trip_status && plantStatuses.has(activeTrip.trip_status))
+    );
 
     const cells = cellDefs.map((cd, idx) => {
       let filled = 0;
@@ -536,8 +559,8 @@ export async function enrichRegisteredTankersWithCapacity(zoneId: string, regist
         const comps = activeTrip.compartments || activeTrip.stage_data?.compartments;
         if (Array.isArray(comps) && comps.length > 0) {
           const matched = comps.find((c: any) => c.cell_key === cd.cell_key || c.compartment_no === idx + 1) || comps[idx];
-          if (matched && (matched.quantity_litres || matched.quantity)) {
-            filled = Number(matched.quantity_litres || matched.quantity) || 0;
+          if (matched && (matched.quantity_litres != null || matched.quantity != null)) {
+            filled = Number(matched.quantity_litres ?? matched.quantity) || 0;
             bmcName = matched.bmc_name || activeTrip.units?.name || 'Prior BMC';
             dcNo = matched.dc_number || activeTrip.dc_number || null;
             fatPct = matched.fat_pct != null ? Number(matched.fat_pct) : null;
@@ -546,10 +569,16 @@ export async function enrichRegisteredTankersWithCapacity(zoneId: string, regist
             milkType = matched.milk_type || 'Raw Cow Milk';
             temp = matched.temperature != null ? String(matched.temperature) : '4.0';
           }
+        } else if (idx === 0 && Number(activeTrip.quantity_dispatched) > 0) {
+          filled = Math.min(cd.capacity, Number(activeTrip.quantity_dispatched));
+          bmcName = activeTrip.units?.name || 'Prior BMC';
+          dcNo = activeTrip.dc_number || null;
+          fatPct = activeTrip.dispatch_fat_pct != null ? Number(activeTrip.dispatch_fat_pct) : null;
+          snfPct = activeTrip.dispatch_snf_pct != null ? Number(activeTrip.dispatch_snf_pct) : null;
+          sealNo = activeTrip.seal_number || null;
         }
       }
 
-      totalFilled += filled;
       const avail = Math.max(0, cd.capacity - filled);
 
       return {
@@ -567,6 +596,8 @@ export async function enrichRegisteredTankersWithCapacity(zoneId: string, regist
       };
     });
 
+    const sumCellsFilled = cells.reduce((sum, c) => sum + (c.filled_litres || 0), 0);
+    const totalFilled = sumCellsFilled > 0 ? sumCellsFilled : (activeTrip ? Math.min(totalCap, Number(activeTrip.quantity_dispatched || 0)) : 0);
     const availTotal = Math.max(0, totalCap - totalFilled);
     const isFull = availTotal <= 0;
     // Tanker is not available for selection if it is full OR if it is already at the plant, until it exits
@@ -1160,22 +1191,35 @@ router.post('/', async (req, res) => {
   // MULTI-BMC ROUTE CHECK:
   // If this registered tanker is already on the way from a prior BMC, append/merge this BMC's compartments
   const normTanker = tanker_number.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const { data: activeTrips } = await runResilientTankerQuery((selectStr) => {
+  const { data: activeTripsFromDb } = await runResilientTankerQuery((selectStr) => {
     return supabase
       .from('tanker_dispatches')
       .select(selectStr)
-      .eq('zone_id', req.profile.zone_id)
       .neq('trip_status', 'exited')
       .order('created_at', { ascending: false });
   });
 
-  const existingTrip = (activeTrips || []).find((t: any) => {
+  const allActiveTrips: any[] = activeTripsFromDb || [];
+  try {
+    const store = readFallback();
+    if (store.tankerDispatches) {
+      for (const [id, meta] of Object.entries(store.tankerDispatches as Record<string, any>)) {
+        if (!allActiveTrips.some((t) => String(t.id) === String(id)) && meta.trip_status !== 'exited') {
+          allActiveTrips.push(meta);
+        }
+      }
+    }
+  } catch {
+    // non-fatal
+  }
+
+  const existingTrip = (allActiveTrips || []).find((t: any) => {
     const tNum = (t.tanker_number || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     const isExited = t.trip_status === 'exited' || t.stage_data?.vehicle_exit != null;
     return tNum === normTanker && !isExited;
   });
 
-  const isMultiBmcAppend = !shouldRecordEntry && existingTrip && existingTrip.trip_status === 'on_the_way' && !existingTrip.stage_data?.vehicle_entered;
+  const isMultiBmcAppend = !shouldRecordEntry && existingTrip && (existingTrip.trip_status === 'on_the_way' || !existingTrip.trip_status) && !existingTrip.stage_data?.vehicle_entered;
 
   if (isMultiBmcAppend) {
     const existingComps = Array.isArray(existingTrip.compartments) && existingTrip.compartments.length > 0
@@ -1280,6 +1324,7 @@ router.post('/', async (req, res) => {
 
     const mergedTripObj = {
       ...existingTrip,
+      trip_status: 'on_the_way',
       quantity_dispatched: newTotalQty,
       dispatch_fat_pct: combinedFat,
       dispatch_snf_pct: combinedSnf,
@@ -1294,6 +1339,7 @@ router.post('/', async (req, res) => {
       unit_id: mergedTripObj.unit_id,
       zone_id: req.profile.zone_id,
       date: mergedTripObj.date,
+      trip_status: 'on_the_way',
       driver_name: mergedTripObj.driver_name,
       driver_phone: mergedTripObj.driver_phone,
       dc_number: combinedDc,
@@ -1455,6 +1501,7 @@ router.post('/', async (req, res) => {
       unit_id,
       zone_id: req.profile.zone_id,
       date,
+      trip_status: shouldRecordEntry ? 'vehicle_entered' : 'on_the_way',
       driver_name: data.driver_name || driver_name?.trim() || null,
       driver_phone: (req.body as any).driver_phone ? String((req.body as any).driver_phone).trim() : null,
       dc_number: data.dc_number || dcNo,
