@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../supabase';
@@ -55,7 +55,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState('');
 
-  const fetchProfile = async (authUser: User) => {
+  // The profile is loaded once per signed-in user: startup and the auth listener both ask for it,
+  // so concurrent requests share one call and an already-loaded user is not fetched again.
+  const inflightRef = useRef<{ id: string; promise: Promise<void> } | null>(null);
+  const loadedForRef = useRef<string | null>(null);
+
+  const loadProfile = (authUser: User, force = false): Promise<void> => {
+    if (!force && loadedForRef.current === authUser.id) return Promise.resolve();
+    if (inflightRef.current?.id === authUser.id) return inflightRef.current.promise;
+    const promise = fetchProfile(authUser).then((ok) => {
+      if (ok) loadedForRef.current = authUser.id;
+    }).finally(() => {
+      if (inflightRef.current?.promise === promise) inflightRef.current = null;
+    });
+    inflightRef.current = { id: authUser.id, promise };
+    return promise;
+  };
+
+  const fetchProfile = async (authUser: User): Promise<boolean> => {
     const { data, error } = await supabase
       .from('users')
       .select(
@@ -67,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (error || !data) {
       setProfile(null);
-      return;
+      return false;
     }
 
     const raw = data as unknown as Record<string, unknown>;
@@ -94,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setSession(null);
       setProfile(null);
-      return;
+      return false;
     }
 
     const mustChange = meta.must_change_password === true || raw.must_change_password === true;
@@ -116,15 +133,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       dairy_units,
       bmcs,
     });
+    return true;
   };
 
   const refreshProfile = async () => {
     const { data: { user: latestUser } } = await supabase.auth.getUser();
     if (latestUser) {
       setUser(latestUser);
-      await fetchProfile(latestUser);
+      await loadProfile(latestUser, true);
     } else if (user) {
-      await fetchProfile(user);
+      await loadProfile(user, true);
     }
   };
 
@@ -145,17 +163,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setSession(activeSession);
       setUser(activeSession?.user ?? null);
-      if (activeSession?.user) await fetchProfile(activeSession.user);
+      if (activeSession?.user) await loadProfile(activeSession.user);
       setLoading(false);
     };
 
     initSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event: unknown, nextSession: Session | null) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, nextSession: Session | null) => {
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
-      if (nextSession?.user) await fetchProfile(nextSession.user);
-      else setProfile(null);
+      if (nextSession?.user) {
+        // Token refreshes and the initial event do not change who the user is
+        if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') return;
+        await loadProfile(nextSession.user, event === 'USER_UPDATED');
+      } else {
+        loadedForRef.current = null;
+        setProfile(null);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -163,6 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    loadedForRef.current = null;
     setProfile(null);
   };
 
