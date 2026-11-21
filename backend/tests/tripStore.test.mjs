@@ -72,11 +72,16 @@ test('two BMCs on one tanker: compartments, DC numbers and totals are merged per
   assert.equal(row.quantity_dispatched, 8500);
   assert.equal(row.destination, 'Namakkal Dairy');
   assert.equal(row.dc_number, 'DC-1, DC-2');
-  assert.equal(row.compartments.length, 2);
-  const fc = row.compartments.find((c) => c.cell_key === 'FC');
-  assert.equal(fc.quantity_litres, 4500);
-  assert.equal(fc.fat_pct, 4.33); // weighted: (3000*4 + 1500*5) / 4500
-  assert.equal(fc.milk_type, 'Raw Cow Milk');
+  // one entry per BMC per cell, each with its own BMC / DC / quality
+  assert.equal(row.compartments.length, 3);
+  const fcs = row.compartments.filter((c) => c.cell_key === 'FC');
+  assert.equal(fcs.length, 2);
+  assert.deepEqual(fcs.map((c) => [c.bmc_name, c.dc_number, c.quantity_litres, c.fat_pct]), [
+    ['Rasipuram [RAS]', 'DC-1', 3000, 4],
+    ['Kalipatti [KAL]', 'DC-2', 1500, 5],
+  ]);
+  assert.equal(fcs[0].cell, 'FC');
+  assert.equal(fcs[0].milk_type, 'Raw Cow Milk');
   assert.equal(row.stage_data.bmc_dispatches.length, 2);
   assert.deepEqual(row.stage_data.bmc_dispatches.map((d) => d.quantity_dispatched).sort(), [3000, 5500].sort());
 });
@@ -104,6 +109,19 @@ test('availability: partial load keeps the tanker open for other BMCs; full tank
   const f = store.buildTankerAvailability(tanker, full);
   assert.equal(f.is_full, true);
   assert.equal(f.is_available_for_dispatch, false);
+});
+
+test('availability: a cell shared by two BMCs sums both loads', () => {
+  const tanker = store.shapeTanker({ ...tankerRow, cells: [{ cell_key: 'FC', capacity_litres: 6500 }] });
+  const row = store.shapeTrip(
+    trip({ cells: [{ cell_key: 'FC', capacity_litres: 6500 }] }),
+    [loading(1, 2, 'Kalipatti', 'FC', 3000, 'DC-1'), loading(2, 1, 'Rasipuram', 'FC', 3500, 'DC-2')],
+    [],
+  );
+  assert.equal(row.compartments.length, 2);
+  const a = store.buildTankerAvailability(tanker, row);
+  assert.equal(a.filled_capacity, 6500);
+  assert.equal(a.is_full, true);
 });
 
 test('availability: once the tanker has entered the gate it is no longer offered to BMCs', () => {
