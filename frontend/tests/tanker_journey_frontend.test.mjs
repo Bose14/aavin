@@ -369,6 +369,12 @@ test('QCLab renders authentic Aavin IDMS QUALITY CONTROL DETAILS form matching u
   assert.ok(qcSrc.includes('Update'), 'Must render Update submit button');
   assert.ok(qcSrc.includes('REJECT'), 'Must render REJECT button');
   assert.ok(qcSrc.includes('Confirm Tanker Milk Rejection'), 'Must render rejection confirmation dialog');
+  assert.ok(qcSrc.includes('handleSaveTest'), 'Must implement test save handler for FC, MC, BC');
+  assert.ok(qcSrc.includes('handleSaveAllTestsForCell'), 'Must implement save all tests handler for active compartment');
+  assert.ok(qcSrc.includes('Save Freshness Test'), 'Must render Save button for Freshness test');
+  assert.ok(qcSrc.includes('Save SNF'), 'Must render Save button for SNF Adulteration test');
+  assert.ok(qcSrc.includes('Save Special'), 'Must render Save button for Special test');
+  assert.ok(qcSrc.includes('Save FAT'), 'Must render Save button for FAT Adulteration test');
 });
 
 test('QCLab renders authentic Aavin IDMS CIP DETAILS form matching user photo', () => {

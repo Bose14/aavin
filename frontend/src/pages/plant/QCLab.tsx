@@ -164,6 +164,63 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     BC: getDefaultCellTests(profile?.full_name || ''),
   }));
   const [selectedTestCellTab, setSelectedTestCellTab] = useState<string>('FC');
+  const [savedCellTests, setSavedCellTests] = useState<Record<string, boolean>>({});
+  const [testSavedToast, setTestSavedToast] = useState<{ cell: string; test: string } | null>(null);
+
+  const handleSaveTest = (cell: string, testCategory: string) => {
+    const key = `${cell}_${testCategory}`;
+    setSavedCellTests((prev) => ({
+      ...prev,
+      [key]: true,
+      [cell]: true,
+    }));
+
+    try {
+      const draftKey = `aavin_qc_draft_${activeTanker?.id || 'active'}`;
+      const draft = {
+        cellTests,
+        testTypes,
+        savedCellTests: { ...savedCellTests, [key]: true, [cell]: true },
+        updatedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(draftKey, JSON.stringify(draft));
+    } catch {}
+
+    setTestSavedToast({ cell, test: testCategory });
+    setTimeout(() => {
+      setTestSavedToast(null);
+    }, 3500);
+  };
+
+  const handleSaveAllTestsForCell = (cell: string) => {
+    const currentType = testTypes[cell] || 'ALL';
+    const newSaved = { ...savedCellTests, [cell]: true };
+    if (currentType === 'ALL') {
+      newSaved[`${cell}_Freshness`] = true;
+      newSaved[`${cell}_SNF Adulteration`] = true;
+      newSaved[`${cell}_Special`] = true;
+      newSaved[`${cell}_FAT Adulteration`] = true;
+    } else {
+      newSaved[`${cell}_${currentType}`] = true;
+    }
+    setSavedCellTests(newSaved);
+
+    try {
+      const draftKey = `aavin_qc_draft_${activeTanker?.id || 'active'}`;
+      const draft = {
+        cellTests,
+        testTypes,
+        savedCellTests: newSaved,
+        updatedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(draftKey, JSON.stringify(draft));
+    } catch {}
+
+    setTestSavedToast({ cell, test: currentType === 'ALL' ? 'All Tests' : currentType });
+    setTimeout(() => {
+      setTestSavedToast(null);
+    }, 3500);
+  };
 
   const updateCellTest = <K extends keyof QcCellTests>(cell: string, field: K, val: QcCellTests[K]) => {
     setCellTests((prev) => ({
@@ -431,6 +488,16 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     setQcVehicleNo(vNo);
     const resolvedDc = t.dc_number || t.stage_data?.dc_number || t.stage_data?.dc_no || t.stage_data?.gross_weight?.dc_number || t.stage_data?.vehicle_entered?.dc_number || '';
     setQcDcNo(resolvedDc);
+    try {
+      const draftKey = `aavin_qc_draft_${t.id}`;
+      const rawDraft = localStorage.getItem(draftKey);
+      if (rawDraft) {
+        const parsed = JSON.parse(rawDraft);
+        if (parsed.savedCellTests) setSavedCellTests(parsed.savedCellTests);
+        if (parsed.testTypes) setTestTypes(parsed.testTypes);
+        if (parsed.cellTests) setCellTests(parsed.cellTests);
+      }
+    } catch {}
     setShowQcModal(true);
   };
 
@@ -576,6 +643,12 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
             ? `QC தகவல் வெற்றிகரமாக பதிவு செய்யப்பட்டது! அடுத்த பணிக்கு அனுப்பப்பட்டது.`
             : `Stage ${stageKey.replace('_', ' ').toUpperCase()} recorded successfully!`
         );
+      }
+      if (stageKey === 'qc_completed') {
+        try {
+          if (activeTanker) localStorage.removeItem(`aavin_qc_draft_${activeTanker.id}`);
+        } catch {}
+        setSavedCellTests({});
       }
       setShowQcModal(false);
       setShowCipModal(false);
@@ -1408,6 +1481,28 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                       <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#475569', marginBottom: '0.5rem' }}>
                         Select Test
                       </div>
+                      {testSavedToast && (
+                        <div
+                          style={{
+                            backgroundColor: '#f0fdf4',
+                            border: '1px solid #86efac',
+                            borderRadius: 4,
+                            padding: '6px 12px',
+                            color: '#15803d',
+                            fontWeight: 700,
+                            fontSize: '0.84rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            marginBottom: '0.65rem',
+                          }}
+                        >
+                          <span style={{ fontSize: '1rem' }}>✓</span>
+                          <span>
+                            <strong>{testSavedToast.test}</strong> test for compartment <strong>{testSavedToast.cell}</strong> saved successfully!
+                          </span>
+                        </div>
+                      )}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
                         {availableCells.map((cellKey) => (
                           <div key={cellKey} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1492,8 +1587,31 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                             {/* A. Freshness Test */}
                             {showFreshness && (
                               <div style={{ border: '1px solid #bbf7d0', borderRadius: 6, padding: '10px 12px', backgroundColor: '#f0fdf4' }}>
-                                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#166534', marginBottom: '6px' }}>
-                                  A. Freshness Test — {activeCell}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#166534', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span>A. Freshness Test — {activeCell}</span>
+                                    {savedCellTests[`${activeCell}_Freshness`] && (
+                                      <span style={{ fontSize: '0.76rem', color: '#15803d', fontWeight: 700, backgroundColor: '#dcfce7', padding: '1px 6px', borderRadius: 3, border: '1px solid #86efac' }}>
+                                        ✓ Saved
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveTest(activeCell, 'Freshness')}
+                                    style={{
+                                      backgroundColor: savedCellTests[`${activeCell}_Freshness`] ? '#15803d' : '#16a34a',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      borderRadius: 3,
+                                      padding: '3px 12px',
+                                      fontWeight: 700,
+                                      fontSize: '0.8rem',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {savedCellTests[`${activeCell}_Freshness`] ? '✓ Saved' : 'Save'}
+                                  </button>
                                 </div>
                                 <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.82rem' }}>
@@ -1529,14 +1647,55 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                                     />
                                   </div>
                                 </div>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed #bbf7d0' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveTest(activeCell, 'Freshness')}
+                                    style={{
+                                      backgroundColor: '#16a34a',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      borderRadius: 3,
+                                      padding: '4px 14px',
+                                      fontWeight: 700,
+                                      fontSize: '0.8rem',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {savedCellTests[`${activeCell}_Freshness`] ? '✓ Freshness Test Saved' : 'Save Freshness Test'}
+                                  </button>
+                                </div>
                               </div>
                             )}
 
                             {/* B. SNF Adulteration Test */}
                             {showSnf && (
                               <div style={{ border: '1px solid #fed7aa', borderRadius: 6, padding: '10px 12px', backgroundColor: '#fff7ed' }}>
-                                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#9a3412', marginBottom: '6px' }}>
-                                  B. SNF Adulteration Test — {activeCell}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#9a3412', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span>B. SNF Adulteration Test — {activeCell}</span>
+                                    {savedCellTests[`${activeCell}_SNF Adulteration`] && (
+                                      <span style={{ fontSize: '0.76rem', color: '#15803d', fontWeight: 700, backgroundColor: '#dcfce7', padding: '1px 6px', borderRadius: 3, border: '1px solid #86efac' }}>
+                                        ✓ Saved
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveTest(activeCell, 'SNF Adulteration')}
+                                    style={{
+                                      backgroundColor: savedCellTests[`${activeCell}_SNF Adulteration`] ? '#15803d' : '#ea580c',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      borderRadius: 3,
+                                      padding: '3px 12px',
+                                      fontWeight: 700,
+                                      fontSize: '0.8rem',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {savedCellTests[`${activeCell}_SNF Adulteration`] ? '✓ Saved' : 'Save'}
+                                  </button>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '8px', fontSize: '0.82rem' }}>
                                   {[
@@ -1581,14 +1740,55 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                                     style={{ width: 180, height: 24, padding: '1px 6px', border: '1px solid #fdba74', borderRadius: 2 }}
                                   />
                                 </div>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px', paddingTop: '6px', borderTop: '1px dashed #fed7aa' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveTest(activeCell, 'SNF Adulteration')}
+                                    style={{
+                                      backgroundColor: '#ea580c',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      borderRadius: 3,
+                                      padding: '4px 14px',
+                                      fontWeight: 700,
+                                      fontSize: '0.8rem',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {savedCellTests[`${activeCell}_SNF Adulteration`] ? '✓ SNF Test Saved' : 'Save SNF Adulteration Test'}
+                                  </button>
+                                </div>
                               </div>
                             )}
 
                             {/* C. Special Test */}
                             {showSpecial && (
                               <div style={{ border: '1px solid #e9d5ff', borderRadius: 6, padding: '10px 12px', backgroundColor: '#faf5ff' }}>
-                                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#6b21a8', marginBottom: '6px' }}>
-                                  C. Special Test — {activeCell}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#6b21a8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span>C. Special Test — {activeCell}</span>
+                                    {savedCellTests[`${activeCell}_Special`] && (
+                                      <span style={{ fontSize: '0.76rem', color: '#15803d', fontWeight: 700, backgroundColor: '#dcfce7', padding: '1px 6px', borderRadius: 3, border: '1px solid #86efac' }}>
+                                        ✓ Saved
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveTest(activeCell, 'Special')}
+                                    style={{
+                                      backgroundColor: savedCellTests[`${activeCell}_Special`] ? '#15803d' : '#9333ea',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      borderRadius: 3,
+                                      padding: '3px 12px',
+                                      fontWeight: 700,
+                                      fontSize: '0.8rem',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {savedCellTests[`${activeCell}_Special`] ? '✓ Saved' : 'Save'}
+                                  </button>
                                 </div>
                                 <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center', fontSize: '0.82rem' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#ffffff', padding: '3px 8px', borderRadius: 3, border: '1px solid #e9d5ff' }}>
@@ -1643,17 +1843,58 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                                     />
                                   </div>
                                 </div>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed #e9d5ff' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveTest(activeCell, 'Special')}
+                                    style={{
+                                      backgroundColor: '#9333ea',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      borderRadius: 3,
+                                      padding: '4px 14px',
+                                      fontWeight: 700,
+                                      fontSize: '0.8rem',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {savedCellTests[`${activeCell}_Special`] ? '✓ Special Test Saved' : 'Save Special Test'}
+                                  </button>
+                                </div>
                               </div>
                             )}
 
                             {/* D. FAT Adulteration Test */}
                             {showFat && (
                               <div style={{ border: '1px solid #fecdd3', borderRadius: 6, padding: '10px 12px', backgroundColor: '#fff1f2' }}>
-                                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#9f1239', marginBottom: '6px' }}>
-                                  D. FAT Adulteration Test — {activeCell}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#9f1239', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span>D. FAT Adulteration Test — {activeCell}</span>
+                                    {savedCellTests[`${activeCell}_FAT Adulteration`] && (
+                                      <span style={{ fontSize: '0.76rem', color: '#15803d', fontWeight: 700, backgroundColor: '#dcfce7', padding: '1px 6px', borderRadius: 3, border: '1px solid #86efac' }}>
+                                        ✓ Saved
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveTest(activeCell, 'FAT Adulteration')}
+                                    style={{
+                                      backgroundColor: savedCellTests[`${activeCell}_FAT Adulteration`] ? '#15803d' : '#e11d48',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      borderRadius: 3,
+                                      padding: '3px 12px',
+                                      fontWeight: 700,
+                                      fontSize: '0.8rem',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {savedCellTests[`${activeCell}_FAT Adulteration`] ? '✓ Saved' : 'Save'}
+                                  </button>
                                 </div>
                                 <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center', fontSize: '0.82rem' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.82rem' }}>
                                     <span>Free Fatty Acid:</span>
                                     <input
                                       type="text"
@@ -1714,8 +1955,52 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                                     />
                                   </div>
                                 </div>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed #fecdd3' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveTest(activeCell, 'FAT Adulteration')}
+                                    style={{
+                                      backgroundColor: '#e11d48',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      borderRadius: 3,
+                                      padding: '4px 14px',
+                                      fontWeight: 700,
+                                      fontSize: '0.8rem',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {savedCellTests[`${activeCell}_FAT Adulteration`] ? '✓ FAT Test Saved' : 'Save FAT Adulteration Test'}
+                                  </button>
+                                </div>
                               </div>
                             )}
+
+                            {/* Save All Tests for this Compartment */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
+                              <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                                Selected Test for <strong>{activeCell}</strong>: <strong style={{ color: '#0f172a' }}>{selectedType}</strong>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleSaveAllTestsForCell(activeCell)}
+                                style={{
+                                  backgroundColor: '#16a34a',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  borderRadius: 3,
+                                  padding: '5px 16px',
+                                  fontWeight: 700,
+                                  fontSize: '0.82rem',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                }}
+                              >
+                                💾 Save All Tests For {activeCell}
+                              </button>
+                            </div>
                           </div>
                         );
                       })()}
@@ -1733,19 +2018,24 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                       {(receivedQualityList.length > 0 ? Array.from(new Set(receivedQualityList.map((r) => r.cell))) : ['FC', 'BC']).map((cell) => {
                         const cellType = testTypes[cell];
                         const isDone = Boolean(cellType && cellType !== '');
+                        const isSaved = Boolean(savedCellTests[cell]);
                         return (
                           <span
                             key={cell}
                             style={{
-                              color: isDone ? '#16a34a' : '#ca8a04',
+                              color: isSaved ? '#15803d' : isDone ? '#16a34a' : '#ca8a04',
                               fontWeight: 800,
                               fontSize: '0.85rem',
-                              backgroundColor: isDone ? '#dcfce7' : '#fef9c3',
+                              backgroundColor: isSaved ? '#bbf7d0' : isDone ? '#dcfce7' : '#fef9c3',
+                              border: isSaved ? '1px solid #86efac' : '1px solid transparent',
                               padding: '2px 8px',
                               borderRadius: 4,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
                             }}
                           >
-                            {cell} {isDone ? `✓ (${cellType})` : 'Pending'}
+                            {cell} {isSaved ? `✓ (${cellType || 'Saved'})` : isDone ? `✓ (${cellType})` : 'Pending'}
                           </span>
                         );
                       })}
