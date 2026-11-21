@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import api from '../../lib/api';
 import { useTranslation } from '../../context/LanguageContext';
-import { useZoneSettings } from '../../hooks/useZoneSettings';
+import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
 import {
   formatDateDDMMYYYY,
   formatFatSnf,
@@ -64,7 +64,7 @@ interface StockSummary {
 
 export default function TankerDispatch() {
   const { t, lang } = useTranslation();
-  const { settings } = useZoneSettings();
+  const { settings } = useDairyUnitSettings();
 
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [stock, setStock] = useState<StockSummary | null>(null);

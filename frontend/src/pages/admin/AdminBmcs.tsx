@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import api from '../../lib/api';
-import { useZoneSettings } from '../../hooks/useZoneSettings';
+import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
 import { formatDateDDMMYYYY, getLocalTodayIso } from '../../lib/format';
 import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
@@ -20,7 +20,7 @@ interface Unit {
 }
 
 export default function AdminBmcs() {
-  const { settings } = useZoneSettings();
+  const { settings } = useDairyUnitSettings();
   const [units, setUnits] = useState<Unit[]>([]);
   const [loadingList, setLoadingList] = useState(true);
 
@@ -254,7 +254,7 @@ export default function AdminBmcs() {
             {activeBMCs} <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>({totalBMCs > 0 ? Math.round((activeBMCs / totalBMCs) * 100) : 0}%)</span>
           </div>
           <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            Operational units in zone
+            Operational units in dairy unit
           </div>
         </div>
       </div>
@@ -514,7 +514,7 @@ export default function AdminBmcs() {
 
       <div className="card table-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <h2 style={{ margin: 0, fontSize: '16px' }}>All BMCs in Your Zone ({filteredUnits.length})</h2>
+          <h2 style={{ margin: 0, fontSize: '16px' }}>All BMCs in Your Dairy Unit ({filteredUnits.length})</h2>
           {pendingTodayCount > 0 && (
             <span style={{ fontSize: '12px', color: '#d97706', fontWeight: 600 }}>
               ⚠️ {pendingTodayCount} active BMC(s) have not submitted today's milk procurement

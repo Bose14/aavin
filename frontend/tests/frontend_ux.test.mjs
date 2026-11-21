@@ -287,8 +287,8 @@ test('UI primitives & DataTable render empty state CTA, sticky table & totals ro
     }),
   );
   assert.ok(unitChartHtml.includes('Unit-wise Net Profit / Loss'));
-  assert.ok(unitChartHtml.includes('Zone Revenue'));
-  assert.ok(unitChartHtml.includes('Zone Cost'));
+  assert.ok(unitChartHtml.includes('Dairy Unit Revenue'));
+  assert.ok(unitChartHtml.includes('Dairy Unit Cost'));
 });
 
 test('Admin and Unit UI components render without SSR errors and expose responsive buttons', () => {

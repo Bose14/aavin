@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from '../../context/LanguageContext';
-import { useZoneSettings } from '../../hooks/useZoneSettings';
+import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
 import {
   calcRateFromChart,
   formatDateDDMMYYYY,
@@ -44,7 +44,7 @@ export default function MilkEntry() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { settings, sellingRates } = useZoneSettings();
+  const { settings, sellingRates } = useDairyUnitSettings();
 
   const [date, setDate] = useState(() => getLocalTodayIso());
   const [shift, setShift] = useState<'AM' | 'PM'>(() => (new Date().getHours() < 12 ? 'AM' : 'PM'));

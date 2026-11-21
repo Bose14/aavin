@@ -409,7 +409,7 @@ export default function AdminSettings() {
               </label>
               <input
                 type="text"
-                value={profile?.zones?.name || 'Namakkal District Co-op Milk Producers Union'}
+                value={profile?.dairy_units?.name || 'Namakkal District Co-op Milk Producers Union'}
                 disabled
                 style={{
                   width: '100%',

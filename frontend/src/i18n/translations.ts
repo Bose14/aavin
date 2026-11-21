@@ -54,7 +54,7 @@ export const TRANSLATIONS = {
     tipNetQuantity: 'Net accepted milk after deducting sour/rejected quantity (Gross Quantity − Rejection).',
     tipSnf: 'Solids-Not-Fat (%): protein, lactose and minerals excluding fat. Standard Aavin target is ≥ 8.20%.',
     tipRejectionPct: 'Share of collected milk rejected due to spoilage or low quality (Rejection ÷ Gross × 100).',
-    tipProcurementCost: 'Total amount payable based on the zone rate chart (calculated per Admin NET/GROSS rejection rule).',
+    tipProcurementCost: 'Total amount payable based on the dairy unit rate chart (calculated per Admin NET/GROSS rejection rule).',
 
     // Period & Dashboard
     week: 'Week',
