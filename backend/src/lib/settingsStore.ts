@@ -119,7 +119,19 @@ function writeFallback(data: FallbackStoreData): void {
   fs.writeFileSync(FALLBACK_FILE, JSON.stringify(data, null, 2), 'utf8');
 }
 
+const SETTINGS_TTL_MS = 30_000;
+const settingsCache = new Map<string, { value: ZoneSettings; expires: number }>();
+
+/** Settings change rarely, so they are cached briefly instead of being read on every request. */
 export async function getZoneSettings(dairyUnitId: string): Promise<ZoneSettings> {
+  const hit = settingsCache.get(dairyUnitId);
+  if (hit && hit.expires > Date.now()) return hit.value;
+  const value = await loadZoneSettings(dairyUnitId);
+  settingsCache.set(dairyUnitId, { value, expires: Date.now() + SETTINGS_TTL_MS });
+  return value;
+}
+
+async function loadZoneSettings(dairyUnitId: string): Promise<ZoneSettings> {
   const defaults = buildDefaultZoneSettings(dairyUnitId);
   try {
     const { data, error } = await supabase
@@ -173,6 +185,15 @@ export async function getZoneSettings(dairyUnitId: string): Promise<ZoneSettings
 }
 
 export async function saveZoneSettings(dairyUnitId: string, patch: Partial<ZoneSettings>): Promise<ZoneSettings> {
+  try {
+    settingsCache.delete(dairyUnitId);
+    return await saveZoneSettingsUncached(dairyUnitId, patch);
+  } finally {
+    settingsCache.delete(dairyUnitId);
+  }
+}
+
+async function saveZoneSettingsUncached(dairyUnitId: string, patch: Partial<ZoneSettings>): Promise<ZoneSettings> {
   const current = await getZoneSettings(dairyUnitId);
   const next: ZoneSettings = {
     ...current,

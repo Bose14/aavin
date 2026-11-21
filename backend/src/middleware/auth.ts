@@ -37,12 +37,33 @@ async function verifyUserToken(token: string) {
   return { result, transientFailure: isTransient(result.error) };
 }
 
+// A verified token + profile is reused for a short time so most requests skip the Supabase Auth
+// call and the profile lookups. Cleared whenever users, teams or BMCs are changed (see index.ts).
+const AUTH_CACHE_TTL_MS = 60_000;
+const AUTH_CACHE_MAX = 500;
+const authCache = new Map<string, { user: Request['user']; profile: UserProfile; expires: number }>();
+
+export function clearAuthCache(): void {
+  authCache.clear();
+}
+
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
   if (!token) {
     res.status(401).json({ error: 'Missing authorization header' });
     return;
+  }
+
+  const cached = authCache.get(token);
+  if (cached) {
+    if (cached.expires > Date.now()) {
+      req.user = cached.user;
+      req.profile = cached.profile;
+      next();
+      return;
+    }
+    authCache.delete(token);
   }
 
   const { result: { data: { user }, error }, transientFailure } = await verifyUserToken(token);
@@ -103,6 +124,9 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       return;
     }
   }
+
+  if (authCache.size >= AUTH_CACHE_MAX) authCache.clear();
+  authCache.set(token, { user, profile, expires: Date.now() + AUTH_CACHE_TTL_MS });
 
   req.user = user;
   req.profile = profile;

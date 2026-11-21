@@ -269,7 +269,9 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
 
   useEffect(() => {
     void fetchTankers(false);
-    const interval = setInterval(() => void fetchTankers(true), 30000);
+    const interval = setInterval(() => {
+      if (!document.hidden) void fetchTankers(true);
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 

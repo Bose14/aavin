@@ -215,7 +215,7 @@ router.get('/registered/:vehicleNumber', async (req, res) => {
 });
 
 // POST /tanker/registration — register a tanker (or update the details of an existing one)
-router.post('/registration', async (req, res) => {
+router.post('/registration', requireRole('admin', 'bmc', 'gate'), async (req, res) => {
   try {
     const {
       vehicle_number,
@@ -515,7 +515,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /tanker — a BMC loads milk onto a tanker (starts the tanker's trip, or adds to the open one)
-router.post('/', async (req, res) => {
+router.post('/', requireRole('admin', 'bmc'), async (req, res) => {
   try {
     const body = req.body as Record<string, any>;
     const { date, tanker_number, driver_name, seal_number, dispatch_time, destination: _destination } = body;

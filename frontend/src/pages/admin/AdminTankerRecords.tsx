@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '../../lib/api';
 import {
   formatDateDDMMYYYY,
@@ -177,6 +177,8 @@ export default function AdminTankerRecords() {
     } catch {}
   };
 
+  const unitsLoadedRef = useRef(false);
+
   // Fetch Tanker Records and Stats
   const fetchData = useCallback(
     async (silent = false) => {
@@ -203,8 +205,9 @@ export default function AdminTankerRecords() {
               bmc_id: selectedUnitId || undefined,
             },
           }),
-          api.get<Unit[]>('/bmcs'),
-          api.get<any[]>('/teams'),
+          // BMC and team lists rarely change: load them once, not on every auto-refresh
+          silent && unitsLoadedRef.current ? Promise.resolve(null) : api.get<Unit[]>('/bmcs'),
+          silent && unitsLoadedRef.current ? Promise.resolve(null) : api.get<any[]>('/teams'),
         ]);
 
         if (tResSettled.status === 'fulfilled') {
@@ -222,11 +225,12 @@ export default function AdminTankerRecords() {
           setError(reason);
         }
 
-        if (uResSettled.status === 'fulfilled') {
+        if (uResSettled.status === 'fulfilled' && uResSettled.value) {
           setUnits(uResSettled.value.data || []);
+          unitsLoadedRef.current = true;
         }
 
-        if (teamsResSettled.status === 'fulfilled') {
+        if (teamsResSettled.status === 'fulfilled' && teamsResSettled.value) {
           const counts: Record<string, number> = {};
           for (const tm of (teamsResSettled.value.data || [])) {
             counts[tm.code.toUpperCase()] = tm.active_user_count || 0;
@@ -293,7 +297,7 @@ export default function AdminTankerRecords() {
   // Configurable Auto-Refresh (30-60s)
   useEffect(() => {
     const interval = setInterval(() => {
-      void fetchData(true);
+      if (!document.hidden) void fetchData(true);
     }, Math.max(10, autoRefreshIntervalSec) * 1000);
     return () => clearInterval(interval);
   }, [fetchData, autoRefreshIntervalSec]);
