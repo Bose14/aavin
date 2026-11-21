@@ -351,6 +351,15 @@ export default function AdminTankerRecords() {
     void triggerBlobDownload('/export/tanker/daily-report', exportParams, `Aavin_Daily_Tanker_Report_${todayDDMM}.xlsx`);
   };
 
+  // Milk disposal & acknowledgement statement for the selected From / To dates (one day = daily, a month = monthly)
+  const handleExportMilkAck = () => {
+    const p: Record<string, string> = {};
+    if (fromDate) p.from = fromDate;
+    if (toDate) p.to = toDate;
+    const tag = fromDate || toDate ? `${fromDate || 'start'}_to_${toDate || 'today'}` : 'all';
+    void triggerBlobDownload('/export/milk-ack', { ...p, format: 'xlsx' }, `Milk_ACK_${tag}.xlsx`);
+  };
+
   // Table Columns Definition
   const columns: DataColumn<any>[] = useMemo(() => {
     const cols: DataColumn<any>[] = [];
@@ -852,6 +861,24 @@ export default function AdminTankerRecords() {
             title="Download official Aavin IDMS Daily Milk & Tanker Reception Excel Report"
           >
             📊 Daily Reception Report (.xlsx)
+          </button>
+          <button
+            type="button"
+            onClick={handleExportMilkAck}
+            className="btn btn-primary btn-sm"
+            style={{
+              height: '34px',
+              fontSize: '12px',
+              padding: '0 12px',
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              width: 'auto',
+            }}
+            title="Milk disposal & acknowledgement statement for the selected From / To dates"
+          >
+            🥛 Milk ACK Statement (.xlsx)
           </button>
           <button
             type="button"

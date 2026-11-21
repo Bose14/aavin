@@ -2,6 +2,10 @@ import { Router } from 'express';
 import * as XLSX from '../lib/spreadsheet';
 import { supabase } from '../supabase';
 import { fetchTrip, fetchTrips } from '../lib/tripStore';
+import { ensureAcknowledgements } from '../lib/ack';
+import { buildMilkAckRows, ACK_COLUMNS } from '../lib/milkAckReport';
+import type { AckViewRow } from '../lib/milkAckReport';
+import { requireRole } from '../middleware/requireRole';
 import { authMiddleware } from '../middleware/auth';
 import {
   calculateEntryFinancials,
@@ -289,6 +293,46 @@ router.get('/milk', async (req, res) => {
 });
 
 // GET /export/tanker?from=&to=&format=csv|xlsx&bmc_id=&status=&stage=&waiting_team=&delayed_only=&search=
+// GET /export/milk-ack?from=&to=&format=xlsx|csv — Milk disposal & acknowledgement statement
+router.get('/milk-ack', requireRole('admin'), async (req, res) => {
+  const { from, to, format } = req.query as Record<string, string | undefined>;
+  const dateOk = (v?: string) => !v || /^\d{4}-\d{2}-\d{2}$/.test(v);
+  if (!dateOk(from) || !dateOk(to)) {
+    res.status(400).json({ error: 'from and to must be yyyy-mm-dd' });
+    return;
+  }
+  const dairyUnitId = req.profile.dairy_unit_id;
+
+  try {
+    await ensureAcknowledgements(dairyUnitId, from, to);
+    let q = supabase.from('v_milk_ack').select('*').eq('dairy_unit_id', dairyUnitId);
+    if (from) q = q.gte('trip_date', from);
+    if (to) q = q.lte('trip_date', to);
+    const { data, error } = await q.limit(20000);
+    if (error) throw new Error(error.message);
+
+    const rows = buildMilkAckRows((data ?? []) as unknown as AckViewRow[], formatDateDDMMYYYY);
+    const wb = XLSX.book_new();
+    const ws = { rows, columns: [...ACK_COLUMNS] as string[] };
+    XLSX.book_append_sheet(wb, ws, 'Milk ACK');
+
+    const baseName = `Milk_ACK_${buildRangeTag(from, to)}`;
+    if (format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${baseName}.csv"`);
+      res.send(XLSX.sheet_to_csv(ws));
+    } else {
+      const buf = await XLSX.writeXlsx(wb);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${baseName}.xlsx"`);
+      res.send(buf);
+    }
+  } catch (err) {
+    console.error('[api]', req.method, req.originalUrl, (err as Error).message);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
 router.get('/tanker', async (req, res) => {
   const { from, to, format = 'xlsx', bmc_id, status, stage, waiting_team, delayed_only, search } = req.query as Record<string, string>;
   const dairyUnitId = req.profile.dairy_unit_id;

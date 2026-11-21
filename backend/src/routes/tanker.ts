@@ -37,6 +37,7 @@ import {
 } from '../lib/tripStore';
 import type { LegacyTripRow } from '../lib/tripStore';
 import { supabase } from '../supabase';
+import { syncTripAcknowledgements } from '../lib/ack';
 
 const router = Router();
 router.use(authMiddleware);
@@ -48,6 +49,15 @@ function sendError(res: import('express').Response, err: unknown) {
   }
   console.error('[tanker]', err);
   res.status(500).json({ error: 'Something went wrong. Please try again.' });
+}
+
+/** Keep each BMC's acknowledged litres and fat/SNF in step with the trip; never blocks the plant. */
+async function refreshAcknowledgements(tripId: string): Promise<void> {
+  try {
+    await syncTripAcknowledgements(tripId);
+  } catch (e) {
+    console.error('[ack] could not update acknowledgements for trip', tripId, (e as Error).message);
+  }
 }
 
 function actorName(req: import('express').Request, fallback: string): string {
@@ -1017,6 +1027,7 @@ async function recordStageHandler(req: import('express').Request, res: import('e
     if (tripPatch[k] === undefined) delete tripPatch[k];
   }
   await updateTrip(id, tripPatch);
+  if (stageKey === 'qc_completed' || stageKey === 'unloaded') await refreshAcknowledgements(id);
 
   // 8. Audit log
   await writeAuditLog({
@@ -1106,6 +1117,7 @@ router.post('/:id/correct', requireRole('admin'), async (req, res) => {
       tripPatch.received_litres = Number(changes.unloaded_litres);
     }
     await updateTrip(tripId, tripPatch);
+    if (stage_name === 'qc_completed' || stage_name === 'unloaded') await refreshAcknowledgements(tripId);
 
     await writeAuditLog({
       dairy_unit_id: dairyUnitId,
@@ -1299,6 +1311,7 @@ router.patch('/:id/receive', requireRole('admin'), async (req, res) => {
       received_snf_pct: received_snf_pct != null && String(received_snf_pct) !== '' ? +Number(received_snf_pct).toFixed(2) : null,
     };
     await updateTrip(tripId, updateFields);
+    await refreshAcknowledgements(tripId);
 
     await writeAuditLog({
       dairy_unit_id: dairyUnitId,
