@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
 import { installFakeSupabase } from './helpers/fakeSupabase.mjs';
+
+dotenv.config({ path: fileURLToPath(new URL('../.env', import.meta.url)) });
 
 const require = createRequire(import.meta.url);
 installFakeSupabase();
@@ -284,6 +288,104 @@ test('INSTANCE TESTING SUITE: AAVIN Tanker Lifecycle, Multi-BMC, Plant Pipeline 
     assert.equal(metaAfterBmc2.dc_number, 'DC-BMC1-8891, DC-BMC2-4412');
     assert.equal(metaAfterBmc2.compartments.length, 2);
     assert.equal(metaAfterBmc2.stage_data.bmc_dispatches.length, 2);
+  });
+
+  // =========================================================================
+  // GROUP 3B: Exact User Scenario - 6,500 L Tanker, BMC 1 fills 3,000 L, BMC 2 visibility check
+  // =========================================================================
+  await t.test('3B. Exact User Scenario: 6,500 L tanker, BMC 1 fills 3,000 L, BMC 2 sees 3,500 L available capacity', async () => {
+    const userTankerNum = `TN30USER${Math.floor(Math.random() * 8999 + 1000)}`;
+    const userTripId = `trip-user-${Date.now()}`;
+
+    // 1. User registers tanker with 6,500 L capacity (1 cell)
+    const userTanker = await saveRegisteredTankerInDb({
+      vehicle_number: userTankerNum,
+      contractor_name: 'Salem Express Logistics',
+      from_date: '2026-11-21',
+      vehicle_type: 'Registered',
+      number_of_cells: 1,
+      front_cell_capacity: 6500,
+      middle_cell_capacity: 0,
+      back_cell_capacity: 0,
+      supplier_name: 'Namakkal Dairy',
+    });
+
+    // Verify it is in registered tankers list
+    const registeredList = await getRegisteredTankersInDb();
+    const foundInList = registeredList.find((t) => t.vehicle_number === userTankerNum);
+    assert.ok(foundInList, 'Registered tanker must be returned in getRegisteredTankersInDb()');
+
+    // 2. BMC 1 logs in and fills 3,000 L
+    saveTankerDispatchMetadata({
+      id: userTripId,
+      tanker_number: userTankerNum,
+      unit_id: 'bmc-unit-01',
+      zone_id: 'zone-test-01',
+      date: '2026-11-21',
+      trip_status: 'on_the_way',
+      driver_name: 'K. Rajendran',
+      driver_phone: '9842199887',
+      dc_number: 'DC-BMC1-001',
+      seal_number: 'SL-OUT-001',
+      dispatch_time: '10:00 AM',
+      quantity_dispatched: 3000,
+      dispatch_fat_pct: 4.30,
+      dispatch_snf_pct: 8.50,
+      destination: 'Namakkal Dairy',
+      compartments: [
+        {
+          compartment_no: 1,
+          cell_key: 'FC',
+          compartment_name: 'Front Compartment (Comp 1)',
+          quantity_litres: 3000,
+          capacity_litres: 6500,
+          fat_pct: 4.30,
+          snf_pct: 8.50,
+          seal_number: 'SL-CMP-001',
+          milk_type: 'Raw Cow Milk',
+          bmc_id: 'bmc-unit-01',
+          bmc_name: 'Rasipuram BMC [RNK-001]',
+          dc_number: 'DC-BMC1-001',
+        },
+      ],
+      stage_data: {
+        bmc_dispatches: [
+          {
+            unit_id: 'bmc-unit-01',
+            unit_name: 'Rasipuram BMC [RNK-001]',
+            dc_number: 'DC-BMC1-001',
+            quantity_dispatched: 3000,
+            dispatch_time: '10:00 AM',
+            created_at: new Date().toISOString(),
+          },
+        ],
+      },
+    });
+
+    // 3. BMC 2 logs in (could be zone-test-01 or another zone) and fetches registered tankers!
+    const allRegistered = await getRegisteredTankersInDb();
+    const enrichedForBmc2 = await enrichRegisteredTankersWithCapacity('zone-test-01', allRegistered);
+    const tankerAtBmc2 = enrichedForBmc2.find((t) => t.vehicle_number === userTankerNum);
+
+    // Assertions matching user's exact requirements:
+    assert.ok(tankerAtBmc2, 'Tanker MUST be visible to BMC 2');
+    assert.equal(tankerAtBmc2.total_capacity, 6500, 'Total capacity must be 6500 L');
+    assert.equal(tankerAtBmc2.filled_capacity, 3000, 'Filled capacity must be 3000 L from BMC 1');
+    assert.equal(tankerAtBmc2.available_capacity, 3500, 'Available capacity must be 3500 L');
+    assert.equal(tankerAtBmc2.is_full, false, 'Tanker must NOT be marked full');
+    assert.equal(tankerAtBmc2.is_at_plant, false, 'Tanker must NOT be marked at plant');
+    assert.equal(tankerAtBmc2.is_available_for_dispatch, true, 'Tanker MUST be available for BMC 2 dispatch selection');
+
+    // 4. Check cells breakdown for BMC 2
+    assert.equal(tankerAtBmc2.cells.length, 1);
+    const fc = tankerAtBmc2.cells[0];
+    assert.equal(fc.cell_key, 'FC');
+    assert.equal(fc.capacity, 6500);
+    assert.equal(fc.filled_litres, 3000);
+    assert.equal(fc.available_litres, 3500);
+    assert.equal(fc.is_cell_full, false);
+    assert.equal(fc.loaded_by_bmc_name, 'Rasipuram BMC [RNK-001]');
+    assert.equal(fc.dc_number, 'DC-BMC1-001');
   });
 
   // =========================================================================

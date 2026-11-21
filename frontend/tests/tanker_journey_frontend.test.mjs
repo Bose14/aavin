@@ -329,7 +329,7 @@ test('Frontend Feature Verification: 8-Feature Suite (User Creation, Gate/QC/Unl
 test('Sidebar NavLink enforces exact matching (end prop) to prevent multiple simultaneous active selections', () => {
   const layoutSrc = fs.readFileSync(path.resolve(__dirname, '../src/components/Layout.tsx'), 'utf8');
   assert.ok(layoutSrc.includes('<NavLink'), 'Layout renders NavLink');
-  assert.ok(layoutSrc.includes('end\n') || layoutSrc.includes('end '), 'Layout uses end prop for exact route matching on nav items');
+  assert.ok(/\bend\b/.test(layoutSrc), 'Layout uses end prop for exact route matching on nav items');
   assert.ok(!layoutSrc.includes(".includes(item.to)"), 'Layout does not use incomplete whitelist for end prop');
 });
 

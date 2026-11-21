@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: fileURLToPath(new URL('../.env', import.meta.url)) });
 
 const require = createRequire(import.meta.url);
 const {
