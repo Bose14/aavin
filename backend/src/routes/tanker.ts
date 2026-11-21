@@ -385,29 +385,35 @@ export function enrichTankerRow(row: Record<string, unknown>, stages?: StageReco
   };
 }
 
-async function computeAvailableStock(zoneId: string, unitId?: string | null) {
-  let milkQ = supabase.from('milk_entries').select('quantity_litres, rejection_qty').eq('zone_id', zoneId);
-  if (unitId) {
-    milkQ = milkQ.eq('unit_id', unitId);
+export async function computeAvailableStock(zoneId: string, unitId?: string | null) {
+  let totalCollectedNet = 0;
+  try {
+    let milkQ = supabase.from('milk_entries').select('quantity_litres, rejection_qty').eq('zone_id', zoneId);
+    if (unitId) {
+      milkQ = milkQ.eq('unit_id', unitId);
+    }
+    const mRes = await milkQ;
+    if (!mRes.error && mRes.data) {
+      totalCollectedNet = mRes.data.reduce(
+        (sum, r) => sum + Math.max(0, Number(r.quantity_litres ?? 0) - Number(r.rejection_qty ?? 0)),
+        0,
+      );
+    }
+  } catch (mErr) {
+    console.warn('[tanker/stock] milk_entries query warning:', (mErr as Error).message);
   }
 
-  const [mRes, tankerQueryResult] = await Promise.all([
-    milkQ,
-    runResilientTankerQuery((selectStr) => {
+  let tankerRows: any[] = [];
+  try {
+    const tankerQueryResult = await runResilientTankerQuery((selectStr) => {
       let q = supabase.from('tanker_dispatches').select(selectStr);
       if (zoneId) q = q.eq('zone_id', zoneId);
       return q;
-    }),
-  ]);
-
-  if (mRes.error) {
-    throw new Error(mRes.error?.message || 'Failed to compute milk entries stock');
+    });
+    tankerRows = tankerQueryResult.data ?? [];
+  } catch (tErr) {
+    console.warn('[tanker/stock] tanker_dispatches query warning:', (tErr as Error).message);
   }
-
-  const totalCollectedNet = (mRes.data ?? []).reduce(
-    (sum, r) => sum + Math.max(0, Number(r.quantity_litres ?? 0) - Number(r.rejection_qty ?? 0)),
-    0,
-  );
 
   // Read fallback store for any multi-BMC dispatches or fallback stage_data
   let fallbackMap: Record<string, any> = {};
@@ -420,7 +426,6 @@ async function computeAvailableStock(zoneId: string, unitId?: string | null) {
     // non-fatal
   }
 
-  const tankerRows = tankerQueryResult.data ?? [];
   let totalDispatched = 0;
   for (const r of tankerRows) {
     const id = String((r as any).id);
@@ -455,7 +460,7 @@ async function computeAvailableStock(zoneId: string, unitId?: string | null) {
 }
 
 // Helper to enrich registered tankers with live cell capacity, filled volume, and multi-BMC dispatch status
-async function enrichRegisteredTankersWithCapacity(zoneId: string, registered: any[]) {
+export async function enrichRegisteredTankersWithCapacity(zoneId: string, registered: any[]) {
   let tripList: any[] = [];
   try {
     const { data } = await runResilientTankerQuery((selectStr) => {
@@ -488,7 +493,7 @@ async function enrichRegisteredTankersWithCapacity(zoneId: string, registered: a
     // non-fatal
   }
 
-  return registered.map((reg) => {
+  return (registered || []).filter(Boolean).map((reg) => {
     const normReg = (reg.vehicle_number || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     const activeTrip = tripList.find((t) => {
       const normTrip = (t.tanker_number || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');

@@ -224,6 +224,7 @@ export function readFallback(): FallbackStoreData {
         teams,
         tankerDispatches: parsed.tankerDispatches && typeof parsed.tankerDispatches === 'object' ? parsed.tankerDispatches : {},
         tankerDispatchesByNumber: parsed.tankerDispatchesByNumber && typeof parsed.tankerDispatchesByNumber === 'object' ? parsed.tankerDispatchesByNumber : {},
+        registeredTankers: parsed.registeredTankers && typeof parsed.registeredTankers === 'object' ? parsed.registeredTankers : {},
       };
     }
   } catch {
@@ -240,6 +241,7 @@ export function readFallback(): FallbackStoreData {
     teams,
     tankerDispatches: {},
     tankerDispatchesByNumber: {},
+    registeredTankers: {},
   };
 }
 
@@ -1013,6 +1015,7 @@ export async function saveRegisteredTankerInDb(data: Omit<RegisteredTanker, 'id'
 
 export async function findRegisteredTankerInDb(vehicleNumber: string): Promise<RegisteredTanker | null> {
   const norm = vehicleNumber.trim().toUpperCase();
+  const clean = norm.replace(/[^A-Z0-9]/g, '');
   try {
     const res: any = await withTimeout(supabase.from('registered_tankers').select('*').eq('vehicle_number', norm).maybeSingle());
     if (!res?.error && res?.data) {
@@ -1023,7 +1026,12 @@ export async function findRegisteredTankerInDb(vehicleNumber: string): Promise<R
   }
 
   const store = readFallback();
-  return store.registeredTankers?.[norm] || INITIAL_REGISTERED_TANKERS.find((t) => t.vehicle_number === norm) || null;
+  return (
+    store.registeredTankers?.[norm] ||
+    store.registeredTankers?.[clean] ||
+    INITIAL_REGISTERED_TANKERS.find((t) => t.vehicle_number === norm || t.vehicle_number.replace(/[^A-Z0-9]/g, '') === clean) ||
+    null
+  );
 }
 
 
