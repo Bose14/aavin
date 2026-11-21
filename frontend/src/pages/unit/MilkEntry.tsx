@@ -207,6 +207,8 @@ export default function MilkEntry() {
         snf: ok ? snf : 0,
         ltFat: ok ? Math.round(litres * fat * 10) / 1000 : 0,
         ltSnf: ok ? Math.round(litres * snf * 10) / 1000 : 0,
+        // Lactometer reading implied by fat and SNF: SNF = LR/4 + 0.2 x Fat + 0.36
+        lr: ok ? Math.round(4 * (snf - 0.2 * fat - 0.36) * 10) / 10 : 0,
         rate,
         amount: ok ? round2(litres * rate) : 0,
       };
@@ -506,6 +508,7 @@ export default function MilkEntry() {
                     <th style={{ ...cell, textAlign: 'left', position: 'sticky', left: 0, background: '#f1f5f9' }}>Society</th>
                     <th style={{ ...cell, width: 80 }}>Cans</th>
                     <th style={{ ...cell, width: 100 }}>Litres</th>
+                    <th style={cell}>LR</th>
                     <th style={{ ...cell, width: 80 }}>Fat %</th>
                     <th style={{ ...cell, width: 80 }}>SNF %</th>
                     <th style={cell}>Lt Fat (kg)</th>
@@ -516,10 +519,10 @@ export default function MilkEntry() {
                 </thead>
                 <tbody>
                   {societiesLoading && (
-                    <tr><td colSpan={9} style={{ ...cell, textAlign: 'center', color: '#64748b', padding: 16 }}>Loading societies…</td></tr>
+                    <tr><td colSpan={10} style={{ ...cell, textAlign: 'center', color: '#64748b', padding: 16 }}>Loading societies…</td></tr>
                   )}
                   {!societiesLoading && computed.length === 0 && (
-                    <tr><td colSpan={9} style={{ ...cell, textAlign: 'center', color: '#64748b', padding: 16 }}>
+                    <tr><td colSpan={10} style={{ ...cell, textAlign: 'center', color: '#64748b', padding: 16 }}>
                       {societies.length === 0
                         ? 'No societies yet. Use “Society not in the list?” below.'
                         : 'Select a society from the dropdown above to start.'}
@@ -550,6 +553,7 @@ export default function MilkEntry() {
                         <td style={cell}>
                           <input id={`litres-${c.society.id}`} style={input} type="number" inputMode="decimal" min="0" step="0.1" value={r.litres} onChange={e => setCell(c.society.id, 'litres', e.target.value)} />
                         </td>
+                        <td style={{ ...cell, textAlign: 'right', color: '#475569' }}>{c.ok ? fmt(c.lr, 1) : '–'}</td>
                         <td style={cell}>
                           <input style={input} type="number" inputMode="decimal" step="0.1" value={r.fat} onChange={e => setCell(c.society.id, 'fat', e.target.value)} />
                         </td>
@@ -571,6 +575,7 @@ export default function MilkEntry() {
                     </td>
                     <td style={cell}>{totals.cans}</td>
                     <td style={cell}>{fmt(totals.litres, 1)}</td>
+                    <td style={cell} />
                     <td style={cell}>{totals.litres > 0 ? fmt(totals.fat) : '–'}</td>
                     <td style={cell}>{totals.litres > 0 ? fmt(totals.snf) : '–'}</td>
                     <td style={cell}>{fmt(totals.ltFat, 3)}</td>
