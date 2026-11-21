@@ -18,8 +18,8 @@ export interface StageTimeLimits {
   vehicle_exit: number;
 }
 
-export interface ZoneSettings {
-  zone_id?: string;
+export interface DairyUnitSettings {
+  dairy_unit_id?: string;
   rate_base: number;
   rate_fat_coeff: number;
   rate_snf_coeff: number;
@@ -58,7 +58,7 @@ export const DEFAULT_STAGE_TIME_LIMITS: StageTimeLimits = {
 
 export const DEFAULT_SELLING_RATE = 52;
 
-export const DEFAULT_ZONE_SETTINGS: ZoneSettings = {
+export const DEFAULT_DAIRY_UNIT_SETTINGS: DairyUnitSettings = {
   rate_base: 0,
   rate_fat_coeff: 3.5,
   rate_snf_coeff: 1.8,
@@ -175,11 +175,11 @@ export function formatLitres(value: number, maximumFractionDigits = 2): string {
   return `${safe.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits })} L`;
 }
 
-/** Calculate per-litre rate from configurable zone chart formula. */
+/** Calculate per-litre rate from configurable dairy unit chart formula. */
 export function calcRateFromChart(
   fatPct: number,
   snfPct: number,
-  settings: Pick<ZoneSettings, 'rate_base' | 'rate_fat_coeff' | 'rate_snf_coeff'> = DEFAULT_ZONE_SETTINGS,
+  settings: Pick<DairyUnitSettings, 'rate_base' | 'rate_fat_coeff' | 'rate_snf_coeff'> = DEFAULT_DAIRY_UNIT_SETTINGS,
 ): number {
   const rate =
     Number(settings.rate_base) +
@@ -188,7 +188,7 @@ export function calcRateFromChart(
   return +Math.max(0, rate).toFixed(2);
 }
 
-/** Resolve active zone selling rate for a given entry date (YYYY-MM-DD). */
+/** Resolve active dairy unit selling rate for a given entry date (YYYY-MM-DD). */
 export function getEffectiveSellingRate(
   entryDate: string,
   history: ReadonlyArray<Pick<SellingRateRule, 'rate_per_litre' | 'effective_from'>>,

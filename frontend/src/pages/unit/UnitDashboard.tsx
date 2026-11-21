@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from '../../context/LanguageContext';
-import { useZoneSettings } from '../../hooks/useZoneSettings';
+import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
 import {
   formatDateDDMMYYYY,
   formatDateTimeDDMMYYYY,
@@ -108,7 +108,7 @@ export default function UnitDashboard() {
   const { profile } = useAuth();
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { settings } = useZoneSettings();
+  const { settings } = useDairyUnitSettings();
 
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('today');
   const [customFrom, setCustomFrom] = useState(() => getLocalTodayIso());

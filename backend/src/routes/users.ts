@@ -16,7 +16,7 @@ const TEAM_CODES = ['ADMIN', 'GATE', 'QC', 'UNLOADING', 'BMC'] as const;
 type TeamCode = (typeof TEAM_CODES)[number];
 
 const USER_SELECT =
-  'id, id_token, auth_user_id, zone_id, team_id, bmc_id, full_name, email, phone, shift, sub_role, ' +
+  'id, id_token, auth_user_id, dairy_unit_id, team_id, bmc_id, full_name, email, phone, shift, sub_role, ' +
   'is_active, must_change_password, created_at, updated_at, ' +
   'teams(id, id_token, code, name), bmcs(id, id_token, name, bmc_code)';
 
@@ -24,7 +24,7 @@ interface UserRow {
   id: string;
   id_token: string;
   auth_user_id: string;
-  zone_id: string;
+  dairy_unit_id: string;
   team_id: string;
   bmc_id: string | null;
   full_name: string;
@@ -72,15 +72,15 @@ function actorName(req: { profile: { full_name: string | null }; user: { email?:
   return req.profile.full_name ?? req.user.email ?? 'Admin';
 }
 
-/** Loads one user from the caller's zone by numeric id or id_token. */
-async function findUserInZone(idOrToken: string, zoneId: string): Promise<UserRow | null> {
+/** Loads one user from the caller's dairy unit by numeric id or id_token. */
+async function findUserInDairyUnit(idOrToken: string, dairyUnitId: string): Promise<UserRow | null> {
   const lookup = idLookup(idOrToken);
   if (!lookup) return null;
   const { data } = await supabase
     .from('users')
     .select(USER_SELECT)
     .eq(lookup.column, lookup.value)
-    .eq('zone_id', zoneId)
+    .eq('dairy_unit_id', dairyUnitId)
     .maybeSingle();
   return (data as unknown as UserRow | null) ?? null;
 }
@@ -103,27 +103,27 @@ async function resolveTeam(input: { team?: string; team_id?: string }) {
   return (data as { id: string; id_token: string; code: TeamCode; name: string; active: boolean } | null) ?? null;
 }
 
-/** Resolves a BMC (by id or id_token) that belongs to the given zone. */
-async function resolveBmcInZone(idOrToken: string, zoneId: string) {
+/** Resolves a BMC (by id or id_token) that belongs to the given dairy unit. */
+async function resolveBmcInDairyUnit(idOrToken: string, dairyUnitId: string) {
   const lookup = idLookup(idOrToken);
   if (!lookup) return null;
   const { data } = await supabase
     .from('bmcs')
     .select('id, id_token, name, is_active')
     .eq(lookup.column, lookup.value)
-    .eq('zone_id', zoneId)
+    .eq('dairy_unit_id', dairyUnitId)
     .maybeSingle();
   return (data as { id: string; id_token: string; name: string; is_active: boolean } | null) ?? null;
 }
 
-/** True when the zone would still have an active admin after `excludeUserId` stops being one. */
-async function hasAnotherActiveAdmin(zoneId: string, excludeUserId: string): Promise<boolean> {
+/** True when the dairy unit would still have an active admin after `excludeUserId` stops being one. */
+async function hasAnotherActiveAdmin(dairyUnitId: string, excludeUserId: string): Promise<boolean> {
   const { data: adminTeam } = await supabase.from('teams').select('id').eq('code', 'ADMIN').maybeSingle();
   if (!adminTeam) return false;
   const { count } = await supabase
     .from('users')
     .select('id', { count: 'exact', head: true })
-    .eq('zone_id', zoneId)
+    .eq('dairy_unit_id', dairyUnitId)
     .eq('team_id', adminTeam.id)
     .eq('is_active', true)
     .neq('id', excludeUserId);
@@ -134,7 +134,7 @@ function uniqueViolationMessage(err: { code?: string; message?: string }): strin
   if (err.code !== '23505') return null;
   const msg = err.message ?? '';
   if (msg.includes('uq_users_email')) return 'A user with this email already exists';
-  if (msg.includes('uq_users_zone_phone')) return 'This phone number is already assigned to another user in the zone';
+  if (msg.includes('uq_users_dairy_unit_phone')) return 'This phone number is already assigned to another user in the dairy unit';
   return 'A user with these details already exists';
 }
 
@@ -154,7 +154,7 @@ router.post('/complete-password-change', async (req, res) => {
   res.json({ ok: true });
 });
 
-// GET /users — users in the admin's zone. Filters: team, bmc_id, status, search, limit, offset
+// GET /users — users in the admin's dairy unit. Filters: team, bmc_id, status, search, limit, offset
 // Any signed-in user may rename themselves.
 router.patch('/me/profile', async (req, res) => {
   const fullName = typeof req.body?.full_name === 'string' ? req.body.full_name.trim() : '';
@@ -170,7 +170,7 @@ router.get('/', requireRole('admin'), async (req, res) => {
   let query = supabase
     .from('users')
     .select(USER_SELECT)
-    .eq('zone_id', req.profile.zone_id)
+    .eq('dairy_unit_id', req.profile.dairy_unit_id)
     .order('created_at', { ascending: false });
 
   if (team) {
@@ -229,7 +229,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
     force_password_change?: boolean;
   };
 
-  const zoneId = req.profile.zone_id;
+  const dairyUnitId = req.profile.dairy_unit_id;
   const fullName = (body.full_name ?? '').trim();
   const email = (body.email ?? '').trim().toLowerCase();
   const shift = SHIFTS.includes(body.shift as (typeof SHIFTS)[number]) ? (body.shift as string) : 'General';
@@ -257,9 +257,9 @@ router.post('/', requireRole('admin'), async (req, res) => {
       res.status(400).json({ error: 'Select a BMC for BMC users' });
       return;
     }
-    const bmc = await resolveBmcInZone(body.bmc_id, zoneId);
+    const bmc = await resolveBmcInDairyUnit(body.bmc_id, dairyUnitId);
     if (!bmc) {
-      res.status(400).json({ error: 'BMC not found in your zone' });
+      res.status(400).json({ error: 'BMC not found in your dairy unit' });
       return;
     }
     bmcId = bmc.id;
@@ -300,7 +300,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
     .from('users')
     .insert({
       auth_user_id: authData.user.id,
-      zone_id: zoneId,
+      dairy_unit_id: dairyUnitId,
       team_id: team.id,
       bmc_id: bmcId,
       full_name: fullName,
@@ -324,7 +324,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
 
   const created = inserted as unknown as UserRow;
   await writeAuditLog({
-    zone_id: zoneId,
+    dairy_unit_id: dairyUnitId,
     bmc_id: bmcId,
     entity_type: 'user',
     entity_id: created.id,
@@ -339,8 +339,8 @@ router.post('/', requireRole('admin'), async (req, res) => {
 
 // PATCH /users/:id — edit details, change team / BMC, activate or deactivate. :id is an id or id_token
 router.patch('/:id', requireRole('admin'), async (req, res) => {
-  const zoneId = req.profile.zone_id;
-  const target = await findUserInZone(String(req.params.id), zoneId);
+  const dairyUnitId = req.profile.dairy_unit_id;
+  const target = await findUserInDairyUnit(String(req.params.id), dairyUnitId);
   if (!target) {
     res.status(404).json({ error: 'User not found' });
     return;
@@ -406,8 +406,8 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
     if (nextTeamCode === 'BMC') {
       const bmcInput = body.bmc_id !== undefined ? body.bmc_id : target.bmc_id;
       if (!bmcInput) { res.status(400).json({ error: 'Select a BMC for BMC users' }); return; }
-      const bmc = await resolveBmcInZone(String(bmcInput), zoneId);
-      if (!bmc) { res.status(400).json({ error: 'BMC not found in your zone' }); return; }
+      const bmc = await resolveBmcInDairyUnit(String(bmcInput), dairyUnitId);
+      if (!bmc) { res.status(400).json({ error: 'BMC not found in your dairy unit' }); return; }
       nextBmcId = bmc.id;
     }
 
@@ -426,15 +426,15 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
     return;
   }
 
-  // Guard rails: never lock the zone out of administration
+  // Guard rails: never lock the dairy unit out of administration
   const losesAdmin =
     target.teams?.code === 'ADMIN' && (patch.is_active === false || (patch.team_id !== undefined && nextTeamCode !== 'ADMIN'));
   if (isSelf && (patch.is_active === false || patch.team_id !== undefined)) {
     res.status(400).json({ error: 'You cannot deactivate yourself or change your own team' });
     return;
   }
-  if (losesAdmin && !(await hasAnotherActiveAdmin(zoneId, target.id))) {
-    res.status(400).json({ error: 'The zone needs at least one active admin' });
+  if (losesAdmin && !(await hasAnotherActiveAdmin(dairyUnitId, target.id))) {
+    res.status(400).json({ error: 'The dairy unit needs at least one active admin' });
     return;
   }
 
@@ -465,7 +465,7 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
 
   const result = updated as unknown as UserRow;
   await writeAuditLog({
-    zone_id: zoneId,
+    dairy_unit_id: dairyUnitId,
     bmc_id: result.bmc_id,
     entity_type: 'user',
     entity_id: result.id,
@@ -483,8 +483,8 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
 
 // POST /users/:id/reset-password — temporary password + forced change on next login
 router.post('/:id/reset-password', requireRole('admin'), async (req, res) => {
-  const zoneId = req.profile.zone_id;
-  const target = await findUserInZone(String(req.params.id), zoneId);
+  const dairyUnitId = req.profile.dairy_unit_id;
+  const target = await findUserInDairyUnit(String(req.params.id), dairyUnitId);
   if (!target) {
     res.status(404).json({ error: 'User not found' });
     return;
@@ -511,7 +511,7 @@ router.post('/:id/reset-password', requireRole('admin'), async (req, res) => {
   }
 
   await writeAuditLog({
-    zone_id: zoneId,
+    dairy_unit_id: dairyUnitId,
     bmc_id: target.bmc_id,
     entity_type: 'user',
     entity_id: target.id,
@@ -533,8 +533,8 @@ router.post('/:id/reset-password', requireRole('admin'), async (req, res) => {
 
 // DELETE /users/:id — removes the user and their login
 router.delete('/:id', requireRole('admin'), async (req, res) => {
-  const zoneId = req.profile.zone_id;
-  const target = await findUserInZone(String(req.params.id), zoneId);
+  const dairyUnitId = req.profile.dairy_unit_id;
+  const target = await findUserInDairyUnit(String(req.params.id), dairyUnitId);
   if (!target) {
     res.status(404).json({ error: 'User not found' });
     return;
@@ -543,8 +543,8 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
     res.status(400).json({ error: 'You cannot delete your own account' });
     return;
   }
-  if (target.teams?.code === 'ADMIN' && !(await hasAnotherActiveAdmin(zoneId, target.id))) {
-    res.status(400).json({ error: 'The zone needs at least one active admin' });
+  if (target.teams?.code === 'ADMIN' && !(await hasAnotherActiveAdmin(dairyUnitId, target.id))) {
+    res.status(400).json({ error: 'The dairy unit needs at least one active admin' });
     return;
   }
 
@@ -556,7 +556,7 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
   }
 
   await writeAuditLog({
-    zone_id: zoneId,
+    dairy_unit_id: dairyUnitId,
     bmc_id: target.bmc_id,
     entity_type: 'user',
     entity_id: target.id,

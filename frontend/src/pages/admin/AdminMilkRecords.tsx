@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
 import { useTranslation } from '../../context/LanguageContext';
-import { useZoneSettings } from '../../hooks/useZoneSettings';
+import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
 import {
   formatDateDDMMYYYY,
   formatDateTimeDDMMYYYY,
@@ -67,7 +67,7 @@ interface AuditEntry {
 export default function AdminMilkRecords() {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
-  const { settings } = useZoneSettings();
+  const { settings } = useDairyUnitSettings();
 
   const [records, setRecords] = useState<MilkRecord[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);

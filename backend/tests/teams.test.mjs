@@ -1,11 +1,14 @@
+process.env.SUPABASE_URL ??= 'https://example.supabase.co';
+process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'sb_secret_dummy';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   deriveTankerJourneyState,
   TANKER_STAGES,
 } from '../dist/lib/tankerJourney.js';
-import { TEAM_OWNED_STAGES } from '../dist/routes/teams.js';
 import { normalizeIndianPhone } from '../dist/lib/calculations.js';
+
+const { TEAM_OWNED_STAGES } = await import('../dist/routes/teams.js');
 
 test('1. Teams fixed set and stage ownership definitions', () => {
   const codes = Object.keys(TEAM_OWNED_STAGES);

@@ -450,7 +450,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
           snf: String(c.snf_pct ?? c.snf ?? activeTanker.dispatch_snf_pct ?? ''),
           temp: String(c.temperature ?? c.temp ?? '4.0'),
           qty: String(c.quantity_litres ?? c.qty ?? (dispQty > 0 ? Math.round(dispQty / comps.length) : '')),
-          dcNo: resolvedDc || '',
+          dcNo: c.dc_number || resolvedDc || '',
         });
       });
     } else {

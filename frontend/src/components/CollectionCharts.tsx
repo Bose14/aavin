@@ -180,7 +180,7 @@ export function MilkCollectionTrendChart({
       subtitle={
         mode === 'bmc'
           ? 'Daily Morning (AM) + Evening (PM) stacked collection bars · blank days indicate No entry'
-          : 'Zone-wide daily Morning (AM) + Evening (PM) stacked collection · blank days indicate No entry'
+          : 'Dairy-unit-wide daily Morning (AM) + Evening (PM) stacked collection · blank days indicate No entry'
       }
       badge={
         hasAnyEntries ? (

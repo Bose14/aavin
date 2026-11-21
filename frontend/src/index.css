@@ -144,7 +144,7 @@ input[type="checkbox"], input[type="radio"] {
 .sidebar-footer { padding: 1rem; border-top: 1px solid var(--border); }
 .user-pill { margin-bottom: 0.5rem; }
 .user-name { font-size: 0.875rem; font-weight: 500; display: block; }
-.user-zone { font-size: 0.75rem; color: var(--text-muted); display: block; margin-top: 0.25rem; }
+.user-dairy-unit { font-size: 0.75rem; color: var(--text-muted); display: block; margin-top: 0.25rem; }
 .role-badge { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 999px; font-weight: 600; text-transform: uppercase; }
 .role-badge.admin { background: #fef3c7; color: #92400e; }
 .role-badge.unit { background: var(--primary-light); color: var(--primary-dark); }

@@ -15,7 +15,7 @@ export interface UserProfile {
   role: UserRole;
   team_id: string;
   team_code: TeamCode;
-  zone_id: string;
+  dairy_unit_id: string;
   bmc_id: string | null;
   full_name: string | null;
   email: string | null;

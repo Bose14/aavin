@@ -37,7 +37,7 @@ test('stringifyIds turns numeric id and *_id values into strings and leaves othe
       id: 5,
       id_token: 'US00ASCF123',
       bmc_id: 2,
-      zone_id: 1,
+      dairy_unit_id: 1,
       quantity_litres: 120.5,
       bmcs: { id: 2, bmc_code: 'RNK-001' },
       compartments: [{ cell_index: 0, quantity_litres: 500 }],
@@ -47,7 +47,7 @@ test('stringifyIds turns numeric id and *_id values into strings and leaves othe
   const [row] = stringifyIds(input);
   assert.equal(row.id, '5');
   assert.equal(row.bmc_id, '2');
-  assert.equal(row.zone_id, '1');
+  assert.equal(row.dairy_unit_id, '1');
   assert.equal(row.bmcs.id, '2');
   assert.equal(row.team_id, null);
   assert.equal(row.quantity_litres, 120.5);

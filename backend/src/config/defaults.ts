@@ -9,7 +9,7 @@ export interface StageTimeLimits {
 }
 
 export interface ZoneSettings {
-  zone_id: string;
+  dairy_unit_id: string;
   fat_min: number;
   fat_max: number;
   fat_benchmark: number;
@@ -42,7 +42,7 @@ export interface ZoneSettings {
 
 export interface SellingRateRule {
   id: string;
-  zone_id: string;
+  dairy_unit_id: string;
   rate_per_litre: number;
   effective_from: string; // YYYY-MM-DD
   notes?: string | null;
@@ -106,9 +106,9 @@ export const DEFAULT_ASSUMPTIONS = {
   autoRefreshIntervalSec: 30,
 } as const;
 
-export function buildDefaultZoneSettings(zoneId: string): ZoneSettings {
+export function buildDefaultZoneSettings(dairyUnitId: string): ZoneSettings {
   return {
-    zone_id: zoneId,
+    dairy_unit_id: dairyUnitId,
     fat_min: DEFAULT_ASSUMPTIONS.fatMin,
     fat_max: DEFAULT_ASSUMPTIONS.fatMax,
     fat_benchmark: DEFAULT_ASSUMPTIONS.fatBenchmark,

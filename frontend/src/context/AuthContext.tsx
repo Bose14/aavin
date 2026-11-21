@@ -11,14 +11,14 @@ export interface UserProfile {
   /** Derived from the user's team */
   role: 'admin' | 'bmc' | 'gate' | 'qc' | 'unloading';
   team_code: 'ADMIN' | 'GATE' | 'QC' | 'UNLOADING' | 'BMC';
-  zone_id: string | null;
+  dairy_unit_id: string | null;
   bmc_id: string | null;
   full_name: string | null;
   email?: string | null;
   sub_role?: 'operator' | 'supervisor' | null;
   is_active?: boolean;
   must_change_password?: boolean;
-  zones?: { name: string } | null;
+  dairy_units?: { name: string } | null;
   bmcs?: { id_token: string; name: string; bmc_code: string; is_active?: boolean } | null;
 }
 
@@ -59,8 +59,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase
       .from('users')
       .select(
-        'id, id_token, zone_id, bmc_id, full_name, email, sub_role, is_active, must_change_password, ' +
-          'teams(code, active), zones(name), bmcs(id_token, name, bmc_code, is_active)',
+        'id, id_token, dairy_unit_id, bmc_id, full_name, email, sub_role, is_active, must_change_password, ' +
+          'teams(code, active), dairy_units(name), bmcs(id_token, name, bmc_code, is_active)',
       )
       .eq('auth_user_id', authUser.id)
       .maybeSingle();
@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const raw = data as unknown as Record<string, unknown>;
     const team = first(raw.teams as One<{ code: UserProfile['team_code']; active: boolean }>);
-    const zones = first(raw.zones as One<{ name: string }>);
+    const dairy_units = first(raw.dairy_units as One<{ name: string }>);
     const bmcs = first(raw.bmcs as One<NonNullable<UserProfile['bmcs']>>);
 
     const meta = (authUser.user_metadata ?? {}) as Record<string, unknown>;
@@ -83,12 +83,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!team || !userActive || !bmcActive || !teamActive) {
       setAuthError(
         !team
-          ? 'Your account has no team assigned. Contact your zone admin.'
+          ? 'Your account has no team assigned. Contact your dairy unit admin.'
           : !bmcActive
-            ? 'Your BMC has been deactivated. Contact your zone admin.'
+            ? 'Your BMC has been deactivated. Contact your dairy unit admin.'
             : !teamActive
-              ? 'Your team has been deactivated. Contact your zone admin.'
-              : 'Your account has been deactivated. Contact your zone admin.',
+              ? 'Your team has been deactivated. Contact your dairy unit admin.'
+              : 'Your account has been deactivated. Contact your dairy unit admin.',
       );
       await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
       setUser(null);
@@ -106,14 +106,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       id_token: String(raw.id_token),
       role: ROLE_BY_TEAM[team.code],
       team_code: team.code,
-      zone_id: raw.zone_id != null ? String(raw.zone_id) : null,
+      dairy_unit_id: raw.dairy_unit_id != null ? String(raw.dairy_unit_id) : null,
       bmc_id: raw.bmc_id != null ? String(raw.bmc_id) : null,
       full_name: (raw.full_name as string | null) ?? null,
       email: (raw.email as string | null) ?? null,
       sub_role: subRoleRaw === 'supervisor' ? 'supervisor' : subRoleRaw === 'operator' ? 'operator' : null,
       is_active: true,
       must_change_password: mustChange,
-      zones,
+      dairy_units,
       bmcs,
     });
   };
