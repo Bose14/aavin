@@ -68,6 +68,7 @@ export default function MilkEntry() {
   const [societies, setSocieties] = useState<Society[]>([]);
   const [societiesLoading, setSocietiesLoading] = useState(true);
   const [rows, setRows] = useState<Record<string, RowInput>>({});
+  const [addedIds, setAddedIds] = useState<string[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
@@ -143,6 +144,7 @@ export default function MilkEntry() {
           };
         }
         setRows(next);
+        setAddedIds(lines.map(l => String(l.society_id)));
         if (lines.length === 0) {
           setError('This entry was saved before society-wise entry existed. Enter the societies again and save to replace it.');
         }
@@ -172,7 +174,9 @@ export default function MilkEntry() {
 
   // Per-row calculations and checks
   const computed = useMemo(() => {
-    return societies.map(s => {
+    const byId = new Map(societies.map(s => [s.id, s]));
+    const shown = addedIds.map(id => byId.get(id)).filter((s): s is Society => Boolean(s));
+    return shown.map(s => {
       const r = rows[s.id] ?? EMPTY_ROW;
       const litres = num(r.litres);
       const fat = num(r.fat);
@@ -207,7 +211,7 @@ export default function MilkEntry() {
         amount: ok ? round2(litres * rate) : 0,
       };
     });
-  }, [societies, rows, settings]);
+  }, [societies, addedIds, rows, settings]);
 
   const totals = useMemo(() => {
     const ok = computed.filter(c => c.ok);
@@ -240,6 +244,7 @@ export default function MilkEntry() {
     setEditingId(null);
     setExistingForSlot(null);
     setRows({});
+    setAddedIds([]);
     setTemperature('');
     setDispatchTouched(false);
     if (flipShift) {
@@ -335,11 +340,31 @@ export default function MilkEntry() {
     if (res.failed.length > 0) setError(res.failed.map(f => f.error).join('; '));
   };
 
+  const availableSocieties = useMemo(
+    () => societies.filter(s => !addedIds.includes(s.id)),
+    [societies, addedIds],
+  );
+
+  const addSocietyRow = (id: string) => {
+    if (!id) return;
+    setAddedIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+    window.setTimeout(() => document.getElementById(`litres-${id}`)?.focus(), 50);
+  };
+
+  const removeSocietyRow = (id: string) => {
+    setAddedIds(prev => prev.filter(x => x !== id));
+    setRows(prev => {
+      const { [id]: _removed, ...rest } = prev;
+      return rest;
+    });
+  };
+
   const handleAddSociety = async () => {
     setAddError('');
     try {
       const res = await api.post<Society>('/societies', { code: newCode.trim(), name: newName.trim() });
       setSocieties(prev => [...prev, res.data]);
+      setAddedIds(prev => [...prev, res.data.id]);
       setNewCode('');
       setNewName('');
       setShowAdd(false);
@@ -453,6 +478,27 @@ export default function MilkEntry() {
               </span>
             </div>
 
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+              <select
+                value=""
+                onChange={e => addSocietyRow(e.target.value)}
+                disabled={societiesLoading || availableSocieties.length === 0}
+                style={{ height: 38, minWidth: 260, padding: '0 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 14 }}
+              >
+                <option value="">
+                  {availableSocieties.length === 0 ? 'All societies added' : '+ Select society to add…'}
+                </option>
+                {availableSocieties.map(sc => (
+                  <option key={sc.id} value={sc.id}>{sc.name} ({sc.code})</option>
+                ))}
+              </select>
+              {availableSocieties.length > 1 && (
+                <button type="button" className="btn-secondary btn-sm" onClick={() => setAddedIds(prev => [...prev, ...availableSocieties.map(sc => sc.id)])}>
+                  Add all ({availableSocieties.length})
+                </button>
+              )}
+            </div>
+
             <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820, fontSize: 14 }}>
                 <thead>
@@ -472,9 +518,11 @@ export default function MilkEntry() {
                   {societiesLoading && (
                     <tr><td colSpan={9} style={{ ...cell, textAlign: 'center', color: '#64748b', padding: 16 }}>Loading societies…</td></tr>
                   )}
-                  {!societiesLoading && societies.length === 0 && (
+                  {!societiesLoading && computed.length === 0 && (
                     <tr><td colSpan={9} style={{ ...cell, textAlign: 'center', color: '#64748b', padding: 16 }}>
-                      No societies yet. Use “Add society” below.
+                      {societies.length === 0
+                        ? 'No societies yet. Use “Society not in the list?” below.'
+                        : 'Select a society from the dropdown above to start.'}
                     </td></tr>
                   )}
                   {computed.map(c => {
@@ -482,6 +530,15 @@ export default function MilkEntry() {
                     return (
                       <tr key={c.society.id} style={{ borderTop: '1px solid #e2e8f0', background: c.problem ? '#fef2f2' : c.ok ? '#f0fdf4' : undefined }}>
                         <td style={{ ...cell, position: 'sticky', left: 0, background: c.problem ? '#fef2f2' : c.ok ? '#f0fdf4' : '#ffffff', fontWeight: 600 }}>
+                          <button
+                            type="button"
+                            onClick={() => removeSocietyRow(c.society.id)}
+                            aria-label={`Remove ${c.society.name}`}
+                            title="Remove"
+                            style={{ border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', marginRight: 6, fontSize: 16 }}
+                          >
+                            ✕
+                          </button>
                           {c.society.name}
                           <div style={{ fontSize: 11, color: c.problem ? '#b91c1c' : '#94a3b8', fontWeight: 400 }}>
                             {c.problem || c.society.code}
@@ -491,7 +548,7 @@ export default function MilkEntry() {
                           <input style={input} type="number" inputMode="numeric" min="0" step="1" value={r.cans} onChange={e => setCell(c.society.id, 'cans', e.target.value)} />
                         </td>
                         <td style={cell}>
-                          <input style={input} type="number" inputMode="decimal" min="0" step="0.1" value={r.litres} onChange={e => setCell(c.society.id, 'litres', e.target.value)} />
+                          <input id={`litres-${c.society.id}`} style={input} type="number" inputMode="decimal" min="0" step="0.1" value={r.litres} onChange={e => setCell(c.society.id, 'litres', e.target.value)} />
                         </td>
                         <td style={cell}>
                           <input style={input} type="number" inputMode="decimal" step="0.1" value={r.fat} onChange={e => setCell(c.society.id, 'fat', e.target.value)} />
@@ -527,7 +584,7 @@ export default function MilkEntry() {
 
             <div style={{ marginTop: 10 }}>
               {!showAdd ? (
-                <button type="button" className="btn-secondary btn-sm" onClick={() => setShowAdd(true)}>+ Add society</button>
+                <button type="button" className="btn-secondary btn-sm" onClick={() => setShowAdd(true)}>Society not in the list? Add new</button>
               ) : (
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <input style={{ ...input, width: 120, textAlign: 'left' }} placeholder="Code" value={newCode} onChange={e => setNewCode(e.target.value)} />
