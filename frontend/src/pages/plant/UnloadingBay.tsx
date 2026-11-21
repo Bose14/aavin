@@ -371,20 +371,11 @@ export default function UnloadingBay() {
   return (
     <div className="page" style={{ maxWidth: '1180px', margin: '0 auto', padding: '1.25rem' }}>
       {/* 1. Header */}
-      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <span>Milk Reception</span>
-        <span>&gt;</span>
-        <strong style={{ color: '#0f172a' }}>Unloading Bay</strong>
-      </div>
-
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#0f172a', margin: '0 0 4px 0' }}>
+          <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
             Milk Unloading Bay &amp; Silo Intake
           </h1>
-          <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>
-            Condition: Display only vehicles for which QC has been completed and accepted
-          </p>
         </div>
       </div>
 
@@ -512,9 +503,6 @@ export default function UnloadingBay() {
             <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
               📋 Today's Unloading Bay Reception Register ({filteredUnloadWaiters.length} Vehicles)
             </h3>
-            <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-              Vehicles with completed QC inspection waiting for silo intake and unloading
-            </p>
           </div>
         </div>
 
@@ -546,9 +534,7 @@ export default function UnloadingBay() {
               </button>
             )}
           </div>
-          <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-            💡 Click on any row to open the Unloading Details dialog form
-          </span>
+
         </div>
 
         {/* VEHICLE SHEET: Vehicles Waiting for Unloading (QC Completed) */}

@@ -645,9 +645,6 @@ export default function AdminTankerRecords() {
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h1 style={{ margin: 0 }}>Tanker Journey &amp; Plant Operations</h1>
-          <p className="page-subtitle" style={{ margin: '4px 0 0 0' }}>
-            Live strict 7-stage tanker tracking across Gate, QC &amp; Unloading teams
-          </p>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

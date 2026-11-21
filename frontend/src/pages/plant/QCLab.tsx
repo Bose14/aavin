@@ -707,19 +707,11 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
         }}
       >
         <div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.2rem', fontWeight: 600 }}>
-            Quality Control &gt; <strong style={{ color: '#0f172a' }}>{qcSubTab === 'cip' ? 'CIP Sanitization' : 'QC Laboratory Milk Inspection'}</strong>
-          </div>
           <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
             {qcSubTab === 'cip'
               ? (lang === 'ta' ? 'சி.ஐ.பி சுத்தம் செய்தல் (CIP Details)' : 'Tanker CIP Sanitization Details')
               : (lang === 'ta' ? 'தரக்கட்டுப்பாட்டு ஆய்வகம் (QC Laboratory)' : 'QC Laboratory Milk Inspection')}
           </h1>
-          <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#64748b' }}>
-            {qcSubTab === 'cip'
-              ? 'Vehicles with completed tare weighing waiting for CIP sanitization check'
-              : 'Vehicles with completed gross weighment waiting for laboratory quality testing'}
-          </p>
         </div>
       </div>
 
@@ -805,9 +797,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
               </button>
             )}
           </div>
-          <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-            💡 Click on any row to open the {qcSubTab === 'cip' ? 'CIP' : 'QC'} inspection dialog form
-          </span>
+
         </div>
 
         {/* Card Header & Title */}
@@ -816,11 +806,6 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
             <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
               📋 Today's QC Laboratory Register ({qcSubTab === 'cip' ? cipEligibleTankers.length : qcEligibleTankers.length} Vehicles)
             </h3>
-            <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-              {qcSubTab === 'cip'
-                ? 'Vehicles with completed tare weighing waiting for CIP sanitization check'
-                : 'Vehicles with completed gross weighment waiting for laboratory quality testing'}
-            </p>
           </div>
         </div>
 

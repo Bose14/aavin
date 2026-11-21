@@ -392,8 +392,7 @@ export default function AdminMilkRecords() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Milk Collection Records</h1>
-          <p className="page-subtitle">Filter, verify, audit, bulk upload, and export zone milk entries</p>
+          <h1 style={{ margin: 0 }}>Milk Collection Records</h1>
         </div>
         <div className="header-actions">
           <select value={unitId} onChange={e => setUnitId(e.target.value)} aria-label="Filter by unit">

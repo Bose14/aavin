@@ -257,17 +257,13 @@ export default function UnitDashboard() {
               {unitHeading} Process Analytics
             </h1>
           </div>
-          <p className="page-subtitle" style={{ margin: 0, fontSize: '0.86rem', color: '#64748b' }}>
-            Real-time outward tanker dispatches, 7-stage dairy journey progress, and quality reconciliation
-            {rangeFrom && rangeTo && (
-              <>
-                {' '}·{' '}
-                <strong style={{ color: '#334155' }}>
-                  {formatDateDDMMYYYY(rangeFrom)} to {formatDateDDMMYYYY(rangeTo)}
-                </strong>
-              </>
-            )}
-          </p>
+          {rangeFrom && rangeTo && (
+            <div style={{ margin: '2px 0 0 0', fontSize: '0.86rem', color: '#64748b' }}>
+              <strong style={{ color: '#334155' }}>
+                {formatDateDDMMYYYY(rangeFrom)} to {formatDateDDMMYYYY(rangeTo)}
+              </strong>
+            </div>
+          )}
         </div>
 
         {/* Period Selector Tabs */}
@@ -643,9 +639,6 @@ export default function UnitDashboard() {
                 <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span>🥛</span> Outward Tanker Dispatches &amp; Live Plant Status ({tankers.length})
                 </h2>
-                <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-                  Real-time dairy reception stages, weighbridge weights, silo litres, and transit loss
-                </p>
               </div>
               <button
                 type="button"

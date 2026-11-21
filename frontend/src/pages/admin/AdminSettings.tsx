@@ -109,11 +109,6 @@ export default function AdminSettings() {
           <h1 style={{ margin: 0, fontSize: '1.6rem', color: '#0f172a' }}>
             {lang === 'ta' ? 'அமைப்புகள் (Settings)' : 'Settings'}
           </h1>
-          <p className="page-subtitle" style={{ margin: '4px 0 0 0', color: '#64748b' }}>
-            {lang === 'ta'
-              ? 'உங்கள் கணக்கு பாதுகாப்பு, கடவுச்சொல் மாற்றம் மற்றும் கணினி விருப்பங்களை நிர்வகிக்கவும்'
-              : 'Manage your account security, password changes, profile details, and preferences'}
-          </p>
         </div>
       </div>
 
