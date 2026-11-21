@@ -60,6 +60,8 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   exposedHeaders: ['Content-Disposition'],
+  // Let browsers remember the OPTIONS permission check instead of repeating it before every call
+  maxAge: 7200,
 }));
 // Behind Render's proxy: use the real client address for rate limiting
 app.set('trust proxy', 1);
