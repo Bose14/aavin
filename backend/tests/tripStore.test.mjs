@@ -173,3 +173,34 @@ test('latestStages keeps the most recent record when CIP is repeated', () => {
   assert.equal(latest.length, 1);
   assert.equal(latest[0].status, 'done');
 });
+
+test('client response drops repeated copies but keeps what the screens read', async () => {
+  const { slimTankerForClient } = await import('../dist/routes/tanker.js');
+  const loadings = [loading(1, 101, 'Rasipuram', 'FC', 3000, 'DC-1'), loading(2, 202, 'Kalipatti', 'FC', 3000, 'DC-2')];
+  const stages = [
+    stage(1, 'vehicle_entered', 'gate', { tanker_number: 'TN34AK9999', seal_number: 'S1', driver_name: 'Raman' }),
+    stage(2, 'gross_weight', 'gate', { gross_weight_kg: 20000, quality_breakdown: [{ cell: 'FC' }] }),
+    stage(3, 'qc_completed', 'qc', { test_categories: { FC: { a: 1 } }, freshness_test: { FC: { a: 1 } }, special_test: { FC: { a: 1 } }, received_quality: [{ cell: 'FC', fat: '4', snf: '8' }] }),
+  ];
+  const row = store.shapeTrip(trip({ status: 'qc_done', loaded_litres: 6000, gross_weight_kg: 20000 }), loadings, stages);
+  const full = enrichTankerRow(row, store.toStageRecordItems(stages), undefined);
+  const slim = slimTankerForClient(full);
+
+  assert.equal('stages' in slim, false);
+  assert.equal('compartments' in slim.journey, false);
+  assert.equal('compartments' in slim.stage_data, false);
+  assert.equal(slim.stage_data.bmc_dispatches.every((d) => !('compartments' in d)), true);
+  assert.equal('freshness_test' in slim.stage_data.qc_completed, false);
+  assert.ok(slim.stage_data.qc_completed.test_categories);
+
+  // what the screens use is still there
+  assert.equal(slim.compartments.length, 2);
+  assert.equal(slim.stage_data.gross_weight.quality_breakdown.length, 1);
+  assert.equal(slim.stage_data.qc_completed.received_quality[0].fat, '4');
+  assert.equal(slim.journey.timelineSteps[0].data.tanker_number, 'TN34AK9999');
+  assert.ok(slim.journey.timelineSteps[0].keyDataSummary);
+  assert.equal(slim.journey.calculated.gross_weight_kg, 20000);
+  assert.ok(JSON.stringify(slim).length < JSON.stringify(full).length * 0.6);
+  // the in-process version used by exports and analytics is untouched
+  assert.ok(Array.isArray(full.stages) && full.journey.compartments);
+});
