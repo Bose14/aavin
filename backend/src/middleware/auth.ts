@@ -82,7 +82,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
 
   if (profileError) {
     console.error('[authMiddleware] User lookup failed for', user.id, profileError.message);
-    res.status(500).json({ error: `Failed to verify user: ${profileError.message}` });
+    console.error('[api]', req.method, req.originalUrl, profileError.message); res.status(500).json({ error: 'Failed to verify user' });
     return;
   }
 

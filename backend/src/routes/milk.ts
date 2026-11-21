@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import * as XLSX from 'xlsx';
+import { readFirstSheetRows } from '../lib/spreadsheet';
 import { supabase } from '../supabase';
 import { authMiddleware } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
@@ -65,7 +65,7 @@ router.get('/', async (req, res) => {
     error = fallback.error;
   }
 
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  if (error) { console.error('[api]', req.method, req.originalUrl, error.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
 
   const [settings, rateHistory, profilesRes] = await Promise.all([
     getZoneSettings(dairyUnitId),
@@ -127,7 +127,7 @@ router.get('/correction-requests', async (req, res) => {
     const rows = await listCorrectionRequests(req.profile.dairy_unit_id, unitFilter);
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
+    console.error('[api]', req.method, req.originalUrl, (err as Error).message); res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -138,7 +138,7 @@ router.patch('/correction-requests/:reqId', requireRole('admin'), async (req, re
     await resolveCorrectionRequest(String(req.params.reqId), req.profile.dairy_unit_id, status, req.user.id);
     res.json({ ok: true, status });
   } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
+    console.error('[api]', req.method, req.originalUrl, (err as Error).message); res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -288,7 +288,7 @@ router.post('/', requireRole('admin', 'bmc'), async (req, res) => {
         existing_id: existing?.id ?? null,
       });
     } else {
-      res.status(500).json({ error: error.message });
+      console.error('[api]', req.method, req.originalUrl, error.message); res.status(500).json({ error: 'Something went wrong. Please try again.' });
     }
     return;
   }
@@ -329,7 +329,7 @@ router.patch('/:id', requireRole('admin', 'bmc'), async (req, res) => {
   else existingQuery = existingQuery.eq('dairy_unit_id', dairyUnitId);
 
   const { data: existing, error: fetchErr } = await existingQuery.maybeSingle();
-  if (fetchErr) { res.status(500).json({ error: fetchErr.message }); return; }
+  if (fetchErr) { console.error('[api]', req.method, req.originalUrl, fetchErr.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
   if (!existing) { res.status(404).json({ error: 'Entry not found' }); return; }
 
   const settings = await getZoneSettings(dairyUnitId);
@@ -405,7 +405,7 @@ router.patch('/:id', requireRole('admin', 'bmc'), async (req, res) => {
     error = fallback.error;
   }
 
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  if (error) { console.error('[api]', req.method, req.originalUrl, error.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
 
   const changes: Record<string, { from: unknown; to: unknown }> = {};
   for (const key of ['fat_pct', 'snf_pct', 'quantity_litres', 'rejection_qty', 'rate_per_litre'] as const) {
@@ -443,7 +443,7 @@ router.patch('/:id/verify', requireRole('admin'), async (req, res) => {
     res.json({ id: entryId, status: 'verified', note: 'Extended status column pending SQL migration' });
     return;
   }
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  if (error) { console.error('[api]', req.method, req.originalUrl, error.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
 
   await writeAuditLog({
     dairy_unit_id: req.profile.dairy_unit_id,
@@ -505,7 +505,7 @@ router.post('/:id/correction-request', requireRole('admin', 'bmc'), async (req, 
 
     res.status(201).json(reqRecord);
   } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
+    console.error('[api]', req.method, req.originalUrl, (err as Error).message); res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -516,11 +516,7 @@ router.post('/bulk', requireRole('admin'), async (req, res) => {
     try {
       const base64Clean = req.body.fileBase64.includes(',') ? req.body.fileBase64.split(',')[1] : req.body.fileBase64;
       const buf = Buffer.from(base64Clean, 'base64');
-      const wb = XLSX.read(buf, { type: 'buffer', cellDates: false });
-      const firstSheet = wb.SheetNames[0];
-      if (firstSheet) {
-        rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[firstSheet], { defval: '' });
-      }
+      rows = await readFirstSheetRows(buf);
     } catch {
       res.status(400).json({ error: 'Could not read Excel/CSV file. Please use the provided template.' });
       return;
@@ -559,10 +555,9 @@ router.post('/bulk', requireRole('admin'), async (req, res) => {
     const rawCell = r.date ?? r['Date'] ?? '';
     let isoDate = '';
     if (typeof rawCell === 'number' && Number.isFinite(rawCell)) {
-      const parsed = XLSX.SSF.parse_date_code(rawCell);
-      if (parsed) {
-        isoDate = `${String(parsed.y).padStart(4, '0')}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`;
-      }
+      // Excel date serial (days since 1899-12-30)
+      const d = new Date(Math.round((rawCell - 25569) * 86400 * 1000));
+      if (!Number.isNaN(d.getTime())) isoDate = d.toISOString().slice(0, 10);
     } else {
       const rawDate = String(rawCell).trim();
       const ddmmyyyy = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(rawDate);
@@ -668,7 +663,7 @@ router.delete('/:id', requireRole('admin', 'bmc'), async (req, res) => {
   }
 
   const { error } = await supabase.from('milk_entries').delete().eq('id', entryId);
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  if (error) { console.error('[api]', req.method, req.originalUrl, error.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
 
   await writeAuditLog({
     dairy_unit_id: existing.dairy_unit_id,

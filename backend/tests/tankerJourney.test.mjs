@@ -353,36 +353,36 @@ test('9. DC Number handling: formats into vehicle_entered summary and reflects i
 });
 
 test('10. Tanker Dossier & Daily Reconciliation Export structure', async () => {
-  const XLSX = await import('xlsx');
+  const XLSX = await import('../dist/lib/spreadsheet.js');
 
   // Test 1: Single Tanker Dossier Multi-Sheet Structure
-  const wbDossier = XLSX.utils.book_new();
+  const wbDossier = XLSX.book_new();
   const dossierRows = [
     { Field: 'Tanker / Vehicle Number', Value: 'TN-25-DC-1234' },
     { Field: 'Delivery Challan No (DC No)', Value: 'DC-BMC-2026-889' },
     { Field: 'Dispatched Milk Volume', Value: '9,500 Litres' },
   ];
-  const wsDossier = XLSX.utils.json_to_sheet(dossierRows);
-  XLSX.utils.book_append_sheet(wbDossier, wsDossier, 'Tanker Dossier');
+  const wsDossier = XLSX.json_to_sheet(dossierRows);
+  XLSX.book_append_sheet(wbDossier, wsDossier, 'Tanker Dossier');
 
   const compRows = [
     { 'Comp #': 1, 'Compartment Name': 'Front Barrel', 'Milk Volume (L)': 5000, 'Dipstick Level (cm)': 142.5 },
     { 'Comp #': 2, 'Compartment Name': 'Rear Barrel', 'Milk Volume (L)': 4500, 'Dipstick Level (cm)': 138.0 },
   ];
-  const wsComp = XLSX.utils.json_to_sheet(compRows);
-  XLSX.utils.book_append_sheet(wbDossier, wsComp, 'Compartment Breakdown');
+  const wsComp = XLSX.json_to_sheet(compRows);
+  XLSX.book_append_sheet(wbDossier, wsComp, 'Compartment Breakdown');
 
-  const bufDossier = XLSX.write(wbDossier, { type: 'buffer', bookType: 'xlsx' });
+  const bufDossier = await XLSX.writeXlsx(wbDossier);
   assert.ok(Buffer.isBuffer(bufDossier) && bufDossier.length > 100, 'Dossier workbook generates binary XLSX buffer');
 
   // Test 2: Daily Reconciliation Multi-Column Report
-  const wbDaily = XLSX.utils.book_new();
+  const wbDaily = XLSX.book_new();
   const summaryRows = [
     { Header: 'TAMIL NADU CO-OPERATIVE MILK PRODUCERS FEDERATION (AAVIN)' },
     { Header: 'Receiving Dairy: NAMAKKAL DAIRY PLANT | Report Date: 18-11-2026' },
   ];
-  const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
-  XLSX.utils.book_append_sheet(wbDaily, wsSummary, 'Summary Header');
+  const wsSummary = XLSX.json_to_sheet(summaryRows);
+  XLSX.book_append_sheet(wbDaily, wsSummary, 'Summary Header');
 
   const tableRows = [
     {
@@ -404,9 +404,9 @@ test('10. Tanker Dossier & Daily Reconciliation Export structure', async () => {
       'CIP Status': 'PASSED',
     },
   ];
-  const wsTable = XLSX.utils.json_to_sheet(tableRows);
-  XLSX.utils.book_append_sheet(wbDaily, wsTable, 'Daily Tanker Reception');
+  const wsTable = XLSX.json_to_sheet(tableRows);
+  XLSX.book_append_sheet(wbDaily, wsTable, 'Daily Tanker Reception');
 
-  const bufDaily = XLSX.write(wbDaily, { type: 'buffer', bookType: 'xlsx' });
+  const bufDaily = await XLSX.writeXlsx(wbDaily);
   assert.ok(Buffer.isBuffer(bufDaily) && bufDaily.length > 100, 'Daily report workbook generates binary XLSX buffer');
 });
