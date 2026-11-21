@@ -959,10 +959,11 @@ export const INITIAL_REGISTERED_TANKERS: RegisteredTanker[] = [
 
 export async function getRegisteredTankersInDb(): Promise<RegisteredTanker[]> {
   try {
-    const res: any = await withTimeout(supabase.from('registered_tankers').select('*').order('created_at', { ascending: false }));
+    const res: any = await withTimeout(supabase.from('registered_tankers').select('*').order('created_at', { ascending: false }), 5000);
     if (!res?.error && res?.data && res.data.length > 0) {
       return res.data as RegisteredTanker[];
     }
+    if (res?.error) console.error('getRegisteredTankersInDb failed:', res.error);
   } catch {
     // fallback
   }
@@ -998,15 +999,30 @@ export async function saveRegisteredTankerInDb(data: Omit<RegisteredTanker, 'id'
     created_at: now,
   };
 
+  // Persist to the database first. A failure here must be reported to the caller,
+  // otherwise the UI shows "registered" while nothing was actually saved.
+  let dbError: { code?: string; message?: string } | null = null;
   try {
-    const res: any = await withTimeout(supabase.from('registered_tankers').upsert(row, { onConflict: 'vehicle_number' }).select().maybeSingle());
-    if (!res?.error && res?.data) {
-      // synced to DB
-    }
-  } catch {
-    // fallback
+    const res: any = await withTimeout(
+      supabase.from('registered_tankers').upsert(row, { onConflict: 'vehicle_number' }).select().maybeSingle(),
+      10000,
+    );
+    if (res?.error) dbError = res.error;
+    else if (res?.data) row.id = res.data.id ?? row.id;
+  } catch (err) {
+    dbError = { message: (err as Error).message };
   }
 
+  if (dbError) {
+    console.error('saveRegisteredTankerInDb failed:', dbError);
+    throw new Error(
+      isMissingSchemaError(dbError)
+        ? 'registered_tankers table is missing in the database. Run supabase/patch_registered_tankers.sql in the Supabase SQL editor.'
+        : `Could not save tanker to database: ${dbError.message ?? 'unknown error'}`,
+    );
+  }
+
+  // Keep the local cache in sync only after the DB write succeeded.
   const store = readFallback();
   if (!store.registeredTankers) store.registeredTankers = {};
   store.registeredTankers[normVeh] = row;
