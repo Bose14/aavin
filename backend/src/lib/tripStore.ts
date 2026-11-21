@@ -286,35 +286,43 @@ function joinUnique(values: Array<string | null | undefined>): string | null {
   return out.length ? out.join(', ') : null;
 }
 
-/** Merge a trip's loading rows into one compartment per cell (what the forms show). */
+/**
+ * One compartment entry per BMC per cell (a cell shared by two BMCs shows as two entries,
+ * each with its own BMC, DC number and quality), in loading order.
+ */
 export function buildCompartments(cells: TankerCell[], loadings: LoadingRow[]) {
-  const out: any[] = [];
   const order = [...cells].sort((a, b) => CELL_ORDER.indexOf(a.cell_key) - CELL_ORDER.indexOf(b.cell_key));
-  order.forEach((cell, idx) => {
-    const rows = loadings.filter((l) => l.cell_key === cell.cell_key);
-    if (rows.length === 0) return;
-    const last = rows[rows.length - 1];
-    out.push({
-      compartment_no: idx + 1,
-      compartment_name:
-        cell.cell_key === 'BC' && order.length === 3
-          ? 'Rear Compartment (Comp 3)'
-          : cell.cell_key === 'BC'
-          ? 'Rear Compartment (Comp 2)'
-          : CELL_NAMES[cell.cell_key],
-      cell_key: cell.cell_key,
-      quantity_litres: round2(rows.reduce((s, r) => s + Number(r.quantity_litres), 0)),
-      capacity_litres: cell.capacity_litres,
-      fat_pct: weighted(rows, 'fat_pct'),
-      snf_pct: weighted(rows, 'snf_pct'),
-      seal_number: last.cell_seal_no,
-      milk_type: milkTypeToLabel(last.milk_type),
-      temperature: num(last.temperature),
-      bmc_id: String(last.bmc_id),
-      bmc_name: joinUnique(rows.map(bmcLabel)),
-      dc_number: joinUnique(rows.map((r) => r.dc_number)),
-    });
-  });
+  const groups = new Map<string, LoadingRow[]>();
+  for (const l of loadings) {
+    const key = `${l.cell_key}|${l.bmc_id}|${l.dc_number}`;
+    groups.set(key, [...(groups.get(key) ?? []), l]);
+  }
+  const out: any[] = [];
+  for (const [cellIdx, cell] of order.entries()) {
+    for (const [key, rows] of groups) {
+      if (!key.startsWith(`${cell.cell_key}|`)) continue;
+      const last = rows[rows.length - 1];
+      out.push({
+        compartment_no: cellIdx + 1,
+        compartment_name:
+          cell.cell_key === 'BC'
+            ? order.length === 3 ? 'Rear Compartment (Comp 3)' : 'Rear Compartment (Comp 2)'
+            : CELL_NAMES[cell.cell_key],
+        cell_key: cell.cell_key,
+        cell: cell.cell_key,
+        quantity_litres: round2(rows.reduce((s, r) => s + Number(r.quantity_litres), 0)),
+        capacity_litres: cell.capacity_litres,
+        fat_pct: weighted(rows, 'fat_pct'),
+        snf_pct: weighted(rows, 'snf_pct'),
+        seal_number: last.cell_seal_no,
+        milk_type: milkTypeToLabel(last.milk_type),
+        temperature: num(last.temperature),
+        bmc_id: String(last.bmc_id),
+        bmc_name: bmcLabel(last),
+        dc_number: last.dc_number,
+      });
+    }
+  }
   return out;
 }
 
@@ -337,7 +345,7 @@ export function buildBmcDispatches(trip: Record<string, any>, loadings: LoadingR
       seal_number: first.outlet_seal_no,
       driver_name: trip.driver_name ?? null,
       driver_phone: trip.driver_phone ?? null,
-      compartments: buildCompartments(cells, rows).map((c) => ({ ...c, bmc_id: String(first.bmc_id), bmc_name: bmcLabel(first), dc_number: first.dc_number })),
+      compartments: buildCompartments(cells, rows),
       created_at: first.dispatch_at,
     };
   });
@@ -722,8 +730,9 @@ export function buildTankerAvailability(tanker: TankerRecord, openTrip: LegacyTr
   const cells = [...tanker.cells]
     .sort((a, b) => CELL_ORDER.indexOf(a.cell_key) - CELL_ORDER.indexOf(b.cell_key))
     .map((cell, idx, all) => {
-      const matched = comps.find((c) => c.cell_key === cell.cell_key);
-      const filled = matched ? Number(matched.quantity_litres) || 0 : 0;
+      const inCell = comps.filter((c) => c.cell_key === cell.cell_key);
+      const matched = inCell[inCell.length - 1];
+      const filled = inCell.reduce((sum, c) => sum + (Number(c.quantity_litres) || 0), 0);
       const avail = Math.max(0, cell.capacity_litres - filled);
       return {
         cell_index: idx,
@@ -734,8 +743,8 @@ export function buildTankerAvailability(tanker: TankerRecord, openTrip: LegacyTr
         filled_litres: filled,
         available_litres: avail,
         is_cell_full: avail <= 0,
-        loaded_by_bmc_name: matched?.bmc_name ?? null,
-        dc_number: matched?.dc_number ?? null,
+        loaded_by_bmc_name: joinUnique(inCell.map((c) => c.bmc_name)),
+        dc_number: joinUnique(inCell.map((c) => c.dc_number)),
         fat_pct: matched?.fat_pct ?? null,
         snf_pct: matched?.snf_pct ?? null,
         seal_number: matched?.seal_number ?? null,
