@@ -86,15 +86,7 @@ export default function AdminSettings() {
     setUpdatingProfile(true);
 
     try {
-      const { error: profErr } = await supabase
-        .from('profiles')
-        .update({ full_name: fullName.trim() })
-        .eq('id', profile.id);
-
-      if (profErr) {
-        // Fallback through API if direct DB update encounters RLS policy
-        await api.patch(`/users/${profile.id}`, { full_name: fullName.trim() });
-      }
+      await api.patch('/users/me/profile', { full_name: fullName.trim() });
 
       await refreshProfile();
       setProfileSuccess(

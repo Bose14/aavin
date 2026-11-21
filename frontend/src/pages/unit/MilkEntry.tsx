@@ -344,7 +344,7 @@ export default function MilkEntry() {
     }
   };
 
-  const unitLabel = profile?.units ? `${profile.units.name} · ${profile.units.unit_code}` : null;
+  const unitLabel = profile?.bmcs ? `${profile.bmcs.name} · ${profile.bmcs.bmc_code}` : null;
 
   return (
     <div className="page">
@@ -378,7 +378,7 @@ export default function MilkEntry() {
                 <button
                   type="button"
                   className="btn-secondary btn-sm"
-                  onClick={() => navigate(`/unit/milk-entry?editId=${savedBanner.id}`)}
+                  onClick={() => navigate(`/bmc/milk-entry?editId=${savedBanner.id}`)}
                 >
                   {t('editEntry')}
                 </button>
@@ -387,7 +387,7 @@ export default function MilkEntry() {
                 </button>
               </>
             )}
-            <button type="button" className="btn-secondary btn-sm" onClick={() => navigate('/unit/records')}>
+            <button type="button" className="btn-secondary btn-sm" onClick={() => navigate('/bmc/records')}>
               {t('navMyRecords')}
             </button>
           </div>

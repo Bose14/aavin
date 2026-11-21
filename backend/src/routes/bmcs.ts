@@ -3,6 +3,7 @@ import { supabase } from '../supabase';
 import { authMiddleware } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
 import { writeAuditLog } from '../lib/settingsStore';
+import { idLookup } from '../lib/ids';
 
 const router = Router();
 router.use(authMiddleware);
@@ -13,22 +14,21 @@ function getTodayIso(): string {
   return now.toISOString().split('T')[0];
 }
 
-// GET /units — list units in requester's zone with users_count, last_record_date, and submitted_today
+// GET /bmcs — list BMCs in requester's zone with users_count, last_record_date, and submitted_today
 router.get('/', async (req, res) => {
-  const queryZoneId = req.query.zone_id as string | undefined;
-  const zoneId = (req.profile.role === 'superadmin' && queryZoneId) ? queryZoneId : req.profile.zone_id;
+  const zoneId = req.profile.zone_id;
 
   let unitsQuery = supabase
-    .from('units')
-    .select('id, name, location, unit_code, is_active, created_at, zone_id, zones(name)')
+    .from('bmcs')
+    .select('id, id_token, name, location, bmc_code, is_active, created_at, zone_id, zones(name)')
     .order('name');
   let profilesQuery = supabase
-    .from('profiles')
-    .select('unit_id')
-    .eq('role', 'unit');
+    .from('users')
+    .select('bmc_id')
+    .not('bmc_id', 'is', null);
   let entriesQuery = supabase
     .from('milk_entries')
-    .select('unit_id, date')
+    .select('bmc_id, date')
     .order('date', { ascending: false });
 
   if (zoneId) {
@@ -47,13 +47,13 @@ router.get('/', async (req, res) => {
 
   const userCounts: Record<string, number> = {};
   for (const p of (profilesRes.data ?? [])) {
-    if (p.unit_id) userCounts[p.unit_id] = (userCounts[p.unit_id] ?? 0) + 1;
+    if (p.bmc_id) userCounts[p.bmc_id] = (userCounts[p.bmc_id] ?? 0) + 1;
   }
 
   const lastDateByUnit: Record<string, string> = {};
   for (const e of (entriesRes.data ?? [])) {
-    if (e.unit_id && !lastDateByUnit[e.unit_id]) {
-      lastDateByUnit[e.unit_id] = e.date;
+    if (e.bmc_id && !lastDateByUnit[e.bmc_id]) {
+      lastDateByUnit[e.bmc_id] = e.date;
     }
   }
 
@@ -71,30 +71,30 @@ router.get('/', async (req, res) => {
   res.json(enriched);
 });
 
-// POST /units — admin creates a unit
+// POST /bmcs — admin creates a BMC
 router.post('/', requireRole('admin'), async (req, res) => {
   if (!req.profile.zone_id) {
     res.status(403).json({ error: 'Admin account is not assigned to a zone' });
     return;
   }
 
-  const rawBody = req.body as { name?: string; location?: string; unit_code?: string };
+  const rawBody = req.body as { name?: string; location?: string; bmc_code?: string };
   const name = typeof rawBody.name === 'string' ? rawBody.name.trim() : '';
-  const unitCode = typeof rawBody.unit_code === 'string' ? rawBody.unit_code.trim() : '';
+  const unitCode = typeof rawBody.bmc_code === 'string' ? rawBody.bmc_code.trim() : '';
   const location = typeof rawBody.location === 'string' && rawBody.location.trim() ? rawBody.location.trim() : null;
 
   if (!name || !unitCode) {
-    res.status(400).json({ error: 'name and unit_code required' });
+    res.status(400).json({ error: 'name and bmc_code required' });
     return;
   }
   const { data, error } = await supabase
-    .from('units')
-    .insert({ name, location, unit_code: unitCode, zone_id: req.profile.zone_id })
+    .from('bmcs')
+    .insert({ name, location, bmc_code: unitCode, zone_id: req.profile.zone_id })
     .select()
     .single();
   if (error) {
     if (error.code === '23505') {
-      res.status(409).json({ error: `Unit code "${unitCode}" already exists` });
+      res.status(409).json({ error: `BMC code "${unitCode}" already exists` });
     } else {
       res.status(500).json({ error: error.message });
     }
@@ -103,11 +103,11 @@ router.post('/', requireRole('admin'), async (req, res) => {
 
   await writeAuditLog({
     zone_id: req.profile.zone_id,
-    unit_id: data.id,
-    entity_type: 'unit',
+    bmc_id: data.id,
+    entity_type: 'bmc',
     entity_id: data.id,
     action: 'create',
-    changes: { name, unit_code: unitCode, location },
+    changes: { name, bmc_code: unitCode, location },
     actor_id: req.user.id,
     actor_name: req.profile.full_name ?? req.user.email ?? 'Admin',
   });
@@ -115,23 +115,24 @@ router.post('/', requireRole('admin'), async (req, res) => {
   res.status(201).json(data);
 });
 
-// PATCH /units/:id — admin updates unit details (name, unit_code, location) or active status
+// PATCH /bmcs/:id — admin updates BMC details (name, bmc_code, location) or active status. :id is an id or id_token
 router.patch('/:id', requireRole('admin'), async (req, res) => {
-  const unitId = String(req.params.id);
+  const lookup = idLookup(req.params.id);
+  if (!lookup) { res.status(404).json({ error: 'BMC not found' }); return; }
   const rawBody = req.body as {
-    name?: string; unit_code?: string; location?: string | null; is_active?: boolean;
+    name?: string; bmc_code?: string; location?: string | null; is_active?: boolean;
   };
 
   const patch: Record<string, unknown> = {};
   if (rawBody.name !== undefined) {
     const trimmed = String(rawBody.name).trim();
-    if (!trimmed) { res.status(400).json({ error: 'Unit name cannot be empty' }); return; }
+    if (!trimmed) { res.status(400).json({ error: 'BMC name cannot be empty' }); return; }
     patch.name = trimmed;
   }
-  if (rawBody.unit_code !== undefined) {
-    const trimmedCode = String(rawBody.unit_code).trim();
-    if (!trimmedCode) { res.status(400).json({ error: 'Unit code cannot be empty' }); return; }
-    patch.unit_code = trimmedCode;
+  if (rawBody.bmc_code !== undefined) {
+    const trimmedCode = String(rawBody.bmc_code).trim();
+    if (!trimmedCode) { res.status(400).json({ error: 'BMC code cannot be empty' }); return; }
+    patch.bmc_code = trimmedCode;
   }
   if (rawBody.location !== undefined) {
     patch.location = typeof rawBody.location === 'string' && rawBody.location.trim() ? rawBody.location.trim() : null;
@@ -146,15 +147,15 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
   }
 
   const { data, error } = await supabase
-    .from('units')
+    .from('bmcs')
     .update(patch)
-    .eq('id', unitId)
+    .eq(lookup.column, lookup.value)
     .eq('zone_id', req.profile.zone_id)
     .select()
     .single();
   if (error) {
     if (error.code === '23505') {
-      res.status(409).json({ error: `Unit code "${String(patch.unit_code)}" already exists` });
+      res.status(409).json({ error: `BMC code "${String(patch.bmc_code)}" already exists` });
     } else {
       res.status(500).json({ error: error.message });
     }
@@ -163,9 +164,9 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
 
   await writeAuditLog({
     zone_id: req.profile.zone_id,
-    unit_id: unitId,
-    entity_type: 'unit',
-    entity_id: unitId,
+    bmc_id: data.id,
+    entity_type: 'bmc',
+    entity_id: data.id,
     action: rawBody.is_active === false ? 'deactivate' : rawBody.is_active === true ? 'activate' : 'update',
     changes: patch,
     actor_id: req.user.id,

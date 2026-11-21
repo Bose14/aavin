@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
+import { installFakeSupabase } from './helpers/fakeSupabase.mjs';
 
 dotenv.config({ path: fileURLToPath(new URL('../.env', import.meta.url)) });
 
 const require = createRequire(import.meta.url);
+installFakeSupabase();
 const {
   deriveTankerJourneyState,
   calculateTankerMetrics,
@@ -163,7 +165,7 @@ test('INSTANCE TESTING SUITE: AAVIN Tanker Lifecycle, Multi-BMC, Plant Pipeline 
     saveTankerDispatchMetadata({
       id: testTripId,
       tanker_number: testVehNum,
-      unit_id: 'bmc-unit-01',
+      bmc_id: 'bmc-unit-01',
       zone_id: 'zone-test-01',
       date: '2026-11-21',
       driver_name: 'S. Ramanathan',
@@ -204,7 +206,7 @@ test('INSTANCE TESTING SUITE: AAVIN Tanker Lifecycle, Multi-BMC, Plant Pipeline 
       stage_data: {
         bmc_dispatches: [
           {
-            unit_id: 'bmc-unit-01',
+            bmc_id: 'bmc-unit-01',
             unit_name: 'Rasipuram BMC [RNK-001]',
             dc_number: 'DC-BMC1-8891',
             quantity_dispatched: 5500,
@@ -270,7 +272,7 @@ test('INSTANCE TESTING SUITE: AAVIN Tanker Lifecycle, Multi-BMC, Plant Pipeline 
         bmc_dispatches: [
           ...existingMeta.stage_data.bmc_dispatches,
           {
-            unit_id: 'bmc-unit-02',
+            bmc_id: 'bmc-unit-02',
             unit_name: 'Kalipatti BMC [BMC-002]',
             dc_number: 'DC-BMC2-4412',
             quantity_dispatched: 6000,

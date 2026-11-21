@@ -17,7 +17,7 @@ import { STAGE_COLORS } from '../../lib/tankerJourney';
 interface Unit {
   id: string;
   name: string;
-  unit_code: string;
+  bmc_code: string;
 }
 
 interface StatsResponse {
@@ -45,7 +45,7 @@ const LOCAL_STORAGE_KEY_COLUMNS = 'aavin_admin_tanker_columns_v2';
 
 const ALL_COLUMNS = [
   { id: 'date', label: 'Date / Entry' },
-  { id: 'unit', label: 'BMC' },
+  { id: 'bmc', label: 'BMC' },
   { id: 'tanker', label: 'Tanker / Seal' },
   { id: 'driver', label: 'Driver' },
   { id: 'dispatched', label: 'Dispatched (L)' },
@@ -187,7 +187,7 @@ export default function AdminTankerRecords() {
           status: activeTab,
         };
         if (selectedStageChip) params.stage = selectedStageChip;
-        if (selectedUnitId) params.unit_id = selectedUnitId;
+        if (selectedUnitId) params.bmc_id = selectedUnitId;
         if (waitingTeamFilter) params.waiting_team = waitingTeamFilter;
         if (delayedOnly) params.delayed_only = 'true';
         if (fromDate) params.from = fromDate;
@@ -200,10 +200,10 @@ export default function AdminTankerRecords() {
             params: {
               from: fromDate || undefined,
               to: toDate || undefined,
-              unit_id: selectedUnitId || undefined,
+              bmc_id: selectedUnitId || undefined,
             },
           }),
-          api.get<Unit[]>('/units'),
+          api.get<Unit[]>('/bmcs'),
           api.get<any[]>('/teams'),
         ]);
 
@@ -322,7 +322,7 @@ export default function AdminTankerRecords() {
     const p: Record<string, string> = {};
     if (activeTab) p.status = activeTab;
     if (selectedStageChip) p.stage = selectedStageChip;
-    if (selectedUnitId) p.unit_id = selectedUnitId;
+    if (selectedUnitId) p.bmc_id = selectedUnitId;
     if (waitingTeamFilter) p.waiting_team = waitingTeamFilter;
     if (delayedOnly) p.delayed_only = 'true';
     if (fromDate) p.from = fromDate;
@@ -378,14 +378,14 @@ export default function AdminTankerRecords() {
 
     if (visibleColumns.unit) {
       cols.push({
-        key: 'unit',
+        key: 'bmc',
         header: 'BMC',
-        sortValue: (r) => r.units?.name || '',
-        searchValue: (r) => `${r.units?.name} ${r.units?.unit_code}`,
+        sortValue: (r) => r.bmcs?.name || '',
+        searchValue: (r) => `${r.bmcs?.name} ${r.bmcs?.bmc_code}`,
         render: (r) => (
           <div>
-            <div style={{ fontWeight: 600 }}>{r.units?.name || 'BMC'}</div>
-            <div style={{ fontSize: '11px', color: '#64748b' }}>{r.units?.unit_code || '—'}</div>
+            <div style={{ fontWeight: 600 }}>{r.bmcs?.name || 'BMC'}</div>
+            <div style={{ fontSize: '11px', color: '#64748b' }}>{r.bmcs?.bmc_code || '—'}</div>
           </div>
         ),
       });
@@ -782,7 +782,7 @@ export default function AdminTankerRecords() {
             <option value="">All BMCs</option>
             {units.map((u) => (
               <option key={u.id} value={u.id}>
-                {u.name} ({u.unit_code})
+                {u.name} ({u.bmc_code})
               </option>
             ))}
           </select>

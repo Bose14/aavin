@@ -119,7 +119,7 @@ export function TankerDetailDrawer({
               )}
             </div>
             <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-              BMC: <strong>{trip.units?.name || 'BMC'}</strong> ({trip.units?.unit_code || '—'}) · DC No:{' '}
+              BMC: <strong>{trip.bmcs?.name || 'BMC'}</strong> ({trip.bmcs?.bmc_code || '—'}) · DC No:{' '}
               <strong style={{ color: '#0284c7' }}>
                 #{trip.dc_number || trip.stage_data?.dc_number || trip.stage_data?.vehicle_entered?.dc_number || '—'}
               </strong>{' '}

@@ -1,16 +1,29 @@
 import type { User } from '@supabase/supabase-js';
 
+export type TeamCode = 'ADMIN' | 'GATE' | 'QC' | 'UNLOADING' | 'BMC';
+
+/** Role used by the API, derived from the user's team. */
+export type UserRole = 'admin' | 'gate' | 'qc' | 'unloading' | 'bmc';
+
 export interface UserProfile {
+  /** users.id (numeric, as a string) */
   id: string;
-  role: 'superadmin' | 'admin' | 'unit' | 'gate' | 'qc' | 'unloading' | 'GATE' | 'QC' | 'UNLOADING';
+  /** Public identifier, e.g. US00ASCF123 */
+  id_token: string;
+  /** Supabase Auth user id (uuid) */
+  auth_user_id: string;
+  role: UserRole;
+  team_id: string;
+  team_code: TeamCode;
   zone_id: string;
-  unit_id: string | null;
+  bmc_id: string | null;
   full_name: string | null;
-  sub_role?: string | null;
-  is_active?: boolean | null;
-  team_id?: string | null;
-  shift?: 'Morning' | 'Evening' | 'General' | null;
-  username?: string | null;
+  email: string | null;
+  phone: string | null;
+  sub_role: string | null;
+  is_active: boolean;
+  must_change_password: boolean;
+  shift: 'Morning' | 'Evening' | 'General' | null;
 }
 
 declare global {

@@ -417,7 +417,7 @@ test('11. Tanker dispatch reflection from BMC to Gate, QC, and Unloading preserv
   const mockMeta = {
     id: 'test-tanker-uuid-reflection-1',
     tanker_number: 'TN69AX2529',
-    unit_id: 'unit-rasipuram-1',
+    bmc_id: 'unit-rasipuram-1',
     zone_id: 'zone-namakkal-1',
     date: '2026-11-19',
     driver_name: 'S. Raman',

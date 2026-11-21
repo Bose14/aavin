@@ -23,8 +23,8 @@ function sanitizeFilenamePart(raw: string): string {
 
 async function resolveFilePrefix(zoneId: string, unitId?: string | null): Promise<string> {
   if (unitId) {
-    const { data } = await supabase.from('units').select('unit_code').eq('id', unitId).maybeSingle();
-    if (data?.unit_code) return sanitizeFilenamePart(String(data.unit_code).toUpperCase());
+    const { data } = await supabase.from('bmcs').select('bmc_code').eq('id', unitId).maybeSingle();
+    if (data?.bmc_code) return sanitizeFilenamePart(String(data.bmc_code).toUpperCase());
   }
   const { data: z } = await supabase.from('zones').select('name').eq('id', zoneId).maybeSingle();
   return sanitizeFilenamePart((z?.name || 'ZONE').toUpperCase());
@@ -49,7 +49,7 @@ interface ExportMilkRow {
   selling_rate_applied?: number | null;
   status?: string | null;
   created_by?: string | null;
-  units?: { name: string; unit_code: string } | null;
+  bmcs?: { name: string; bmc_code: string } | null;
 }
 
 // GET /export/milk/template — Excel template for Admin bulk upload
@@ -77,11 +77,11 @@ router.get('/milk/template', async (_req, res) => {
   res.send(buf);
 });
 
-// GET /export/milk/pdf?from=&to=&unit_id=&shift=&quality=
+// GET /export/milk/pdf?from=&to=&bmc_id=&shift=&quality=
 router.get('/milk/pdf', async (req, res) => {
-  const { from, to, unit_id, shift, quality } = req.query as Record<string, string>;
+  const { from, to, bmc_id, shift, quality } = req.query as Record<string, string>;
   const zoneId = req.profile.zone_id;
-  const effectiveUnitId = req.profile.role === 'unit' ? req.profile.unit_id : unit_id;
+  const effectiveUnitId = req.profile.role === 'bmc' ? req.profile.bmc_id : bmc_id;
 
   const [settings, rateHistory, zoneRes, prefix] = await Promise.all([
     getZoneSettings(zoneId),
@@ -97,20 +97,20 @@ router.get('/milk/pdf', async (req, res) => {
       .eq('zone_id', zoneId)
       .order('date', { ascending: true })
       .order('shift', { ascending: true });
-    if (effectiveUnitId) q = q.eq('unit_id', effectiveUnitId);
+    if (effectiveUnitId) q = q.eq('bmc_id', effectiveUnitId);
     if (from) q = q.gte('date', from);
     if (to) q = q.lte('date', to);
     if (shift && (shift === 'AM' || shift === 'PM')) q = q.eq('shift', shift);
     return q;
   };
 
-  let resQ = await runQ('date, shift, fat_pct, snf_pct, quantity_litres, rejection_qty, rate_per_litre, selling_rate_applied, status, units(name, unit_code)');
+  let resQ = await runQ('date, shift, fat_pct, snf_pct, quantity_litres, rejection_qty, rate_per_litre, selling_rate_applied, status, bmcs(name, bmc_code)');
   if (resQ.error && isMissingSchemaError(resQ.error)) {
-    resQ = await runQ('date, shift, fat_pct, snf_pct, quantity_litres, rejection_qty, rate_per_litre, units(name, unit_code)');
+    resQ = await runQ('date, shift, fat_pct, snf_pct, quantity_litres, rejection_qty, rate_per_litre, bmcs(name, bmc_code)');
   }
   if (resQ.error) { res.status(500).json({ error: resQ.error.message }); return; }
 
-  const hideProfit = req.profile.role === 'unit' && !settings.show_unit_profit;
+  const hideProfit = req.profile.role === 'bmc' && !settings.show_unit_profit;
   const rows = ((resQ.data ?? []) as unknown as ExportMilkRow[]).filter(r => {
     if (!quality || quality === 'all') return true;
     const qty = Number(r.quantity_litres);
@@ -141,7 +141,7 @@ router.get('/milk/pdf', async (req, res) => {
 
     return {
       date: formatDateDDMMYYYY(r.date),
-      unit: r.units?.unit_code || r.units?.name || '-',
+      unit: r.bmcs?.bmc_code || r.bmcs?.name || '-',
       shift: r.shift,
       fat: Number(r.fat_pct).toFixed(2),
       snf: Number(r.snf_pct).toFixed(2),
@@ -170,22 +170,22 @@ router.get('/milk/pdf', async (req, res) => {
   res.send(pdfBuffer);
 });
 
-// GET /export/milk?from=&to=&format=csv|xlsx&unit_id=&shift=&quality=&search=
+// GET /export/milk?from=&to=&format=csv|xlsx&bmc_id=&shift=&quality=&search=
 router.get('/milk', async (req, res) => {
-  const { from, to, format = 'xlsx', unit_id, shift, quality, search } = req.query as Record<string, string>;
+  const { from, to, format = 'xlsx', bmc_id, shift, quality, search } = req.query as Record<string, string>;
   const zoneId = req.profile.zone_id;
-  const effectiveUnitId = req.profile.role === 'unit' ? req.profile.unit_id : unit_id;
+  const effectiveUnitId = req.profile.role === 'bmc' ? req.profile.bmc_id : bmc_id;
 
   const [settings, rateHistory, prefix, profilesRes] = await Promise.all([
     getZoneSettings(zoneId),
     getSellingRateHistory(zoneId),
     resolveFilePrefix(zoneId, effectiveUnitId),
-    supabase.from('profiles').select('id, full_name').eq('zone_id', zoneId),
+    supabase.from('users').select('auth_user_id, full_name').eq('zone_id', zoneId),
   ]);
 
   const nameMap = new Map<string, string>();
   for (const p of (profilesRes.data ?? [])) {
-    nameMap.set(p.id, p.full_name || 'Staff');
+    nameMap.set(p.auth_user_id, p.full_name || 'Staff');
   }
 
   const runQ = (sel: string) => {
@@ -195,7 +195,7 @@ router.get('/milk', async (req, res) => {
       .eq('zone_id', zoneId)
       .order('date', { ascending: true })
       .order('shift', { ascending: true });
-    if (effectiveUnitId) q = q.eq('unit_id', effectiveUnitId);
+    if (effectiveUnitId) q = q.eq('bmc_id', effectiveUnitId);
     if (from) q = q.gte('date', from);
     if (to) q = q.lte('date', to);
     if (shift && (shift === 'AM' || shift === 'PM')) q = q.eq('shift', shift);
@@ -206,18 +206,18 @@ router.get('/milk', async (req, res) => {
     date, shift, fat_pct, snf_pct, quantity_litres,
     rejection_qty, rejection_reason, temperature, rate_per_litre,
     selling_rate_applied, status, created_by,
-    units(name, unit_code)
+    bmcs(name, bmc_code)
   `);
   if (resQ.error && isMissingSchemaError(resQ.error)) {
     resQ = await runQ(`
       date, shift, fat_pct, snf_pct, quantity_litres,
       rejection_qty, temperature, rate_per_litre, created_by,
-      units(name, unit_code)
+      bmcs(name, bmc_code)
     `);
   }
   if (resQ.error) { res.status(500).json({ error: resQ.error.message }); return; }
 
-  const hideProfit = req.profile.role === 'unit' && !settings.show_unit_profit;
+  const hideProfit = req.profile.role === 'bmc' && !settings.show_unit_profit;
   const searchLower = search?.trim().toLowerCase() ?? '';
 
   const filtered = ((resQ.data ?? []) as unknown as ExportMilkRow[]).filter(r => {
@@ -232,7 +232,7 @@ router.get('/milk', async (req, res) => {
       return false;
     }
     if (searchLower) {
-      const hay = `${formatDateDDMMYYYY(r.date)} ${r.shift} ${r.units?.name ?? ''} ${r.units?.unit_code ?? ''} ${r.rejection_reason ?? ''}`.toLowerCase();
+      const hay = `${formatDateDDMMYYYY(r.date)} ${r.shift} ${r.bmcs?.name ?? ''} ${r.bmcs?.bmc_code ?? ''} ${r.rejection_reason ?? ''}`.toLowerCase();
       if (!hay.includes(searchLower)) return false;
     }
     return true;
@@ -245,8 +245,8 @@ router.get('/milk', async (req, res) => {
     const baseRow: Record<string, string | number> = {
       Date: formatDateDDMMYYYY(r.date),
       Shift: r.shift,
-      Unit: r.units?.name ?? '',
-      'Unit Code': r.units?.unit_code ?? '',
+      Unit: r.bmcs?.name ?? '',
+      'Unit Code': r.bmcs?.bmc_code ?? '',
       'Fat (%)': Number(r.fat_pct).toFixed(2),
       'SNF (%)': Number(r.snf_pct).toFixed(2),
       'Quantity (L)': fin.quantity,
@@ -287,11 +287,11 @@ router.get('/milk', async (req, res) => {
   }
 });
 
-// GET /export/tanker?from=&to=&format=csv|xlsx&unit_id=&status=&stage=&waiting_team=&delayed_only=&search=
+// GET /export/tanker?from=&to=&format=csv|xlsx&bmc_id=&status=&stage=&waiting_team=&delayed_only=&search=
 router.get('/tanker', async (req, res) => {
-  const { from, to, format = 'xlsx', unit_id, status, stage, waiting_team, delayed_only, search } = req.query as Record<string, string>;
+  const { from, to, format = 'xlsx', bmc_id, status, stage, waiting_team, delayed_only, search } = req.query as Record<string, string>;
   const zoneId = req.profile.zone_id;
-  const effectiveUnitId = req.profile.role === 'unit' ? req.profile.unit_id : unit_id;
+  const effectiveUnitId = req.profile.role === 'bmc' ? req.profile.bmc_id : bmc_id;
   const settings = await getZoneSettings(zoneId);
 
   const runT = (sel: string) => {
@@ -300,15 +300,15 @@ router.get('/tanker', async (req, res) => {
       .select(sel)
       .eq('zone_id', zoneId)
       .order('date', { ascending: true });
-    if (effectiveUnitId) q = q.eq('unit_id', effectiveUnitId);
+    if (effectiveUnitId) q = q.eq('bmc_id', effectiveUnitId);
     if (from) q = q.gte('date', from);
     if (to) q = q.lte('date', to);
     return q;
   };
 
-  let resT = await runT('id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct, received_qty, receipt_time, received_fat_pct, received_snf_pct, gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data, units(name, unit_code)');
+  let resT = await runT('id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct, received_qty, receipt_time, received_fat_pct, received_snf_pct, gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data, bmcs(name, bmc_code)');
   if (resT.error && isMissingSchemaError(resT.error)) {
-    resT = await runT('id, date, tanker_number, quantity_dispatched, destination, units(name, unit_code)');
+    resT = await runT('id, date, tanker_number, quantity_dispatched, destination, bmcs(name, bmc_code)');
   }
   if (resT.error) { res.status(500).json({ error: resT.error.message }); return; }
 
@@ -371,13 +371,13 @@ router.get('/tanker', async (req, res) => {
   }
 
   const rows = enrichedList.map((r) => {
-    const u = r.units as { name: string; unit_code: string } | null;
+    const u = r.bmcs as { name: string; bmc_code: string } | null;
     const disp = Number(r.quantity_dispatched ?? 0);
     const rec = r.journey.calculated.received_litres;
     return {
       Date: formatDateDDMMYYYY(String(r.date)),
       BMC: u?.name ?? '',
-      'BMC Code': u?.unit_code ?? '',
+      'BMC Code': u?.bmc_code ?? '',
       'Tanker Number': r.tanker_number ?? '',
       Driver: r.driver_name ?? '',
       'Seal Number': r.seal_number ?? '',
@@ -420,9 +420,9 @@ router.get('/tanker', async (req, res) => {
 
 // GET /export/tanker/daily-report — Official Aavin IDMS Daily Milk & Tanker Reconciliation Report
 router.get('/tanker/daily-report', async (req, res) => {
-  const { date, from, to, format = 'xlsx', unit_id } = req.query as Record<string, string>;
+  const { date, from, to, format = 'xlsx', bmc_id } = req.query as Record<string, string>;
   const zoneId = req.profile.zone_id;
-  const effectiveUnitId = req.profile.role === 'unit' ? req.profile.unit_id : unit_id;
+  const effectiveUnitId = req.profile.role === 'bmc' ? req.profile.bmc_id : bmc_id;
   const settings = await getZoneSettings(zoneId);
 
   const targetDate = date || (from === to && from ? from : undefined);
@@ -434,7 +434,7 @@ router.get('/tanker/daily-report', async (req, res) => {
       .eq('zone_id', zoneId)
       .order('date', { ascending: true })
       .order('created_at', { ascending: true });
-    if (effectiveUnitId) q = q.eq('unit_id', effectiveUnitId);
+    if (effectiveUnitId) q = q.eq('bmc_id', effectiveUnitId);
     if (targetDate) {
       q = q.eq('date', targetDate);
     } else {
@@ -444,9 +444,9 @@ router.get('/tanker/daily-report', async (req, res) => {
     return q;
   };
 
-  let resT = await runT('id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct, received_qty, receipt_time, received_fat_pct, received_snf_pct, gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data, units(name, unit_code)');
+  let resT = await runT('id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct, received_qty, receipt_time, received_fat_pct, received_snf_pct, gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data, bmcs(name, bmc_code)');
   if (resT.error && isMissingSchemaError(resT.error)) {
-    resT = await runT('id, date, tanker_number, quantity_dispatched, destination, units(name, unit_code)');
+    resT = await runT('id, date, tanker_number, quantity_dispatched, destination, bmcs(name, bmc_code)');
   }
   if (resT.error) { res.status(500).json({ error: resT.error.message }); return; }
 
@@ -493,7 +493,7 @@ router.get('/tanker/daily-report', async (req, res) => {
       stages,
     } as any, settings);
 
-    const u = r.units as { name: string; unit_code: string } | null;
+    const u = r.bmcs as { name: string; bmc_code: string } | null;
     const disp = Number(r.quantity_dispatched ?? 0);
     const rec = journey.calculated.received_litres ?? (r.received_qty != null ? Number(r.received_qty) : null);
     const gross = journey.calculated.gross_weight_kg ?? (r.gross_weight_kg != null ? Number(r.gross_weight_kg) : null);
@@ -536,7 +536,7 @@ router.get('/tanker/daily-report', async (req, res) => {
       'Tanker / Vehicle No': r.tanker_number ?? '',
       'DC No (BMC Invoice)': dcNo !== '—' ? dcNo : '',
       'Source BMC': u?.name ?? '',
-      'BMC Code': u?.unit_code ?? '',
+      'BMC Code': u?.bmc_code ?? '',
       'Driver Name': r.driver_name ?? '',
       'Dispatch Time': r.dispatch_time ?? '',
       'Gate Entry Time': entryTime !== '—' ? entryTime : '',
@@ -639,14 +639,14 @@ router.get('/tanker/:id', async (req, res) => {
 
   let resT = await supabase
     .from('tanker_dispatches')
-    .select('id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct, received_qty, receipt_time, received_fat_pct, received_snf_pct, gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data, units(name, unit_code)')
+    .select('id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct, received_qty, receipt_time, received_fat_pct, received_snf_pct, gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data, bmcs(name, bmc_code)')
     .eq('id', id)
     .maybeSingle();
 
   if (resT.error) {
     resT = await supabase
       .from('tanker_dispatches')
-      .select('*, units(name, unit_code)')
+      .select('*, bmcs(name, bmc_code)')
       .eq('id', id)
       .maybeSingle();
   }
@@ -654,7 +654,7 @@ router.get('/tanker/:id', async (req, res) => {
   if (resT.error) {
     resT = await supabase
       .from('tanker_dispatches')
-      .select('id, date, tanker_number, quantity_dispatched, destination, units(name, unit_code)')
+      .select('id, date, tanker_number, quantity_dispatched, destination, bmcs(name, bmc_code)')
       .eq('id', id)
       .maybeSingle();
   }
@@ -704,7 +704,7 @@ router.get('/tanker/:id', async (req, res) => {
     compartments: comps,
   } as any, settings);
 
-  const u = r.units as { name: string; unit_code: string } | null;
+  const u = r.bmcs as { name: string; bmc_code: string } | null;
   const vehicleEntryData = stageData.vehicle_entered || {};
   const qcData = stageData.qc_completed || {};
   const unloadedData = stageData.unloaded || {};
@@ -721,7 +721,7 @@ router.get('/tanker/:id', async (req, res) => {
     { 'Field': 'Aavin Tanker Dossier', 'Value': 'CONFIDENTIAL LOGISTICS RECORD' },
     { 'Field': 'Tanker / Vehicle Number', 'Value': r.tanker_number || '' },
     { 'Field': 'Delivery Challan No (DC No)', 'Value': dcNo },
-    { 'Field': 'Source BMC Unit', 'Value': `${u?.name || 'BMC'} (${u?.unit_code || '—'})` },
+    { 'Field': 'Source BMC Unit', 'Value': `${u?.name || 'BMC'} (${u?.bmc_code || '—'})` },
     { 'Field': 'Destination Dairy', 'Value': r.destination || 'Namakkal Dairy' },
     { 'Field': 'Driver Name', 'Value': r.driver_name || '—' },
     { 'Field': 'Outlet Valve Seal Number', 'Value': r.seal_number || '—' },
