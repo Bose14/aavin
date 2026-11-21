@@ -486,7 +486,11 @@ export default function MilkEntry() {
                 style={{ height: 38, minWidth: 260, padding: '0 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 14 }}
               >
                 <option value="">
-                  {availableSocieties.length === 0 ? 'All societies added' : '+ Select society to add…'}
+                  {availableSocieties.length > 0
+                    ? '+ Select society to add…'
+                    : societies.length === 0
+                      ? 'No societies for this BMC yet'
+                      : 'All societies added'}
                 </option>
                 {availableSocieties.map(sc => (
                   <option key={sc.id} value={sc.id}>{sc.name} ({sc.code})</option>
@@ -521,7 +525,7 @@ export default function MilkEntry() {
                   {!societiesLoading && computed.length === 0 && (
                     <tr><td colSpan={9} style={{ ...cell, textAlign: 'center', color: '#64748b', padding: 16 }}>
                       {societies.length === 0
-                        ? 'No societies yet. Use “Society not in the list?” below.'
+                        ? 'This BMC has no societies yet. Click “Society not in the list? Add new” below to add the first one.'
                         : 'Select a society from the dropdown above to start.'}
                     </td></tr>
                   )}
