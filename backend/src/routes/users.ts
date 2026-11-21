@@ -289,6 +289,11 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
     res.status(400).json({ error: 'email, full_name, and zone_id are required' });
     return;
   }
+
+  if (targetRole === 'unit' && !unit_id) {
+    res.status(400).json({ error: 'unit_id is required for BMC users' });
+    return;
+  }
   if (!isValidEmail(email)) {
     res.status(400).json({ error: 'Enter a valid email address' });
     return;
@@ -331,7 +336,7 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
   const normalizedSubRole = sub_role === 'supervisor' ? 'supervisor' : 'operator';
   const tempPassword = rawPassword && rawPassword.trim().length >= 6
     ? rawPassword.trim()
-    : generateTempPassword();
+    : 'Aavin123';
 
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email,
@@ -374,6 +379,7 @@ router.post('/create', requireRole('admin', 'superadmin'), async (req, res) => {
     sub_role: normalizedSubRole,
     is_active: true,
     must_change_password: force_password_change,
+    user_type: targetRole === 'unit' ? 'bmc' : 'internal',
   });
 
   if (profileError) {

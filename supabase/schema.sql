@@ -77,6 +77,7 @@ create table if not exists profiles (
   sub_role text default 'operator',
   is_active boolean default true,
   must_change_password boolean default false,
+  user_type text default 'internal',
   created_at timestamptz default now()
 );
 
@@ -92,6 +93,7 @@ alter table profiles add column if not exists phone text;
 alter table profiles add column if not exists sub_role text default 'operator';
 alter table profiles add column if not exists is_active boolean default true;
 alter table profiles add column if not exists must_change_password boolean default false;
+alter table profiles add column if not exists user_type text default 'internal';
 alter table profiles add column if not exists created_at timestamptz default now();
 
 -- Update role constraint to allow all plant team and administrative roles
