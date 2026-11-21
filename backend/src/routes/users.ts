@@ -274,7 +274,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
     }
   }
 
-  const tempPassword = body.password && body.password.trim().length >= 6 ? body.password.trim() : generateTempPassword();
+  const tempPassword = body.password && body.password.trim().length >= 8 ? body.password.trim() : generateTempPassword();
 
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email,

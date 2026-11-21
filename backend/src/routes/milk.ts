@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../supabase';
 import { authMiddleware } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
+import { idLookup } from '../lib/ids';
 import {
   calculateEntryFinancials,
   calculateRateFromChart,
@@ -142,7 +143,7 @@ router.patch('/correction-requests/:reqId', requireRole('admin'), async (req, re
 });
 
 // POST /milk — submit shift entry (auto chart rate or logged manual override)
-router.post('/', async (req, res) => {
+router.post('/', requireRole('admin', 'bmc'), async (req, res) => {
   const {
     date,
     shift,
@@ -219,6 +220,14 @@ router.post('/', async (req, res) => {
 
   const bmc_id = req.profile.role === 'bmc' ? req.profile.bmc_id : req.body.bmc_id;
   if (!bmc_id) { res.status(400).json({ error: 'bmc_id required' }); return; }
+  if (req.profile.role !== 'bmc') {
+    // An admin may only record milk for a BMC of their own dairy unit
+    const lookup = idLookup(String(bmc_id));
+    const { data: ownBmc } = lookup
+      ? await supabase.from('bmcs').select('id').eq(lookup.column, lookup.value).eq('dairy_unit_id', dairyUnitId).maybeSingle()
+      : { data: null };
+    if (!ownBmc) { res.status(400).json({ error: 'bmc_id does not belong to your dairy unit' }); return; }
+  }
 
   const sellingRateApplied = getEffectiveSellingRate(date, rateHistory);
 
@@ -311,7 +320,7 @@ router.post('/', async (req, res) => {
 });
 
 // PATCH /milk/:id — edit entry (within edit_lock_hours for unit staff; anytime for admin) + audit diff
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requireRole('admin', 'bmc'), async (req, res) => {
   const entryId = String(req.params.id);
   const dairyUnitId = req.profile.dairy_unit_id;
 
@@ -451,7 +460,7 @@ router.patch('/:id/verify', requireRole('admin'), async (req, res) => {
 });
 
 // POST /milk/:id/correction-request — unit submits correction request after edit lock window
-router.post('/:id/correction-request', async (req, res) => {
+router.post('/:id/correction-request', requireRole('admin', 'bmc'), async (req, res) => {
   const entryId = String(req.params.id);
   const { reason, proposed_changes = {} } = req.body as {
     reason?: string;
@@ -636,7 +645,7 @@ router.post('/bulk', requireRole('admin'), async (req, res) => {
 });
 
 // DELETE /milk/:id — unit can delete within lock window (used for 5-min Undo); admin anytime
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('admin', 'bmc'), async (req, res) => {
   const entryId = String(req.params.id);
   const { data: existing } = await supabase
     .from('milk_entries')

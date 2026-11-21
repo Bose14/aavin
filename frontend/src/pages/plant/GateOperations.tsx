@@ -283,7 +283,9 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
 
   useEffect(() => {
     void fetchTankers(false);
-    const interval = setInterval(() => void fetchTankers(true), 30000);
+    const interval = setInterval(() => {
+      if (!document.hidden) void fetchTankers(true);
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
