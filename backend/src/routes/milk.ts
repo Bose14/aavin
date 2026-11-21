@@ -34,7 +34,7 @@ const EXTENDED_SELECT = `
   id, bmc_id, date, shift, fat_pct, snf_pct, quantity_litres,
   rejection_qty, temperature, rate_per_litre, created_by, created_at,
   rejection_reason, rate_override, rate_override_reason, selling_rate_applied,
-  status, verified_by, verified_at, updated_at,
+  status, verified_by, verified_at, updated_at, dispatch_date, cans,
   bmcs(name, bmc_code)
 `;
 

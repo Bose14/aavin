@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
@@ -10,6 +10,7 @@ import {
   formatDateDDMMYYYY,
   formatFatSnf,
   formatINR,
+  formatLitres,
   getLocalTodayIso,
 } from '../../lib/format';
 import {
@@ -17,7 +18,9 @@ import {
   listOfflineMilkEntries,
   syncOfflineMilkEntries,
 } from '../../lib/offlineQueue';
-import { StatusBadge } from '../../components/UiPrimitives';
+import { DataTable } from '../../components/DataTable';
+import type { DataColumn } from '../../components/DataTable';
+import { ConfirmDialog, StatusBadge, TableSkeleton } from '../../components/UiPrimitives';
 
 interface Society {
   id: string;
@@ -29,6 +32,20 @@ interface ExistingEntry {
   id: string;
   date: string;
   shift: 'AM' | 'PM';
+}
+
+interface RecentEntry {
+  id: string;
+  date: string;
+  shift: 'AM' | 'PM';
+  dispatch_date?: string | null;
+  cans?: number | null;
+  quantity_litres: number;
+  fat_pct: number;
+  snf_pct: number;
+  rate_per_litre: number;
+  status?: string;
+  is_locked?: boolean;
 }
 
 interface RowInput {
@@ -74,6 +91,11 @@ export default function MilkEntry() {
   const [newName, setNewName] = useState('');
   const [addError, setAddError] = useState('');
 
+  const [showModal, setShowModal] = useState(() => Boolean(searchParams.get('editId')));
+  const [recent, setRecent] = useState<RecentEntry[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<RecentEntry | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(() => searchParams.get('editId'));
   const [existingForSlot, setExistingForSlot] = useState<ExistingEntry | null>(null);
   const [offlineCount, setOfflineCount] = useState(() => listOfflineMilkEntries().length);
@@ -118,14 +140,30 @@ export default function MilkEntry() {
     return () => { cancelled = true; };
   }, []);
 
-  // Load an entry for editing
+  const fetchRecent = useCallback(async () => {
+    try {
+      const from = addDays(getLocalTodayIso(), -60);
+      const to = addDays(getLocalTodayIso(), 2);
+      const res = await api.get<RecentEntry[]>('/milk', { params: { from, to } });
+      setRecent(res.data || []);
+    } catch {
+      // the list is a convenience; the form still works without it
+    } finally {
+      setListLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    const editIdParam = searchParams.get('editId');
-    if (!editIdParam) return;
+    void fetchRecent();
+  }, [fetchRecent]);
+
+  // Load an entry for editing
+  const loadForEdit = useCallback((entryId: string) => {
+    setError('');
     api.get<{
       entry: { id: string; date: string; shift: 'AM' | 'PM'; dispatch_date: string | null; temperature: number | null };
       lines: Array<{ society_id: string; cans: number; litres: number; fat_pct: number; snf_pct: number }>;
-    }>(`/milk/${editIdParam}/lines`)
+    }>(`/milk/${entryId}/lines`)
       .then(res => {
         const { entry, lines } = res.data;
         setEditingId(entry.id);
@@ -145,12 +183,18 @@ export default function MilkEntry() {
         }
         setRows(next);
         setAddedIds(lines.map(l => String(l.society_id)));
+        setShowModal(true);
         if (lines.length === 0) {
           setError('This entry was saved before society-wise entry existed. Enter the societies again and save to replace it.');
         }
       })
       .catch(() => setError('Could not load this entry.'));
-  }, [searchParams]);
+  }, []);
+
+  useEffect(() => {
+    const editIdParam = searchParams.get('editId');
+    if (editIdParam) loadForEdit(editIdParam);
+  }, [searchParams, loadForEdit]);
 
   // Duplicate (date, shift) detection
   useEffect(() => {
@@ -284,6 +328,7 @@ export default function MilkEntry() {
         enqueueOfflineMilkEntry(payload);
         setSavedBanner({ id: null, offline: true, message: t('pendingSync'), canUndo: false });
         resetForNext(addNext);
+        if (!addNext) setShowModal(false);
         setLoading(false);
         return;
       }
@@ -297,10 +342,14 @@ export default function MilkEntry() {
           canUndo: true,
         });
         resetForNext(addNext);
+        if (!addNext) closeModal();
+        void fetchRecent();
       } else {
         const res = await api.post<ExistingEntry>('/milk', payload);
         setSavedBanner({ id: res.data.id, offline: false, message: t('savedUndoBanner'), canUndo: true });
         resetForNext(addNext);
+        if (!addNext) setShowModal(false);
+        void fetchRecent();
       }
     } catch (err: unknown) {
       const axiosErr = err as {
@@ -311,6 +360,7 @@ export default function MilkEntry() {
         enqueueOfflineMilkEntry(payload);
         setSavedBanner({ id: null, offline: true, message: t('pendingSync'), canUndo: false });
         resetForNext(addNext);
+        if (!addNext) setShowModal(false);
       } else if (axiosErr.response?.status === 409) {
         setError(axiosErr.response.data?.error || `Entry for ${formatDateDDMMYYYY(date)} (${shift}) already exists.`);
       } else {
@@ -332,6 +382,7 @@ export default function MilkEntry() {
       await api.delete(`/milk/${savedBanner.id}`);
       setSavedBanner(null);
       setError('');
+      void fetchRecent();
     } catch (err: unknown) {
       setError((err as Error)?.message || 'Could not undo entry');
     }
@@ -376,9 +427,96 @@ export default function MilkEntry() {
     }
   };
 
-  const loadExistingIntoEditor = (entry: ExistingEntry) => {
-    navigate(`/bmc/milk-entry?editId=${entry.id}`);
+  const openCreate = () => {
+    resetForNext(false);
+    setError('');
+    setShowModal(true);
   };
+
+  const closeModal = () => {
+    resetForNext(false);
+    setError('');
+    setShowModal(false);
+    if (searchParams.get('editId')) navigate('/bmc/milk-entry', { replace: true });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/milk/${deleteTarget.id}`);
+      setDeleteTarget(null);
+      void fetchRecent();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string };
+      setError(e.response?.data?.error || e.message || 'Failed to delete entry');
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const columns: DataColumn<RecentEntry>[] = [
+    {
+      key: 'date',
+      header: 'Collection date',
+      sortValue: r => `${r.date}-${r.shift}`,
+      render: r => formatDateDDMMYYYY(r.date),
+    },
+    {
+      key: 'shift',
+      header: t('shiftLabel'),
+      render: r => (r.shift === 'AM' ? 'Morning' : 'Evening'),
+    },
+    {
+      key: 'dispatch',
+      header: 'Dispatch date',
+      render: r => (r.dispatch_date ? formatDateDDMMYYYY(r.dispatch_date) : '—'),
+    },
+    { key: 'cans', header: 'Cans', align: 'right', render: r => (r.cans != null ? String(r.cans) : '—') },
+    {
+      key: 'litres',
+      header: 'Litres',
+      align: 'right',
+      sortValue: r => Number(r.quantity_litres),
+      render: r => formatLitres(Number(r.quantity_litres), 1),
+    },
+    {
+      key: 'quality',
+      header: 'Fat / SNF',
+      render: r => `${formatFatSnf(Number(r.fat_pct))}% / ${formatFatSnf(Number(r.snf_pct))}%`,
+    },
+    {
+      key: 'amount',
+      header: 'Amount',
+      align: 'right',
+      sortValue: r => Number(r.quantity_litres) * Number(r.rate_per_litre),
+      render: r => formatINR(Number(r.quantity_litres) * Number(r.rate_per_litre)),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: r => (
+        <StatusBadge tone={r.status === 'verified' ? 'green' : 'amber'}>
+          {r.status === 'verified' ? 'Verified' : 'Submitted'}
+        </StatusBadge>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: r => (
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button type="button" className="btn btn-secondary btn-sm" disabled={Boolean(r.is_locked)} onClick={() => loadForEdit(r.id)}>
+            Edit
+          </button>
+          <button type="button" className="btn-danger btn-sm" disabled={Boolean(r.is_locked)} onClick={() => setDeleteTarget(r)}>
+            Delete
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   const unitLabel = profile?.bmcs ? `${profile.bmcs.name} · ${profile.bmcs.bmc_code}` : null;
   const cell = { padding: '4px 6px', whiteSpace: 'nowrap' as const };
@@ -387,99 +525,181 @@ export default function MilkEntry() {
     border: '1px solid #cbd5e1', fontSize: 14, textAlign: 'right' as const,
   };
 
+  const sectionTitle = {
+    fontSize: '13px', fontWeight: 700, color: '#334155', textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em', marginBottom: '10px',
+  };
+  const labelStyle = { fontSize: '12px', fontWeight: 700, color: '#1e293b' };
+
   return (
-    <div className="page">
-      <div className="page-header">
+    <div className="page" style={{ maxWidth: '1100px', margin: '0 auto', padding: '16px' }}>
+      <div className="page-header" style={{ marginBottom: '16px' }}>
         <div>
-          <h1 style={{ margin: 0 }}>{editingId ? t('editEntry') : t('milkEntryTitle')}</h1>
+          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>{t('milkEntryTitle')}</h1>
           {unitLabel && (
             <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>{unitLabel}</div>
           )}
         </div>
-        <div className="header-actions">
+        <div className="header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {offlineCount > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <>
               <StatusBadge tone="amber">{t('pendingSync')} ({offlineCount})</StatusBadge>
               <button type="button" className="btn-secondary btn-sm" onClick={handleSyncOffline}>{t('syncNow')}</button>
-            </div>
+            </>
           )}
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={openCreate}
+            style={{
+              backgroundColor: '#16a34a', borderColor: '#15803d', color: '#ffffff', fontWeight: 700,
+              fontSize: '13px', padding: '8px 16px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+            }}
+          >
+            🥛 + Create Milk Entry
+          </button>
         </div>
       </div>
 
       {savedBanner && (
-        <div className={savedBanner.offline ? 'warning-banner' : 'success-banner'}>
+        <div className={savedBanner.offline ? 'warning-banner' : 'success-banner'} style={{ marginBottom: '16px' }}>
           <div><strong>{savedBanner.offline ? t('pendingSync') : savedBanner.message}</strong></div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             {savedBanner.id && savedBanner.canUndo && (
               <>
-                <button type="button" className="btn-secondary btn-sm" onClick={() => navigate(`/bmc/milk-entry?editId=${savedBanner.id}`)}>
+                <button type="button" className="btn-secondary btn-sm" onClick={() => loadForEdit(savedBanner.id!)}>
                   {t('editEntry')}
                 </button>
                 <button type="button" className="btn-danger btn-sm" onClick={handleUndo}>{t('undoSave')}</button>
               </>
             )}
-            <button type="button" className="btn-secondary btn-sm" onClick={() => navigate('/bmc/records')}>{t('navMyRecords')}</button>
           </div>
         </div>
       )}
 
-      {existingForSlot && (
-        <div className="warning-banner" role="alert">
-          <span>
-            A {shift === 'AM' ? 'Morning (AM)' : 'Evening (PM)'} entry for <strong>{formatDateDDMMYYYY(date)}</strong> already exists. Edit it?
-          </span>
-          <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={() => loadExistingIntoEditor(existingForSlot)}>
-            {t('editEntry')}
+      {!showModal && error && <p className="auth-error" style={{ marginBottom: '16px' }}>{error}</p>}
+
+      <div className="card table-card" style={{ padding: '20px', marginBottom: '24px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>Recent Milk Entries</h2>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={openCreate}
+            style={{
+              backgroundColor: '#16a34a', borderColor: '#15803d', color: '#ffffff', fontWeight: 700,
+              fontSize: '12px', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+            }}
+          >
+            🥛 + Create Milk Entry
           </button>
         </div>
-      )}
+        {listLoading ? (
+          <TableSkeleton rows={4} cols={7} />
+        ) : (
+          <DataTable
+            rows={recent}
+            columns={columns}
+            getRowKey={r => r.id}
+            emptyMessage="No milk entries yet. Click '+ Create Milk Entry' above to record a shift."
+          />
+        )}
+      </div>
 
-      <div className="card form-card" style={{ maxWidth: 1000 }}>
-        <form onSubmit={handleSubmit} className="entry-form">
-          <div className="form-section">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '1rem' }}>
-              <div className="form-group">
-                <label>Collection date <span className="hint">({formatDateDDMMYYYY(date)})</span></label>
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} disabled={Boolean(editingId)} required />
+      {showModal && (
+        <div
+          className="modal-backdrop"
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1050, padding: '16px', overflowY: 'auto',
+          }}
+          onClick={closeModal}
+        >
+          <div
+            className="modal-dialog card"
+            style={{
+              backgroundColor: '#ffffff', borderRadius: '12px', maxWidth: '1000px', width: '100%', maxHeight: '92vh',
+              overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+              border: '1px solid #cbd5e1', padding: '24px',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '16px' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>
+                  🥛 {editingId ? 'Edit Milk Entry' : 'Milk Collection Entry Form'}
+                </h2>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>
+                  Select the societies you collected from and enter cans, litres, fat and SNF. Rate, amount and totals are calculated.
+                </span>
               </div>
-              <div className="form-group">
-                <label>{t('shiftLabel')}</label>
-                <select value={shift} onChange={e => setShift(e.target.value as 'AM' | 'PM')} disabled={Boolean(editingId)}>
-                  <option value="AM">{t('morningShift')}</option>
-                  <option value="PM">{t('eveningShift')}</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Dispatch date</label>
-                <input
-                  type="date"
-                  value={dispatchDate}
-                  min={date}
-                  onChange={e => { setDispatchTouched(true); setDispatchDate(e.target.value); }}
-                />
-              </div>
-              <div className="form-group">
-                <label>{t('temperatureLabel')} <span className="hint">(optional)</span></label>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.1"
-                  value={temperature}
-                  onChange={e => setTemperature(e.target.value)}
-                  placeholder="e.g. 4.5"
-                />
-              </div>
+              <button
+                type="button"
+                onClick={closeModal}
+                title="Close"
+                style={{
+                  background: '#f1f5f9', border: 'none', borderRadius: '6px', width: '32px', height: '32px', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', fontSize: '16px', color: '#64748b', cursor: 'pointer', fontWeight: 700,
+                }}
+              >
+                ✕
+              </button>
             </div>
-          </div>
 
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
-              <h2 style={{ margin: 0 }}>Societies</h2>
-              <span className="hint">
-                Fill only the societies you collected from. Fat {formatFatSnf(settings.fat_min)}–{formatFatSnf(settings.fat_max)}, SNF {formatFatSnf(settings.snf_min)}–{formatFatSnf(settings.snf_max)}.
-              </span>
-            </div>
+            {existingForSlot && (
+              <div className="warning-banner" role="alert" style={{ marginBottom: '16px' }}>
+                <span>
+                  A {shift === 'AM' ? 'Morning (AM)' : 'Evening (PM)'} entry for <strong>{formatDateDDMMYYYY(date)}</strong> already exists. Edit it?
+                </span>
+                <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={() => loadForEdit(existingForSlot.id)}>
+                  {t('editEntry')}
+                </button>
+              </div>
+            )}
 
+            <form onSubmit={handleSubmit} className="entry-form">
+              <div style={sectionTitle}>1. COLLECTION DETAILS</div>
+              <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '18px' }}>
+                <div className="form-group">
+                  <label style={labelStyle}>Collection Date * <span className="hint">({formatDateDDMMYYYY(date)})</span></label>
+                  <input type="date" value={date} onChange={e => setDate(e.target.value)} disabled={Boolean(editingId)} required />
+                </div>
+                <div className="form-group">
+                  <label style={labelStyle}>{t('shiftLabel')} *</label>
+                  <select value={shift} onChange={e => setShift(e.target.value as 'AM' | 'PM')} disabled={Boolean(editingId)}>
+                    <option value="AM">{t('morningShift')}</option>
+                    <option value="PM">{t('eveningShift')}</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label style={labelStyle}>Dispatch Date</label>
+                  <input
+                    type="date"
+                    value={dispatchDate}
+                    min={date}
+                    onChange={e => { setDispatchTouched(true); setDispatchDate(e.target.value); }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label style={labelStyle}>{t('temperatureLabel')} <span className="hint">(optional)</span></label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.1"
+                    value={temperature}
+                    onChange={e => setTemperature(e.target.value)}
+                    placeholder="e.g. 4.5"
+                  />
+                </div>
+              </div>
+
+              <div style={sectionTitle}>2. SOCIETY-WISE COLLECTION</div>
+              <div>
+                <div style={{ marginBottom: 8 }}>
+                  <span className="hint">
+                    Fat {formatFatSnf(settings.fat_min)}–{formatFatSnf(settings.fat_max)}, SNF {formatFatSnf(settings.snf_min)}–{formatFatSnf(settings.snf_max)}.
+                  </span>
+                </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
               <select
                 value=""
@@ -604,25 +824,55 @@ export default function MilkEntry() {
             </div>
           </div>
 
-          {error && <p className="auth-error">{error}</p>}
 
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <button type="submit" disabled={loading || !isFormValid} className="btn-primary" style={{ flex: 2 }}>
-              {loading ? t('saving') : editingId ? t('save') : t('submitEntry')}
-            </button>
-            {!editingId && (
-              <button type="button" disabled={loading || !isFormValid} className="btn-secondary" style={{ flex: 1 }} onClick={() => void submitEntry(true)}>
-                {t('saveAndAddNext')}
-              </button>
-            )}
-            {editingId && (
-              <button type="button" className="btn-secondary" onClick={() => { resetForNext(false); navigate('/bmc/milk-entry'); }}>
-                {t('cancel')}
-              </button>
-            )}
+              {error && <p className="auth-error" style={{ marginTop: '12px' }}>{error}</p>}
+
+              <div style={{ display: 'flex', gap: '12px', marginTop: '18px', flexWrap: 'wrap' }}>
+                <button type="button" onClick={closeModal} className="btn-secondary" style={{ flex: 1, padding: '12px', fontSize: '14px', fontWeight: 700 }}>
+                  {t('cancel')}
+                </button>
+                {!editingId && (
+                  <button
+                    type="button"
+                    disabled={loading || !isFormValid}
+                    className="btn-secondary"
+                    style={{ flex: 1, padding: '12px', fontSize: '14px', fontWeight: 700 }}
+                    onClick={() => void submitEntry(true)}
+                  >
+                    {t('saveAndAddNext')}
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={loading || !isFormValid}
+                  className="btn-primary"
+                  style={{
+                    flex: 2, padding: '12px', fontSize: '15px', fontWeight: 800, backgroundColor: '#16a34a', borderColor: '#15803d',
+                    cursor: loading || !isFormValid ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {loading ? t('saving') : editingId ? t('save') : '🥛 Submit Milk Entry'}
+                </button>
+              </div>
+            </form>
           </div>
-        </form>
-      </div>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete Milk Entry?"
+        message={
+          deleteTarget
+            ? `Delete the ${deleteTarget.shift === 'AM' ? 'morning' : 'evening'} entry of ${formatDateDDMMYYYY(deleteTarget.date)} (${formatLitres(Number(deleteTarget.quantity_litres), 1)})? This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete Entry"
+        danger
+        loading={deleting}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
