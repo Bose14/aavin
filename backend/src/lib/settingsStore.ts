@@ -956,25 +956,41 @@ export const INITIAL_REGISTERED_TANKERS: RegisteredTanker[] = [
 ];
 
 export async function getRegisteredTankersInDb(): Promise<RegisteredTanker[]> {
+  const map: Record<string, RegisteredTanker> = {};
+
+  // 1. Initial seeds as baseline
+  for (const t of INITIAL_REGISTERED_TANKERS) {
+    const k = t.vehicle_number.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    map[k] = t;
+  }
+
+  // 2. Fallback store (holds user-registered tankers in local or offline environments)
+  const store = readFallback();
+  if (store.registeredTankers) {
+    for (const t of Object.values(store.registeredTankers)) {
+      if (t && t.vehicle_number) {
+        const k = t.vehicle_number.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        map[k] = t;
+      }
+    }
+  }
+
+  // 3. Supabase registered_tankers table (latest remote truth)
   try {
     const res: any = await withTimeout(supabase.from('registered_tankers').select('*').order('created_at', { ascending: false }));
-    if (!res?.error && res?.data && res.data.length > 0) {
-      return res.data as RegisteredTanker[];
+    if (!res?.error && Array.isArray(res?.data) && res.data.length > 0) {
+      for (const t of res.data) {
+        if (t && t.vehicle_number) {
+          const k = t.vehicle_number.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+          map[k] = t;
+        }
+      }
     }
   } catch {
     // fallback
   }
 
-  const store = readFallback();
-  if (!store.registeredTankers || Object.keys(store.registeredTankers).length === 0) {
-    if (!store.registeredTankers) store.registeredTankers = {};
-    for (const t of INITIAL_REGISTERED_TANKERS) {
-      store.registeredTankers[t.vehicle_number] = t;
-    }
-    writeFallback(store);
-  }
-
-  return Object.values(store.registeredTankers);
+  return Object.values(map);
 }
 
 export async function saveRegisteredTankerInDb(data: Omit<RegisteredTanker, 'id' | 'created_at'>): Promise<RegisteredTanker> {

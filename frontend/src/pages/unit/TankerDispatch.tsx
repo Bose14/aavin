@@ -163,7 +163,12 @@ export default function TankerDispatch() {
 
   // Only registered tankers with available capacity that have not entered the plant are selectable
   const availableTankers = useMemo(() => {
-    return registeredTankers.filter((t) => t.is_available_for_dispatch !== false);
+    return registeredTankers.filter((t) => {
+      if (t.is_at_plant) return false;
+      if (t.is_full) return false;
+      if (t.available_capacity != null && t.available_capacity <= 0) return false;
+      return t.is_available_for_dispatch !== false;
+    });
   }, [registeredTankers]);
 
   const handleTankerSelect = (vehNum: string) => {
