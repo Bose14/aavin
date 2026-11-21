@@ -187,6 +187,51 @@ export function enrichTankerRow(row: Record<string, unknown>, stages?: StageReco
   };
 }
 
+/**
+ * The trip as sent to the browser. The journey timeline already carries every stage, so the
+ * repeated copies (a second `stages` list, full stage data inside each timeline step, compartments
+ * in three more places, the QC cell tests stored under four names) are left out. The screens read
+ * `compartments`, `stage_data.<stage>` and `journey.timelineSteps` (status, summary, first-step vehicle
+ * and seal numbers), all of which stay.
+ */
+const QC_TEST_ALIASES = ['freshness_test', 'snf_adulteration_test', 'special_test', 'fat_adulteration_test'];
+
+export function slimTankerForClient<T extends Record<string, any>>(row: T): T {
+  const { stages: _stages, journey, stage_data, ...rest } = row;
+  void _stages;
+
+  const slimStageData: Record<string, any> = { ...(stage_data ?? {}) };
+  delete slimStageData.compartments;
+  if (Array.isArray(slimStageData.bmc_dispatches)) {
+    slimStageData.bmc_dispatches = slimStageData.bmc_dispatches.map(({ compartments: _c, ...d }: Record<string, any>) => {
+      void _c;
+      return d;
+    });
+  }
+  if (slimStageData.qc_completed && typeof slimStageData.qc_completed === 'object') {
+    const qc = { ...slimStageData.qc_completed };
+    for (const k of QC_TEST_ALIASES) delete qc[k];
+    slimStageData.qc_completed = qc;
+  }
+
+  let slimJourney = journey;
+  if (journey && typeof journey === 'object') {
+    const { compartments: _jc, timelineSteps, ...jr } = journey as Record<string, any>;
+    void _jc;
+    slimJourney = {
+      ...jr,
+      timelineSteps: (timelineSteps ?? []).map((step: Record<string, any>) => {
+        const { data, ...stepRest } = step;
+        const keep: Record<string, unknown> = {};
+        if (data?.tanker_number != null) keep.tanker_number = data.tanker_number;
+        if (data?.seal_number != null) keep.seal_number = data.seal_number;
+        return { ...stepRest, data: keep };
+      }),
+    };
+  }
+  return { ...rest, stage_data: slimStageData, journey: slimJourney } as unknown as T;
+}
+
 /** Milk stock: collected (net of rejections) minus litres loaded on tankers. */
 export async function computeAvailableStock(dairyUnitId: string, bmcId?: string | null) {
   return computeStock(dairyUnitId, bmcId);
@@ -494,7 +539,7 @@ router.get('/', async (req, res) => {
       enriched.sort((a, b) => b.journey.waitingSinceMinutes - a.journey.waitingSinceMinutes);
     }
 
-    res.json(enriched);
+    res.json(enriched.map((e) => slimTankerForClient(e)));
   } catch (err) {
     sendError(res, err);
   }
@@ -517,7 +562,7 @@ router.get('/:id', async (req, res) => {
     ]);
 
     res.json({
-      ...enrichTankerRow(found.row, found.stages, settings),
+      ...slimTankerForClient(enrichTankerRow(found.row, found.stages, settings)),
       audit_logs: auditLogs,
     });
   } catch (err) {
@@ -635,7 +680,7 @@ router.post('/', requireRole('admin', 'bmc'), async (req, res) => {
     const settings = await getZoneSettings(dairyUnitId);
     const found = await fetchTrip(dairyUnitId, tripId);
     res.status(201).json({
-      ...enrichTankerRow(found!.row, found!.stages, settings),
+      ...slimTankerForClient(enrichTankerRow(found!.row, found!.stages, settings)),
       stock_warning: stockWarning,
     });
   } catch (err) {
@@ -894,10 +939,6 @@ async function recordStageHandler(req: import('express').Request, res: import('e
     if (payload.dc_number) stageData.dc_number = payload.dc_number;
     if (payload.received_from) stageData.received_from = payload.received_from;
     if (payload.test_categories) stageData.test_categories = payload.test_categories;
-    if (payload.freshness_test) stageData.freshness_test = payload.freshness_test;
-    if (payload.snf_adulteration_test) stageData.snf_adulteration_test = payload.snf_adulteration_test;
-    if (payload.special_test) stageData.special_test = payload.special_test;
-    if (payload.fat_adulteration_test) stageData.fat_adulteration_test = payload.fat_adulteration_test;
     if (payload.tests_completed) stageData.tests_completed = payload.tests_completed;
   } else if (stageKey === 'unloaded') {
     const litres = payload.unloaded_litres != null ? Number(payload.unloaded_litres) : Number(trip.quantity_dispatched);
@@ -1046,7 +1087,7 @@ async function recordStageHandler(req: import('express').Request, res: import('e
   });
 
   const updated = await fetchTrip(dairyUnitId, id);
-  res.json(enrichTankerRow(updated!.row, updated!.stages, settings));
+  res.json(slimTankerForClient(enrichTankerRow(updated!.row, updated!.stages, settings)));
 }
 
 // POST /tanker/:id/correct — Admin corrects stage data with mandatory reason
@@ -1140,7 +1181,7 @@ router.post('/:id/correct', requireRole('admin'), async (req, res) => {
     res.json({
       message: 'Stage corrected successfully',
       updated_stage: updatedStage,
-      trip: enrichTankerRow(updated!.row, updated!.stages, settings),
+      trip: slimTankerForClient(enrichTankerRow(updated!.row, updated!.stages, settings)),
     });
   } catch (err) {
     sendError(res, err);
@@ -1325,7 +1366,7 @@ router.patch('/:id/receive', requireRole('admin'), async (req, res) => {
     });
 
     const [settings, updated] = await Promise.all([getZoneSettings(dairyUnitId), fetchTrip(dairyUnitId, tripId)]);
-    res.json(enrichTankerRow(updated!.row, updated!.stages, settings));
+    res.json(slimTankerForClient(enrichTankerRow(updated!.row, updated!.stages, settings)));
   } catch (err) {
     sendError(res, err);
   }
