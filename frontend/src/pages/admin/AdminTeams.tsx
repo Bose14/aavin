@@ -635,14 +635,9 @@ export default function AdminTeams() {
         }}
       >
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.25rem' }}>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
             {lang === 'ta' ? 'குழுக்கள் & பயனர்கள்' : 'Teams & Users'}
           </h1>
-          <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>
-            {lang === 'ta'
-              ? 'தொழிற்சாலை குழுக்கள் (Gate, QC, Unloading) மற்றும் பி.எம்.சி பணியாளர்களின் ஒருங்கிணைந்த மேலாண்மை'
-              : 'Unified management of plant operational teams (Gate, QC, Unloading), plant operators, and BMC staff'}
-          </p>
         </div>
 
         <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'center' }}>

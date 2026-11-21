@@ -203,10 +203,7 @@ export default function AdminBmcs() {
     <div className="page">
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1>BMC Administration Dashboard</h1>
-          <p className="page-subtitle">
-            Monitor Bulk Milk Chilling Centres (BMCs), daily procurement reporting, and outward tanker dispatches
-          </p>
+          <h1 style={{ margin: 0 }}>BMC Administration Dashboard</h1>
         </div>
         <button
           type="button"

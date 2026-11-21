@@ -683,9 +683,6 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
         }}
       >
         <div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.2rem', fontWeight: 600 }}>
-            {gateSubTab === 'receipt' ? 'Milk Receipt Entry' : gateSubTab === 'gross' ? 'Gross Weight Entry' : gateSubTab === 'tare' ? 'Tare Weight Entry' : 'Tanker Out'}
-          </div>
           <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
             {gateSubTab === 'receipt'
               ? (lang === 'ta' ? 'பால் வரவு பதிவு (Milk Receipt Entry)' : 'Milk Receipt Entry (Gate Reception)')
@@ -695,15 +692,6 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
               ? (lang === 'ta' ? 'வெற்று எடை பதிவு (Tare Weight Entry)' : 'Vehicle Tare Weight Entry (Weighbridge)')
               : (lang === 'ta' ? 'டேங்கர் வெளியேறுதல் (Tanker Out)' : 'Tanker Out & Exit Pass')}
           </h1>
-          <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#64748b' }}>
-            {gateSubTab === 'receipt'
-              ? 'Vehicles dispatched from BMC waiting for gate reception entry'
-              : gateSubTab === 'gross'
-              ? 'Vehicles that completed gate reception waiting for gross weighbridge certification'
-              : gateSubTab === 'tare'
-              ? 'Vehicles that finished milk unloading waiting for tare weighing'
-              : 'Vehicles that completed CIP sanitization waiting for gate exit pass'}
-          </p>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -744,15 +732,6 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
             <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
               📋 Today's Gate Vehicle Register ({gateSubTab === 'receipt' ? receiptWaiters.length : gateSubTab === 'gross' ? grossWaiters.length : gateSubTab === 'tare' ? tareWaiters.length : exitWaiters.length} Vehicles)
             </h3>
-            <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-              {gateSubTab === 'receipt'
-                ? 'Vehicles processed from BMC waiting for gate entry'
-                : gateSubTab === 'gross'
-                ? 'Vehicles waiting for gross weighbridge certification'
-                : gateSubTab === 'tare'
-                ? 'Vehicles waiting for tare weighbridge certification'
-                : 'Vehicles waiting for gate exit pass'}
-            </p>
           </div>
         </div>
 
@@ -784,9 +763,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
               </button>
             )}
           </div>
-          <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-            💡 Click on any row to open the entry dialog form
-          </span>
+
         </div>
 
         {/* SHEET 1: Milk Receipt Entry (Vehicles Processed from BMC) */}

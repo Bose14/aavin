@@ -479,9 +479,6 @@ export default function UnitRecords() {
             {profile?.bmcs ? `${profile.bmcs.name} · ${profile.bmcs.bmc_code} — ` : ''}
             My Tanker Process Records
           </h1>
-          <p className="page-subtitle" style={{ margin: '2px 0 0 0', fontSize: '0.86rem', color: '#64748b' }}>
-            Audit trail of outward milk tankers, dairy weighbridge gross/tare weights, QC chemical test certificates, silo unloading, and transit loss
-          </p>
         </div>
 
         {/* Action button */}

@@ -454,12 +454,11 @@ export default function AdminDashboard() {
               {profile?.dairy_units?.name ?? 'Dairy Plant'} Process Analytics
             </h1>
           </div>
-          <p className="page-subtitle" style={{ margin: '4px 0 0 0', color: '#64748b' }}>
-            Live stage queues, weighbridge operations, quality control testing, and silo unloading intelligence
-            {rangeFrom && rangeTo && (
-              <> · <strong style={{ color: '#0369a1' }}>{formatDateDDMMYYYY(rangeFrom)} to {formatDateDDMMYYYY(rangeTo)}</strong></>
-            )}
-          </p>
+          {rangeFrom && rangeTo && (
+            <div style={{ margin: '4px 0 0 0', fontSize: '0.86rem', color: '#64748b' }}>
+              <strong style={{ color: '#0369a1' }}>{formatDateDDMMYYYY(rangeFrom)} to {formatDateDDMMYYYY(rangeTo)}</strong>
+            </div>
+          )}
         </div>
 
         <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>

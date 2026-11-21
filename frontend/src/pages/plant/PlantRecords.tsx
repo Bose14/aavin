@@ -64,14 +64,9 @@ export default function PlantRecords() {
     <div className="page" style={{ padding: '1.5rem', maxWidth: 1400, margin: '0 auto' }}>
       <div className="page-header" style={{ marginBottom: '1.5rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.25rem' }}>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>
             {teamTitle}
           </h1>
-          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>
-            {lang === 'ta'
-              ? 'உங்கள் குழுவால் செயலாக்கப்பட்ட டேங்கர் வரலாற்றுப் பதிவுகள்'
-              : 'Complete history of tankers processed by your plant team'}
-          </p>
         </div>
       </div>
 

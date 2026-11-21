@@ -350,10 +350,12 @@ export default function MilkEntry() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>{editingId ? t('editEntry') : t('milkEntryTitle')}</h1>
-          <p className="page-subtitle">
-            {unitLabel ? `${unitLabel} · ` : ''}{t('milkEntrySubtitle')}
-          </p>
+          <h1 style={{ margin: 0 }}>{editingId ? t('editEntry') : t('milkEntryTitle')}</h1>
+          {unitLabel && (
+            <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>
+              {unitLabel}
+            </div>
+          )}
         </div>
         <div className="header-actions">
           {offlineCount > 0 && (

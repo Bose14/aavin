@@ -595,9 +595,6 @@ export default function TankerDispatch() {
           <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>
             {lang === 'ta' ? 'பால் டேங்கர் லாரி அனுப்புதல் (BMC Outward)' : 'Tanker Milk Dispatch (BMC Outward)'}
           </h1>
-          <p className="page-subtitle" style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '13px' }}>
-            Record outgoing milk tanker with lorry number, driver details, Delivery Challan (DC No), and individual compartment breakdown
-          </p>
         </div>
         <div className="header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
