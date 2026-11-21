@@ -160,7 +160,7 @@ router.patch('/me/profile', async (req, res) => {
   const fullName = typeof req.body?.full_name === 'string' ? req.body.full_name.trim() : '';
   if (!fullName) return res.status(400).json({ error: 'full_name is required' });
   const { error } = await supabase.from('users').update({ full_name: fullName }).eq('id', req.profile!.id);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) { console.error('[api]', req.method, req.originalUrl, error.message); return res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
   return res.json({ ok: true });
 });
 
@@ -207,7 +207,7 @@ router.get('/', requireRole('admin'), async (req, res) => {
 
   const { data, error } = await query;
   if (error) {
-    res.status(500).json({ error: error.message });
+    console.error('[api]', req.method, req.originalUrl, error.message); res.status(500).json({ error: 'Something went wrong. Please try again.' });
     return;
   }
 

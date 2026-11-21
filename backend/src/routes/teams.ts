@@ -135,7 +135,7 @@ router.get('/', async (req, res) => {
 
     res.json(enriched);
   } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
+    console.error('[api]', req.method, req.originalUrl, (err as Error).message); res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 

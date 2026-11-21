@@ -43,7 +43,7 @@ router.get('/', async (req, res) => {
     entriesQuery,
   ]);
 
-  if (unitsRes.error) { res.status(500).json({ error: unitsRes.error.message }); return; }
+  if (unitsRes.error) { console.error('[api]', req.method, req.originalUrl, unitsRes.error.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
 
   const userCounts: Record<string, number> = {};
   for (const p of (profilesRes.data ?? [])) {
@@ -105,7 +105,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
     if (error.code === '23505') {
       res.status(409).json({ error: `BMC code "${unitCode}" already exists` });
     } else {
-      res.status(500).json({ error: error.message });
+      console.error('[api]', req.method, req.originalUrl, error.message); res.status(500).json({ error: 'Something went wrong. Please try again.' });
     }
     return;
   }
@@ -179,7 +179,7 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
     if (error.code === '23505') {
       res.status(409).json({ error: `BMC code "${String(patch.bmc_code)}" already exists` });
     } else {
-      res.status(500).json({ error: error.message });
+      console.error('[api]', req.method, req.originalUrl, error.message); res.status(500).json({ error: 'Something went wrong. Please try again.' });
     }
     return;
   }

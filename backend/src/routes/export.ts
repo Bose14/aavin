@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../lib/spreadsheet';
 import { supabase } from '../supabase';
 import { fetchTrip, fetchTrips } from '../lib/tripStore';
 import { authMiddleware } from '../middleware/auth';
@@ -68,10 +68,10 @@ router.get('/milk/template', async (_req, res) => {
     },
   ];
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(sampleRows);
-  XLSX.utils.book_append_sheet(wb, ws, 'Template');
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const wb = XLSX.book_new();
+  const ws = XLSX.json_to_sheet(sampleRows);
+  XLSX.book_append_sheet(wb, ws, 'Template');
+  const buf = await XLSX.writeXlsx(wb);
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', 'attachment; filename="milk_bulk_upload_template.xlsx"');
@@ -109,7 +109,7 @@ router.get('/milk/pdf', async (req, res) => {
   if (resQ.error && isMissingSchemaError(resQ.error)) {
     resQ = await runQ('date, shift, fat_pct, snf_pct, quantity_litres, rejection_qty, rate_per_litre, bmcs(name, bmc_code)');
   }
-  if (resQ.error) { res.status(500).json({ error: resQ.error.message }); return; }
+  if (resQ.error) { console.error('[api]', req.method, req.originalUrl, resQ.error.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
 
   const hideProfit = req.profile.role === 'bmc' && !settings.show_unit_profit;
   const rows = ((resQ.data ?? []) as unknown as ExportMilkRow[]).filter(r => {
@@ -216,7 +216,7 @@ router.get('/milk', async (req, res) => {
       bmcs(name, bmc_code)
     `);
   }
-  if (resQ.error) { res.status(500).json({ error: resQ.error.message }); return; }
+  if (resQ.error) { console.error('[api]', req.method, req.originalUrl, resQ.error.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
 
   const hideProfit = req.profile.role === 'bmc' && !settings.show_unit_profit;
   const searchLower = search?.trim().toLowerCase() ?? '';
@@ -270,18 +270,18 @@ router.get('/milk', async (req, res) => {
     return baseRow;
   });
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(rows);
-  XLSX.utils.book_append_sheet(wb, ws, 'Milk Entries');
+  const wb = XLSX.book_new();
+  const ws = XLSX.json_to_sheet(rows);
+  XLSX.book_append_sheet(wb, ws, 'Milk Entries');
 
   const baseName = `${prefix}_${buildRangeTag(from, to)}`;
   if (format === 'csv') {
-    const csv = XLSX.utils.sheet_to_csv(ws);
+    const csv = XLSX.sheet_to_csv(ws);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${baseName}.csv"`);
     res.send(csv);
   } else {
-    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const buf = await XLSX.writeXlsx(wb);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${baseName}.xlsx"`);
     res.send(buf);
@@ -299,7 +299,7 @@ router.get('/tanker', async (req, res) => {
   try {
     fetched = await fetchTrips({ dairyUnitId, from, to, bmcId: effectiveUnitId });
   } catch (e) {
-    res.status(500).json({ error: (e as Error).message });
+    console.error('[api]', req.method, req.originalUrl, (e as Error).message); res.status(500).json({ error: 'Something went wrong. Please try again.' });
     return;
   }
   const rawRows = [...fetched.rows].reverse() as Array<Record<string, unknown>>;
@@ -385,21 +385,21 @@ router.get('/tanker', async (req, res) => {
     };
   });
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(rows);
-  XLSX.utils.book_append_sheet(wb, ws, 'Tanker Records');
+  const wb = XLSX.book_new();
+  const ws = XLSX.json_to_sheet(rows);
+  XLSX.book_append_sheet(wb, ws, 'Tanker Records');
 
   const tabTitle = status ? (status.charAt(0).toUpperCase() + status.slice(1)) : 'All';
   const todayDDMM = formatDateDDMMYYYY(new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10));
   const baseName = `Tanker_Records_${tabTitle}_${todayDDMM}`;
 
   if (format === 'csv') {
-    const csv = XLSX.utils.sheet_to_csv(ws);
+    const csv = XLSX.sheet_to_csv(ws);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${baseName}.csv"`);
     res.send(csv);
   } else {
-    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const buf = await XLSX.writeXlsx(wb);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${baseName}.xlsx"`);
     res.send(buf);
@@ -424,7 +424,7 @@ router.get('/tanker/daily-report', async (req, res) => {
       bmcId: effectiveUnitId,
     });
   } catch (e) {
-    res.status(500).json({ error: (e as Error).message });
+    console.error('[api]', req.method, req.originalUrl, (e as Error).message); res.status(500).json({ error: 'Something went wrong. Please try again.' });
     return;
   }
   const rawRows = [...fetched.rows].reverse() as Array<Record<string, unknown>>;
@@ -572,7 +572,7 @@ router.get('/tanker/daily-report', async (req, res) => {
     'Current Pipeline Stage': '',
   };
 
-  const wb = XLSX.utils.book_new();
+  const wb = XLSX.book_new();
 
   // Overview Sheet
   const overviewRows = [
@@ -583,23 +583,23 @@ router.get('/tanker/daily-report', async (req, res) => {
     { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': `Total Tankers: ${tableRows.length} | Dispatched Volume: ${totalDispatchedL.toLocaleString('en-IN')} L | Unloaded Volume: ${totalReceivedL.toLocaleString('en-IN')} L` },
     { 'AAVIN DAIRY MILK RECEIPT & RECONCILIATION REPORT': `Net Transit Loss: ${totalLossL.toFixed(1)} L (${overallLossPct}%) | QC Accepted: ${qcAcceptedCount} | QC Rejected: ${qcRejectedCount}` },
   ];
-  const wsOverview = XLSX.utils.json_to_sheet(overviewRows);
-  XLSX.utils.book_append_sheet(wb, wsOverview, 'Summary Header');
+  const wsOverview = XLSX.json_to_sheet(overviewRows);
+  XLSX.book_append_sheet(wb, wsOverview, 'Summary Header');
 
   // Main Reconciliation Sheet
-  const wsData = XLSX.utils.json_to_sheet([...tableRows, summaryRow]);
-  XLSX.utils.book_append_sheet(wb, wsData, 'Daily Tanker Reception');
+  const wsData = XLSX.json_to_sheet([...tableRows, summaryRow]);
+  XLSX.book_append_sheet(wb, wsData, 'Daily Tanker Reception');
 
   const reportDateTag = targetDate ? formatDateDDMMYYYY(targetDate) : buildRangeTag(from, to);
   const baseName = `Aavin_Daily_Tanker_Report_${reportDateTag}`;
 
   if (format === 'csv') {
-    const csv = XLSX.utils.sheet_to_csv(wsData);
+    const csv = XLSX.sheet_to_csv(wsData);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${baseName}.csv"`);
     res.send(csv);
   } else {
-    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const buf = await XLSX.writeXlsx(wb);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${baseName}.xlsx"`);
     res.send(buf);
@@ -616,7 +616,7 @@ router.get('/tanker/:id', async (req, res) => {
   try {
     found = await fetchTrip(dairyUnitId, String(id));
   } catch (e) {
-    res.status(500).json({ error: (e as Error).message });
+    console.error('[api]', req.method, req.originalUrl, (e as Error).message); res.status(500).json({ error: 'Something went wrong. Please try again.' });
     return;
   }
   if (!found) {
@@ -724,24 +724,24 @@ router.get('/tanker/:id', async (req, res) => {
     'Operator / Slip Details': st.summary || '—',
   }));
 
-  const wb = XLSX.utils.book_new();
-  const wsDossier = XLSX.utils.json_to_sheet(dossierRows);
-  XLSX.utils.book_append_sheet(wb, wsDossier, 'Tanker Dossier');
+  const wb = XLSX.book_new();
+  const wsDossier = XLSX.json_to_sheet(dossierRows);
+  XLSX.book_append_sheet(wb, wsDossier, 'Tanker Dossier');
 
   if (compRows.length > 0) {
-    const wsComp = XLSX.utils.json_to_sheet(compRows);
-    XLSX.utils.book_append_sheet(wb, wsComp, 'Compartments');
+    const wsComp = XLSX.json_to_sheet(compRows);
+    XLSX.book_append_sheet(wb, wsComp, 'Compartments');
   }
 
   if (stageRows.length > 0) {
-    const wsStages = XLSX.utils.json_to_sheet(stageRows);
-    XLSX.utils.book_append_sheet(wb, wsStages, 'Stage Progression');
+    const wsStages = XLSX.json_to_sheet(stageRows);
+    XLSX.book_append_sheet(wb, wsStages, 'Stage Progression');
   }
 
   const cleanNo = String(r.tanker_number || 'Tanker').replace(/[^A-Za-z0-9]/g, '_');
   const fileName = `Tanker_${cleanNo}_Dossier.xlsx`;
 
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const buf = await XLSX.writeXlsx(wb);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
   res.send(buf);

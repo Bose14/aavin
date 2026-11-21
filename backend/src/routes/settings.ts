@@ -33,7 +33,7 @@ router.get('/', async (req, res) => {
 
     res.json({ settings: safeSettings, selling_rate_history: isAdmin ? selling_rate_history : [] });
   } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
+    console.error('[api]', req.method, req.originalUrl, (err as Error).message); res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -86,7 +86,7 @@ router.put('/', requireRole('admin'), async (req, res) => {
 
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
+    console.error('[api]', req.method, req.originalUrl, (err as Error).message); res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -125,7 +125,7 @@ router.post('/selling-rates', requireRole('admin'), async (req, res) => {
     const history = await getSellingRateHistory(req.profile.dairy_unit_id);
     res.status(201).json({ rule, history });
   } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
+    console.error('[api]', req.method, req.originalUrl, (err as Error).message); res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -136,7 +136,7 @@ router.get('/audit-logs', requireRole('admin'), async (req, res) => {
     const logs = await listAuditLogs(req.profile.dairy_unit_id, entity_type, entity_id);
     res.json(logs);
   } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
+    console.error('[api]', req.method, req.originalUrl, (err as Error).message); res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 

@@ -162,7 +162,7 @@ router.get('/summary', async (req, res) => {
   ]);
 
   if (currRes.error || prevRes.error) {
-    res.status(500).json({ error: currRes.error || prevRes.error });
+    console.error('[api]', req.method, req.originalUrl, currRes.error || prevRes.error); res.status(500).json({ error: 'Something went wrong. Please try again.' });
     return;
   }
 
@@ -331,7 +331,7 @@ router.get('/trend', async (req, res) => {
     fetchMilkRows(dairyUnitId, fromDate, toDate, req.profile.role, req.profile.bmc_id, bmc_id),
   ]);
 
-  if (milkRes.error) { res.status(500).json({ error: milkRes.error }); return; }
+  if (milkRes.error) { console.error('[api]', req.method, req.originalUrl, milkRes.error); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
 
   const hideProfitForUnit = req.profile.role === 'bmc' && !settings.show_unit_profit;
   const byDate = new Map<string, {
@@ -428,7 +428,7 @@ router.get('/bmcs', async (req, res) => {
     fetchMilkRows(dairyUnitId, resolved.fromDate, resolved.toDate, 'admin', null),
   ]);
 
-  if (milkRes.error) { res.status(500).json({ error: milkRes.error }); return; }
+  if (milkRes.error) { console.error('[api]', req.method, req.originalUrl, milkRes.error); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
 
   const byUnit = new Map<string, {
     bmc_id: string;
@@ -1116,7 +1116,7 @@ router.get('/process', async (req, res) => {
     });
   } catch (err: any) {
     console.error('[analytics/process] Error:', err);
-    res.status(500).json({ error: err?.message || 'Failed to compute process analytics' });
+    console.error('[api]', req.method, req.originalUrl, err); res.status(500).json({ error: 'Failed to compute process analytics' });
   }
 });
 

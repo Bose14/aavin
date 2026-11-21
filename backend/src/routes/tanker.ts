@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../lib/spreadsheet';
 import { requireRole } from '../middleware/requireRole';
 import { authMiddleware } from '../middleware/auth';
 import {
@@ -46,7 +46,8 @@ function sendError(res: import('express').Response, err: unknown) {
     res.status(err.status).json({ error: err.message });
     return;
   }
-  res.status(500).json({ error: (err as Error).message });
+  console.error('[tanker]', err);
+  res.status(500).json({ error: 'Something went wrong. Please try again.' });
 }
 
 function actorName(req: import('express').Request, fallback: string): string {
@@ -1225,10 +1226,10 @@ router.get('/export/stage-wise', async (req, res) => {
       return rowOut;
     });
 
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(exportRows);
-    XLSX.utils.book_append_sheet(wb, ws, 'Stage Progression');
-    const csv = XLSX.utils.sheet_to_csv(ws);
+    const wb = XLSX.book_new();
+    const ws = XLSX.json_to_sheet(exportRows);
+    XLSX.book_append_sheet(wb, ws, 'Stage Progression');
+    const csv = XLSX.sheet_to_csv(ws);
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="Tanker_Stage_Progression_${Date.now()}.csv"`);
