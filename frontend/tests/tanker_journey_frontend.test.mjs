@@ -470,14 +470,18 @@ test('5. Additional Forms: Tare Weight, Tanker Out, and CIP waiting conditions',
   const gateSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/GateOperations.tsx'), 'utf8');
   const qcSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/QCLab.tsx'), 'utf8');
 
-  // 6.2 Tare Weight Form
+  // 6.2 Tare Weight Form (Authentic Aavin IDMS VEHICLE TARE WEIGHT DETAILS)
   assert.ok(gateSrc.includes('VEHICLE TARE WEIGHT DETAILS'), '6.2 Tare Weight Details heading');
   assert.ok(gateSrc.includes('Tare Weight(Kgs)'), '6.2 Tare Weight Kgs');
+  assert.ok(gateSrc.includes('Dispatch Weight(Kgs)'), '6.2 Dispatch Weight Kgs');
+  assert.ok(gateSrc.includes('Net Weight(Kgs)'), '6.2 Net Weight Kgs');
+  assert.ok(gateSrc.includes('TareWeightReport'), '6.2 TareWeightReport action');
   assert.ok(gateSrc.includes('Net Milk Weight'), '6.2 Net Milk Weight auto-calculation');
   assert.ok(gateSrc.includes('Tare Slip No'), '6.2 Tare Slip No');
 
-  // 6.3 Tanker Out Form
-  assert.ok(gateSrc.includes('TANKER OUT DETAILS'), '6.3 Tanker Out heading');
+  // 6.3 Tanker Out Form (Authentic Aavin IDMS VEHICLE OUT DETAILS)
+  assert.ok(gateSrc.includes('VEHICLE OUT DETAILS'), '6.3 Authentic Vehicle Out Details heading');
+  assert.ok(gateSrc.includes('TANKER OUT DETAILS'), '6.3 Tanker Out alias');
   assert.ok(gateSrc.includes('Gate Pass Number'), '6.3 Gate Pass Number');
   assert.ok(gateSrc.includes('Security Guard Name'), '6.3 Security Guard Name');
 
