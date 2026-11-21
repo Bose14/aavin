@@ -4,6 +4,7 @@ import { supabase } from '../supabase';
 import { authMiddleware } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
 import { idLookup } from '../lib/ids';
+import { prepareCollectionLines, summarizeCollection } from '../lib/milkCollection';
 import {
   calculateEntryFinancials,
   calculateRateFromChart,
@@ -142,8 +143,117 @@ router.patch('/correction-requests/:reqId', requireRole('admin'), async (req, re
   }
 });
 
+/**
+ * Society-wise shift entry: one row per society (cans, litres, fat, snf). The shift
+ * totals on milk_entries are derived from the rows by save_milk_collection().
+ */
+async function saveCollection(req: any, res: any, existing: { id: string; bmc_id: string } | null) {
+  const body = req.body as Record<string, any>;
+  const dairyUnitId = req.profile.dairy_unit_id;
+
+  const date = existing ? undefined : String(body.date ?? '');
+  const shift = existing ? undefined : String(body.shift ?? '');
+  if (!existing) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date!)) { res.status(400).json({ error: 'A valid date is required' }); return; }
+    if (shift !== 'AM' && shift !== 'PM') { res.status(400).json({ error: 'shift must be AM or PM' }); return; }
+  }
+  const dispatchDate = body.dispatch_date ? String(body.dispatch_date) : null;
+  if (dispatchDate && !/^\d{4}-\d{2}-\d{2}$/.test(dispatchDate)) {
+    res.status(400).json({ error: 'Invalid dispatch date' }); return;
+  }
+  const temperature = body.temperature === '' || body.temperature == null ? null : Number(body.temperature);
+  if (temperature != null && !Number.isFinite(temperature)) { res.status(400).json({ error: 'Invalid temperature' }); return; }
+
+  let bmcId: string | null = existing ? String(existing.bmc_id) : (req.profile.role === 'bmc' ? req.profile.bmc_id : body.bmc_id);
+  if (!bmcId) { res.status(400).json({ error: 'bmc_id required' }); return; }
+  if (!existing && req.profile.role !== 'bmc') {
+    const lookup = idLookup(String(bmcId));
+    const { data: ownBmc } = lookup
+      ? await supabase.from('bmcs').select('id').eq(lookup.column, lookup.value).eq('dairy_unit_id', dairyUnitId).maybeSingle()
+      : { data: null };
+    if (!ownBmc) { res.status(400).json({ error: 'bmc_id does not belong to your dairy unit' }); return; }
+    bmcId = String(ownBmc.id);
+  }
+
+  const [settings, rateHistory] = await Promise.all([getZoneSettings(dairyUnitId), getSellingRateHistory(dairyUnitId)]);
+  const prepared = prepareCollectionLines(body.lines, settings);
+  if ('error' in prepared) { res.status(400).json({ error: prepared.error }); return; }
+  const totals = summarizeCollection(prepared.lines);
+
+  const { data: entryId, error } = await supabase.rpc('save_milk_collection', {
+    p: {
+      entry_id: existing ? Number(existing.id) : null,
+      bmc_id: Number(bmcId),
+      dairy_unit_id: Number(dairyUnitId),
+      date,
+      shift,
+      dispatch_date: dispatchDate,
+      temperature,
+      actor: req.user.id,
+      selling_rate_applied: existing ? null : getEffectiveSellingRate(date!, rateHistory),
+      lines: prepared.lines,
+    },
+  });
+
+  if (error) {
+    if (error.code === 'P0001') { res.status(400).json({ error: error.message }); return; }
+    if (error.code === '23505') {
+      const { data: dup } = await supabase
+        .from('milk_entries').select('id').eq('bmc_id', bmcId).eq('date', date!).eq('shift', shift!).maybeSingle();
+      res.status(409).json({
+        error: `A ${shift === 'AM' ? 'Morning' : 'Evening'} entry for ${formatDateDDMMYYYY(date!)} already exists.`,
+        existing_id: dup?.id ?? null,
+      });
+      return;
+    }
+    console.error('[api]', req.method, req.originalUrl, error.message);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+    return;
+  }
+
+  const { data: entry } = await supabase.from('milk_entries').select('*').eq('id', String(entryId)).single();
+
+  await writeAuditLog({
+    dairy_unit_id: dairyUnitId,
+    bmc_id: bmcId,
+    entity_type: 'milk_entry',
+    entity_id: String(entryId),
+    action: existing ? 'edit' : 'create',
+    changes: { societies: prepared.lines.length, ...totals, dispatch_date: dispatchDate },
+    actor_id: req.user.id,
+    actor_name: req.profile.full_name ?? req.user.email ?? 'Staff',
+  });
+
+  res.status(existing ? 200 : 201).json(entry);
+}
+
+// GET /milk/:id/lines — society rows of one shift entry (for editing / viewing)
+router.get('/:id/lines', async (req, res) => {
+  try {
+    let q = supabase.from('milk_entries').select('id, bmc_id, date, shift, dispatch_date, temperature, status, created_at')
+      .eq('id', String(req.params.id)).eq('dairy_unit_id', req.profile.dairy_unit_id);
+    if (req.profile.role === 'bmc') q = q.eq('bmc_id', req.profile.bmc_id!);
+    const { data: entry, error } = await q.maybeSingle();
+    if (error) throw error;
+    if (!entry) { res.status(404).json({ error: 'Entry not found' }); return; }
+    const { data: lines, error: lineErr } = await supabase
+      .from('milk_collection_lines')
+      .select('society_id, cans, litres, fat_pct, snf_pct, lt_fat, lt_snf, rate, amount, societies(code, name, sort_order)')
+      .eq('entry_id', entry.id);
+    if (lineErr) throw lineErr;
+    const rows = ((lines ?? []) as any[])
+      .map((l) => ({ ...l, code: l.societies?.code, name: l.societies?.name, sort_order: l.societies?.sort_order ?? 0, societies: undefined }))
+      .sort((a, b) => a.sort_order - b.sort_order);
+    res.json({ entry, lines: rows });
+  } catch (err) {
+    console.error('[api]', req.method, req.originalUrl, (err as Error).message);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
 // POST /milk — submit shift entry (auto chart rate or logged manual override)
 router.post('/', requireRole('admin', 'bmc'), async (req, res) => {
+  if (Array.isArray(req.body?.lines)) { await saveCollection(req, res, null); return; }
   const {
     date,
     shift,
@@ -345,6 +455,11 @@ router.patch('/:id', requireRole('admin', 'bmc'), async (req, res) => {
       res.status(403).json({ error: 'Verified entries are locked. Submit a correction request instead.' });
       return;
     }
+  }
+
+  if (Array.isArray(req.body?.lines)) {
+    await saveCollection(req, res, { id: entryId, bmc_id: String(existing.bmc_id) });
+    return;
   }
 
   const body = req.body as {

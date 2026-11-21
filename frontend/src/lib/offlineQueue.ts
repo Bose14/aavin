@@ -5,11 +5,13 @@ const OFFLINE_QUEUE_KEY = 'aavin_offline_milk_queue_v1';
 export interface QueuedMilkPayload {
   date: string;
   shift: 'AM' | 'PM';
-  fat_pct: number;
-  snf_pct: number;
-  quantity_litres: number;
-  rejection_qty: number;
+  fat_pct?: number;
+  snf_pct?: number;
+  quantity_litres?: number;
+  rejection_qty?: number;
   rejection_reason?: string;
+  dispatch_date?: string;
+  lines?: Array<{ society_id: string; cans: number; litres: number; fat_pct: number; snf_pct: number }>;
   temperature?: number;
   rate_per_litre?: number;
   rate_override?: boolean;
