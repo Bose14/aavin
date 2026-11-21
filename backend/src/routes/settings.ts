@@ -13,13 +13,13 @@ import {
 const router = Router();
 router.use(authMiddleware);
 
-// GET /settings — zone settings & effective-dated selling rate schedule
+// GET /settings — dairy unit settings & effective-dated selling rate schedule
 router.get('/', async (req, res) => {
   try {
-    const zoneId = req.profile.zone_id;
+    const dairyUnitId = req.profile.dairy_unit_id;
     const [settings, selling_rate_history] = await Promise.all([
-      getZoneSettings(zoneId),
-      getSellingRateHistory(zoneId),
+      getZoneSettings(dairyUnitId),
+      getSellingRateHistory(dairyUnitId),
     ]);
 
     const role = (req.profile.role || '').toLowerCase();
@@ -37,12 +37,12 @@ router.get('/', async (req, res) => {
   }
 });
 
-// PUT /settings — admin updates zone settings
+// PUT /settings — admin updates dairy unit settings
 router.put('/', requireRole('admin'), async (req, res) => {
   try {
-    const zoneId = req.profile.zone_id;
+    const dairyUnitId = req.profile.dairy_unit_id;
     const body = req.body as Record<string, unknown>;
-    const updated = await saveZoneSettings(zoneId, {
+    const updated = await saveZoneSettings(dairyUnitId, {
       fat_min: body.fat_min != null ? Number(body.fat_min) : undefined,
       fat_max: body.fat_max != null ? Number(body.fat_max) : undefined,
       fat_benchmark: body.fat_benchmark != null ? Number(body.fat_benchmark) : undefined,
@@ -76,7 +76,7 @@ router.put('/', requireRole('admin'), async (req, res) => {
     });
 
     await writeAuditLog({
-      zone_id: zoneId,
+      dairy_unit_id: dairyUnitId,
       entity_type: 'zone_settings',
       action: 'update',
       changes: body,
@@ -105,7 +105,7 @@ router.post('/selling-rates', requireRole('admin'), async (req, res) => {
     }
 
     const rule = await addSellingRateRule(
-      req.profile.zone_id,
+      req.profile.dairy_unit_id,
       +rate.toFixed(2),
       effective_from,
       notes?.trim(),
@@ -113,7 +113,7 @@ router.post('/selling-rates', requireRole('admin'), async (req, res) => {
     );
 
     await writeAuditLog({
-      zone_id: req.profile.zone_id,
+      dairy_unit_id: req.profile.dairy_unit_id,
       entity_type: 'selling_rate',
       entity_id: rule.id,
       action: 'set_rate',
@@ -122,7 +122,7 @@ router.post('/selling-rates', requireRole('admin'), async (req, res) => {
       actor_name: req.profile.full_name ?? req.user.email ?? 'Admin',
     });
 
-    const history = await getSellingRateHistory(req.profile.zone_id);
+    const history = await getSellingRateHistory(req.profile.dairy_unit_id);
     res.status(201).json({ rule, history });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -133,7 +133,7 @@ router.post('/selling-rates', requireRole('admin'), async (req, res) => {
 router.get('/audit-logs', requireRole('admin'), async (req, res) => {
   try {
     const { entity_type, entity_id } = req.query as Record<string, string>;
-    const logs = await listAuditLogs(req.profile.zone_id, entity_type, entity_id);
+    const logs = await listAuditLogs(req.profile.dairy_unit_id, entity_type, entity_id);
     res.json(logs);
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });

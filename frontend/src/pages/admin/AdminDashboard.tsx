@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from '../../context/LanguageContext';
-import { useZoneSettings } from '../../hooks/useZoneSettings';
+import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
 import {
   formatDateDDMMYYYY,
   formatLitres,
@@ -156,7 +156,7 @@ export default function AdminDashboard() {
   const { profile } = useAuth();
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { settings } = useZoneSettings();
+  const { settings } = useDairyUnitSettings();
 
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('today');
   const [customFrom, setCustomFrom] = useState(() => getLocalTodayIso());
@@ -451,7 +451,7 @@ export default function AdminDashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
             <span style={{ fontSize: '1.4rem' }}>🏭</span>
             <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>
-              {profile?.zones?.name ?? 'Dairy Plant'} Process Analytics
+              {profile?.dairy_units?.name ?? 'Dairy Plant'} Process Analytics
             </h1>
           </div>
           <p className="page-subtitle" style={{ margin: '4px 0 0 0', color: '#64748b' }}>

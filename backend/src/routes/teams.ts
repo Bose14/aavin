@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { fetchTrips } from '../lib/tripStore';
 import { supabase } from '../supabase';
 import { authMiddleware } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
@@ -7,8 +8,6 @@ import {
   getTeamByCode,
   updateTeamStatusInDb,
   getZoneSettings,
-  getTankerStagesForTrips,
-  getTankerDispatchMetadata,
   writeAuditLog,
 } from '../lib/settingsStore';
 import { deriveTankerJourneyState } from '../lib/tankerJourney';
@@ -30,9 +29,9 @@ export const TEAM_DESCRIPTIONS: Record<string, string> = {
 };
 
 /**
- * Computes waiting tanker count per team in a zone.
+ * Computes waiting tanker count per team in a dairy unit.
  */
-async function computeWaitingTankersPerTeam(zoneId: string): Promise<Record<string, number>> {
+async function computeWaitingTankersPerTeam(dairyUnitId: string): Promise<Record<string, number>> {
   const counts: Record<string, number> = {
     GATE: 0,
     QC: 0,
@@ -40,27 +39,13 @@ async function computeWaitingTankersPerTeam(zoneId: string): Promise<Record<stri
   };
 
   try {
-    const { data, error } = await supabase
-      .from('tanker_dispatches')
-      .select('*')
-      .eq('zone_id', zoneId);
-
-    if (error || !data) {
-      return counts;
-    }
-
-    const rows = data as Array<Record<string, unknown>>;
-    const tripIds = rows.map((r) => String(r.id));
-    const [stagesMap, settings] = await Promise.all([
-      getTankerStagesForTrips(tripIds),
-      getZoneSettings(zoneId),
-    ]);
+    const { rows: tripRows, stages: stagesMap } = await fetchTrips({ dairyUnitId, openOnly: true });
+    const rows = tripRows as Array<Record<string, unknown>>;
+    const settings = await getZoneSettings(dairyUnitId);
 
     for (const row of rows) {
       const tripId = String(row.id);
       const stages = (stagesMap[tripId] ?? []) as StageRecordItem[];
-      const tankerNum = String(row.tanker_number ?? '').toUpperCase().trim();
-      const fbMeta = getTankerDispatchMetadata(tripId) || (tankerNum ? getTankerDispatchMetadata(tankerNum) : null);
 
       const stagesMapObj: Record<string, any> = {};
       for (const s of stages) {
@@ -73,15 +58,14 @@ async function computeWaitingTankersPerTeam(zoneId: string): Promise<Record<stri
         id: tripId,
         date: String(row.date),
         tanker_number: String(row.tanker_number ?? ''),
-        driver_name: (row.driver_name as string) || fbMeta?.driver_name || null,
-        seal_number: (row.seal_number as string) || fbMeta?.seal_number || null,
+        driver_name: (row.driver_name as string) || null,
+        seal_number: (row.seal_number as string) || null,
         quantity_dispatched: Number(row.quantity_dispatched || 0),
-        trip_status: (row.trip_status as any) || (fbMeta?.trip_status as any),
+        trip_status: row.trip_status as any,
         current_stage: row.current_stage as any,
         waiting_team: row.waiting_team as any,
         stage_data: {
           ...((row.stage_data as Record<string, unknown>) || {}),
-          ...(fbMeta?.stage_data || {}),
           ...stagesMapObj,
         },
         stages,
@@ -104,15 +88,15 @@ async function computeWaitingTankersPerTeam(zoneId: string): Promise<Record<stri
 }
 
 /**
- * Computes active user count per team in a zone.
+ * Computes active user count per team in a dairy unit.
  */
-async function computeActiveUsersPerTeam(zoneId: string): Promise<Record<string, number>> {
+async function computeActiveUsersPerTeam(dairyUnitId: string): Promise<Record<string, number>> {
   const counts: Record<string, number> = { ADMIN: 0, GATE: 0, QC: 0, UNLOADING: 0, BMC: 0 };
 
   const { data, error } = await supabase
     .from('users')
     .select('teams(code)')
-    .eq('zone_id', zoneId)
+    .eq('dairy_unit_id', dairyUnitId)
     .eq('is_active', true);
 
   if (error) {
@@ -129,13 +113,13 @@ async function computeActiveUsersPerTeam(zoneId: string): Promise<Record<string,
 
 // GET /teams — list all 3 teams with owned stages, user counts, and waiting tanker counts
 router.get('/', async (req, res) => {
-  const zoneId = req.profile.zone_id;
+  const dairyUnitId = req.profile.dairy_unit_id;
 
   try {
     const [teams, waitingCounts, activeCounts] = await Promise.all([
       getTeamsFromDb(),
-      computeWaitingTankersPerTeam(zoneId),
-      computeActiveUsersPerTeam(zoneId),
+      computeWaitingTankersPerTeam(dairyUnitId),
+      computeActiveUsersPerTeam(dairyUnitId),
     ]);
 
     const enriched = teams.map((team) => {
@@ -169,7 +153,7 @@ router.patch('/:code/status', requireRole('admin'), async (req, res) => {
     return;
   }
 
-  const zoneId = req.profile.zone_id;
+  const dairyUnitId = req.profile.dairy_unit_id;
   const team = await getTeamByCode(code);
   if (!team) {
     res.status(404).json({ error: `Team ${code} not found` });
@@ -178,7 +162,7 @@ router.patch('/:code/status', requireRole('admin'), async (req, res) => {
 
   // Deactivation blocker: if tankers are currently waiting on this team
   if (!active) {
-    const waitingCounts = await computeWaitingTankersPerTeam(zoneId);
+    const waitingCounts = await computeWaitingTankersPerTeam(dairyUnitId);
     const waiting = waitingCounts[code] || 0;
     if (waiting > 0) {
       res.status(400).json({
@@ -192,7 +176,7 @@ router.patch('/:code/status', requireRole('admin'), async (req, res) => {
   const updated = await updateTeamStatusInDb(code, active);
 
   await writeAuditLog({
-    zone_id: zoneId,
+    dairy_unit_id: dairyUnitId,
     entity_type: 'team',
     entity_id: team.id,
     action: active ? 'activate' : 'deactivate',
@@ -207,8 +191,8 @@ router.patch('/:code/status', requireRole('admin'), async (req, res) => {
   });
 
   const [waitingCounts, activeCounts] = await Promise.all([
-    computeWaitingTankersPerTeam(zoneId),
-    computeActiveUsersPerTeam(zoneId),
+    computeWaitingTankersPerTeam(dairyUnitId),
+    computeActiveUsersPerTeam(dairyUnitId),
   ]);
 
   res.json({

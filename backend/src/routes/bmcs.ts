@@ -14,13 +14,13 @@ function getTodayIso(): string {
   return now.toISOString().split('T')[0];
 }
 
-// GET /bmcs — list BMCs in requester's zone with users_count, last_record_date, and submitted_today
+// GET /bmcs — list BMCs in requester's dairy unit with users_count, last_record_date, and submitted_today
 router.get('/', async (req, res) => {
-  const zoneId = req.profile.zone_id;
+  const dairyUnitId = req.profile.dairy_unit_id;
 
   let unitsQuery = supabase
     .from('bmcs')
-    .select('id, id_token, name, location, bmc_code, is_active, created_at, zone_id, zones(name)')
+    .select('id, id_token, name, location, bmc_code, route_name, team_name, kind, code_no, is_active, created_at, dairy_unit_id, dairy_units(name)')
     .order('name');
   let profilesQuery = supabase
     .from('users')
@@ -31,10 +31,10 @@ router.get('/', async (req, res) => {
     .select('bmc_id, date')
     .order('date', { ascending: false });
 
-  if (zoneId) {
-    unitsQuery = unitsQuery.eq('zone_id', zoneId);
-    profilesQuery = profilesQuery.eq('zone_id', zoneId);
-    entriesQuery = entriesQuery.eq('zone_id', zoneId);
+  if (dairyUnitId) {
+    unitsQuery = unitsQuery.eq('dairy_unit_id', dairyUnitId);
+    profilesQuery = profilesQuery.eq('dairy_unit_id', dairyUnitId);
+    entriesQuery = entriesQuery.eq('dairy_unit_id', dairyUnitId);
   }
 
   const [unitsRes, profilesRes, entriesRes] = await Promise.all([
@@ -73,12 +73,15 @@ router.get('/', async (req, res) => {
 
 // POST /bmcs — admin creates a BMC
 router.post('/', requireRole('admin'), async (req, res) => {
-  if (!req.profile.zone_id) {
-    res.status(403).json({ error: 'Admin account is not assigned to a zone' });
+  if (!req.profile.dairy_unit_id) {
+    res.status(403).json({ error: 'Admin account is not assigned to a dairy unit' });
     return;
   }
 
-  const rawBody = req.body as { name?: string; location?: string; bmc_code?: string };
+  const rawBody = req.body as {
+    name?: string; location?: string; bmc_code?: string;
+    route_name?: string; team_name?: string; kind?: string; code_no?: number | string;
+  };
   const name = typeof rawBody.name === 'string' ? rawBody.name.trim() : '';
   const unitCode = typeof rawBody.bmc_code === 'string' ? rawBody.bmc_code.trim() : '';
   const location = typeof rawBody.location === 'string' && rawBody.location.trim() ? rawBody.location.trim() : null;
@@ -89,7 +92,13 @@ router.post('/', requireRole('admin'), async (req, res) => {
   }
   const { data, error } = await supabase
     .from('bmcs')
-    .insert({ name, location, bmc_code: unitCode, zone_id: req.profile.zone_id })
+    .insert({
+      name, location, bmc_code: unitCode, dairy_unit_id: req.profile.dairy_unit_id,
+      route_name: optText(rawBody.route_name),
+      team_name: optText(rawBody.team_name),
+      kind: rawBody.kind === 'CC' ? 'CC' : 'BMC',
+      code_no: optInt(rawBody.code_no),
+    })
     .select()
     .single();
   if (error) {
@@ -102,7 +111,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
   }
 
   await writeAuditLog({
-    zone_id: req.profile.zone_id,
+    dairy_unit_id: req.profile.dairy_unit_id,
     bmc_id: data.id,
     entity_type: 'bmc',
     entity_id: data.id,
@@ -115,12 +124,21 @@ router.post('/', requireRole('admin'), async (req, res) => {
   res.status(201).json(data);
 });
 
+function optText(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+function optInt(v: unknown): number | null {
+  const n = Number(v);
+  return v === null || v === undefined || v === '' || !Number.isInteger(n) ? null : n;
+}
+
 // PATCH /bmcs/:id — admin updates BMC details (name, bmc_code, location) or active status. :id is an id or id_token
 router.patch('/:id', requireRole('admin'), async (req, res) => {
   const lookup = idLookup(req.params.id);
   if (!lookup) { res.status(404).json({ error: 'BMC not found' }); return; }
   const rawBody = req.body as {
     name?: string; bmc_code?: string; location?: string | null; is_active?: boolean;
+    route_name?: string | null; team_name?: string | null; kind?: string; code_no?: number | string | null;
   };
 
   const patch: Record<string, unknown> = {};
@@ -137,6 +155,10 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
   if (rawBody.location !== undefined) {
     patch.location = typeof rawBody.location === 'string' && rawBody.location.trim() ? rawBody.location.trim() : null;
   }
+  if (rawBody.route_name !== undefined) patch.route_name = optText(rawBody.route_name);
+  if (rawBody.team_name !== undefined) patch.team_name = optText(rawBody.team_name);
+  if (rawBody.kind !== undefined) patch.kind = rawBody.kind === 'CC' ? 'CC' : 'BMC';
+  if (rawBody.code_no !== undefined) patch.code_no = optInt(rawBody.code_no);
   if (typeof rawBody.is_active === 'boolean') {
     patch.is_active = rawBody.is_active;
   }
@@ -150,7 +172,7 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
     .from('bmcs')
     .update(patch)
     .eq(lookup.column, lookup.value)
-    .eq('zone_id', req.profile.zone_id)
+    .eq('dairy_unit_id', req.profile.dairy_unit_id)
     .select()
     .single();
   if (error) {
@@ -163,7 +185,7 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
   }
 
   await writeAuditLog({
-    zone_id: req.profile.zone_id,
+    dairy_unit_id: req.profile.dairy_unit_id,
     bmc_id: data.id,
     entity_type: 'bmc',
     entity_id: data.id,

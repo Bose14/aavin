@@ -44,7 +44,7 @@ function loadTsModule(filePath) {
     if (id.includes('AuthContext')) {
       return {
         useAuth: () => ({
-          profile: { role: 'admin', zone_id: 'zone-1' },
+          profile: { role: 'admin', dairy_unit_id: 'unit-1' },
           signOut: () => {},
         }),
       };

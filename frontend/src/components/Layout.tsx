@@ -197,9 +197,9 @@ export default function Layout({ children }: { children: ReactNode }) {
                 </span>
               )}
             </div>
-            {unitLabel && <span className="user-zone">{unitLabel}</span>}
-            {profile?.zones?.name && (
-              <span className="user-zone">{profile.zones.name} Zone</span>
+            {unitLabel && <span className="user-dairy-unit">{unitLabel}</span>}
+            {profile?.dairy_units?.name && (
+              <span className="user-dairy-unit">{profile.dairy_units.name} Dairy Unit</span>
             )}
           </div>
           <button onClick={handleSignOut} className="btn-signout">{t('signOut')}</button>

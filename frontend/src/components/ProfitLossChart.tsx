@@ -429,7 +429,7 @@ export function UnitProfitLossChart({
   return (
     <ChartCardShell
       title={title}
-      subtitle={`Per-unit net margin comparison across zone at ₹${sellingRate}/L`}
+      subtitle={`Per-unit net margin comparison across dairy unit at ₹${sellingRate}/L`}
       badge={data.length > 0 ? <PeriodSummaryBadge profit={totalProfit} /> : undefined}
       isEmpty={data.length === 0}
       emptyMessage="No unit financial records for this period."
@@ -437,8 +437,8 @@ export function UnitProfitLossChart({
       summaryStrip={
         data.length > 0 ? (
           <div className="chart-kpi-strip">
-            <span>Zone Revenue: <strong>{formatINR(totalRevenue)}</strong></span>
-            <span>Zone Cost: <strong>{formatINR(totalCost)}</strong></span>
+            <span>Dairy Unit Revenue: <strong>{formatINR(totalRevenue)}</strong></span>
+            <span>Dairy Unit Cost: <strong>{formatINR(totalCost)}</strong></span>
           </div>
         ) : undefined
       }

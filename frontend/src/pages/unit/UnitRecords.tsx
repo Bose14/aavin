@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
-import { useZoneSettings } from '../../hooks/useZoneSettings';
+import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
 import {
   formatDateDDMMYYYY,
   formatDateTimeDDMMYYYY,
@@ -22,7 +22,7 @@ export default function UnitRecords() {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { settings } = useZoneSettings();
+  const { settings } = useDairyUnitSettings();
 
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

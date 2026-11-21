@@ -9,10 +9,10 @@ import {
 import {
   getSellingRateHistory,
   getZoneSettings,
-  getTankerStagesForTrips,
   isMissingSchemaError,
 } from '../lib/settingsStore';
-import { runResilientTankerQuery, enrichTankerRow } from './tanker';
+import { enrichTankerRow } from './tanker';
+import { fetchTrips } from '../lib/tripStore';
 import { STAGE_COLORS } from '../lib/tankerJourney';
 import type { StageRecordItem } from '../lib/tankerJourney';
 
@@ -96,7 +96,7 @@ interface AnalyticsMilkRow {
 }
 
 async function fetchMilkRows(
-  zoneId: string,
+  dairyUnitId: string,
   from: string,
   to: string,
   role: string,
@@ -107,7 +107,7 @@ async function fetchMilkRows(
     let q = supabase
       .from('milk_entries')
       .select(sel)
-      .eq('zone_id', zoneId)
+      .eq('dairy_unit_id', dairyUnitId)
       .gte('date', from)
       .lte('date', to)
       .order('date', { ascending: true });
@@ -127,38 +127,37 @@ async function fetchMilkRows(
 // GET /analytics/summary?period=week|month|year|custom&from=&to=&bmc_id=
 router.get('/summary', async (req, res) => {
   const { period = 'week', bmc_id, from, to } = req.query as Record<string, string>;
-  const zoneId = req.profile.zone_id;
+  const dairyUnitId = req.profile.dairy_unit_id;
   const { todayISO, fromDate, toDate, prevFromDate, prevToDate } = resolveDateRange(period, from, to);
 
   const [settings, rateHistory, currRes, prevRes, todayMilkRes, todayTankerRes, periodTankerRes] = await Promise.all([
-    getZoneSettings(zoneId),
-    getSellingRateHistory(zoneId),
-    fetchMilkRows(zoneId, fromDate, toDate, req.profile.role, req.profile.bmc_id, bmc_id),
-    fetchMilkRows(zoneId, prevFromDate, prevToDate, req.profile.role, req.profile.bmc_id, bmc_id),
-    fetchMilkRows(zoneId, todayISO, todayISO, req.profile.role, req.profile.bmc_id, bmc_id),
+    getZoneSettings(dairyUnitId),
+    getSellingRateHistory(dairyUnitId),
+    fetchMilkRows(dairyUnitId, fromDate, toDate, req.profile.role, req.profile.bmc_id, bmc_id),
+    fetchMilkRows(dairyUnitId, prevFromDate, prevToDate, req.profile.role, req.profile.bmc_id, bmc_id),
+    fetchMilkRows(dairyUnitId, todayISO, todayISO, req.profile.role, req.profile.bmc_id, bmc_id),
     (async () => {
-      let tq = supabase.from('tanker_dispatches').select('bmc_id, quantity_dispatched').eq('zone_id', zoneId).eq('date', todayISO);
+      let tq = supabase
+        .from('trip_loadings')
+        .select('bmc_id, quantity_litres, tanker_trips!inner(trip_date, dairy_unit_id, status)')
+        .eq('tanker_trips.dairy_unit_id', dairyUnitId)
+        .neq('tanker_trips.status', 'cancelled')
+        .eq('tanker_trips.trip_date', todayISO);
       if (req.profile.role === 'bmc') tq = tq.eq('bmc_id', req.profile.bmc_id!);
       else if (bmc_id) tq = tq.eq('bmc_id', bmc_id);
       return tq;
     })(),
     (async () => {
-      const runT = (sel: string) => {
-        let tq = supabase
-          .from('tanker_dispatches')
-          .select(sel)
-          .eq('zone_id', zoneId)
-          .gte('date', fromDate)
-          .lte('date', toDate);
-        if (req.profile.role === 'bmc') tq = tq.eq('bmc_id', req.profile.bmc_id!);
-        else if (bmc_id) tq = tq.eq('bmc_id', bmc_id);
-        return tq;
-      };
-      let resT = await runT('quantity_dispatched, received_qty');
-      if (resT.error && isMissingSchemaError(resT.error)) {
-        resT = await runT('quantity_dispatched');
+      const bmcFilter = req.profile.role === 'bmc' ? req.profile.bmc_id : bmc_id;
+      try {
+        const { rows } = await fetchTrips({ dairyUnitId, from: fromDate, to: toDate, bmcId: bmcFilter });
+        return {
+          error: null,
+          data: rows.map((r) => ({ quantity_dispatched: r.quantity_dispatched, received_qty: r.received_qty })),
+        };
+      } catch (e) {
+        return { error: e as Error, data: [] as Array<{ quantity_dispatched: number; received_qty: number | null }> };
       }
-      return resT;
     })(),
   ]);
 
@@ -253,7 +252,7 @@ router.get('/summary', async (req, res) => {
     const unitsRes = await supabase
       .from('bmcs')
       .select('id, name, bmc_code, is_active')
-      .eq('zone_id', zoneId)
+      .eq('dairy_unit_id', dairyUnitId)
       .eq('is_active', true);
 
     const activeUnits = unitsRes.data ?? [];
@@ -323,13 +322,13 @@ router.get('/summary', async (req, res) => {
 // Returns every calendar day in range with stacked AM/PM quantities & non-interpolated gaps
 router.get('/trend', async (req, res) => {
   const { period = 'week', bmc_id, from, to } = req.query as Record<string, string>;
-  const zoneId = req.profile.zone_id;
+  const dairyUnitId = req.profile.dairy_unit_id;
   const { fromDate, toDate } = resolveDateRange(period, from, to);
 
   const [settings, rateHistory, milkRes] = await Promise.all([
-    getZoneSettings(zoneId),
-    getSellingRateHistory(zoneId),
-    fetchMilkRows(zoneId, fromDate, toDate, req.profile.role, req.profile.bmc_id, bmc_id),
+    getZoneSettings(dairyUnitId),
+    getSellingRateHistory(dairyUnitId),
+    fetchMilkRows(dairyUnitId, fromDate, toDate, req.profile.role, req.profile.bmc_id, bmc_id),
   ]);
 
   if (milkRes.error) { res.status(500).json({ error: milkRes.error }); return; }
@@ -419,14 +418,14 @@ router.get('/bmcs', async (req, res) => {
   }
 
   const { from, to, period = 'week' } = req.query as Record<string, string>;
-  const zoneId = req.profile.zone_id;
+  const dairyUnitId = req.profile.dairy_unit_id;
   const resolved = resolveDateRange(from && to ? 'custom' : period, from, to);
 
   const [settings, rateHistory, unitsRes, milkRes] = await Promise.all([
-    getZoneSettings(zoneId),
-    getSellingRateHistory(zoneId),
-    supabase.from('bmcs').select('id, name, bmc_code, location, is_active').eq('zone_id', zoneId),
-    fetchMilkRows(zoneId, resolved.fromDate, resolved.toDate, 'admin', null),
+    getZoneSettings(dairyUnitId),
+    getSellingRateHistory(dairyUnitId),
+    supabase.from('bmcs').select('id, name, bmc_code, location, is_active').eq('dairy_unit_id', dairyUnitId),
+    fetchMilkRows(dairyUnitId, resolved.fromDate, resolved.toDate, 'admin', null),
   ]);
 
   if (milkRes.error) { res.status(500).json({ error: milkRes.error }); return; }
@@ -537,8 +536,8 @@ router.get('/bmcs', async (req, res) => {
 router.get('/process', async (req, res) => {
   try {
     const { period = 'week', bmc_id, from, to } = req.query as Record<string, string>;
-    const zoneId = req.profile.zone_id;
-    const settings = await getZoneSettings(zoneId);
+    const dairyUnitId = req.profile.dairy_unit_id;
+    const settings = await getZoneSettings(dairyUnitId);
 
     // Resolve date range
     let fromDate: string;
@@ -554,33 +553,17 @@ router.get('/process', async (req, res) => {
       toDate = resolved.toDate;
     }
 
-    const [tankersResult, unitsResult] = await Promise.all([
-      runResilientTankerQuery((selectStr) => {
-        let q = supabase
-          .from('tanker_dispatches')
-          .select(selectStr)
-          .eq('zone_id', zoneId)
-          .order('date', { ascending: false })
-          .order('created_at', { ascending: false });
-
-        if (req.profile.role === 'bmc') {
-          q = q.eq('bmc_id', req.profile.bmc_id!);
-        } else if (bmc_id) {
-          q = q.eq('bmc_id', bmc_id);
-        }
-        if (fromDate) q = q.gte('date', fromDate);
-        if (toDate) q = q.lte('date', toDate);
-        return q;
-      }),
+    const bmcFilter = req.profile.role === 'bmc' ? req.profile.bmc_id : bmc_id;
+    const [tripsResult, unitsResult] = await Promise.all([
+      fetchTrips({ dairyUnitId, from: fromDate, to: toDate, bmcId: bmcFilter }),
       supabase
         .from('bmcs')
         .select('id, name, bmc_code, location')
-        .eq('zone_id', zoneId),
+        .eq('dairy_unit_id', dairyUnitId),
     ]);
 
-    const rows = (tankersResult.data ?? []) as Array<Record<string, unknown>>;
-    const tripIds = rows.map((r) => String(r.id));
-    const stageMap = await getTankerStagesForTrips(tripIds);
+    const rows = tripsResult.rows as Array<Record<string, unknown>>;
+    const stageMap = tripsResult.stages;
 
     const unitMap = new Map<string, { id: string; name: string; bmc_code: string; location: string }>();
     for (const u of (unitsResult.data ?? [])) {

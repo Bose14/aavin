@@ -3,7 +3,7 @@ import { supabase } from '../supabase';
 import type { UserProfile } from '../types/express';
 
 const USER_COLUMNS =
-  'id, id_token, auth_user_id, zone_id, team_id, bmc_id, full_name, email, phone, shift, sub_role, is_active, must_change_password, teams(code, active)';
+  'id, id_token, auth_user_id, dairy_unit_id, team_id, bmc_id, full_name, email, phone, shift, sub_role, is_active, must_change_password, teams(code, active)';
 
 const ROLE_BY_TEAM: Record<string, UserProfile['role']> = {
   ADMIN: 'admin',
@@ -67,7 +67,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
 
   if (!row) {
     console.warn('[authMiddleware] No users row for auth user', user.id, user.email);
-    res.status(403).json({ error: 'Your account is not set up. Contact your zone administrator.' });
+    res.status(403).json({ error: 'Your account is not set up. Contact your dairy unit administrator.' });
     return;
   }
 
@@ -75,17 +75,17 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     teams: { code: UserProfile['team_code']; active: boolean } | null;
   };
   if (!team) {
-    res.status(403).json({ error: 'Your account has no team assigned. Contact your zone administrator.' });
+    res.status(403).json({ error: 'Your account has no team assigned. Contact your dairy unit administrator.' });
     return;
   }
 
   if (rest.is_active === false) {
-    res.status(403).json({ error: 'Your account has been deactivated. Contact your zone administrator.' });
+    res.status(403).json({ error: 'Your account has been deactivated. Contact your dairy unit administrator.' });
     return;
   }
 
   if (team.active === false && team.code !== 'ADMIN') {
-    res.status(403).json({ error: 'Your team is currently deactivated. Contact your zone administrator.' });
+    res.status(403).json({ error: 'Your team is currently deactivated. Contact your dairy unit administrator.' });
     return;
   }
 
@@ -99,7 +99,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       .eq('id', profile.bmc_id)
       .maybeSingle();
     if (bmcRow && bmcRow.is_active === false) {
-      res.status(403).json({ error: 'Your BMC is currently deactivated. Contact your zone administrator.' });
+      res.status(403).json({ error: 'Your BMC is currently deactivated. Contact your dairy unit administrator.' });
       return;
     }
   }

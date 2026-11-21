@@ -1,4 +1,4 @@
-import type { StageTimeLimits, ZoneSettings } from './format';
+import type { StageTimeLimits, DairyUnitSettings } from './format';
 import { DEFAULT_STAGE_TIME_LIMITS } from './format';
 
 export type TankerStageKey =
@@ -231,7 +231,7 @@ export function calculateTankerMetrics(params: {
 
 export function deriveTankerJourneyState(
   trip: TankerTripInput,
-  settings?: Partial<ZoneSettings>,
+  settings?: Partial<DairyUnitSettings>,
   nowMs: number = Date.now(),
 ): DerivedTankerJourney {
   const stageLimits: StageTimeLimits = {

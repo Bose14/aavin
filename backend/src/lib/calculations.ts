@@ -11,7 +11,7 @@ export interface MilkMetricInput {
   selling_rate_applied?: number | string | null;
 }
 
-/** Calculate per-litre procurement rate from Fat %, SNF % and configurable zone rate chart. */
+/** Calculate per-litre procurement rate from Fat %, SNF % and configurable dairy unit rate chart. */
 export function calculateRateFromChart(
   fatPct: number,
   snfPct: number,

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as XLSX from 'xlsx';
 import { supabase } from '../supabase';
+import { fetchTrip, fetchTrips } from '../lib/tripStore';
 import { authMiddleware } from '../middleware/auth';
 import {
   calculateEntryFinancials,
@@ -21,13 +22,13 @@ function sanitizeFilenamePart(raw: string): string {
   return raw.replace(/[^A-Za-z0-9_-]/g, '-').replace(/-+/g, '-');
 }
 
-async function resolveFilePrefix(zoneId: string, unitId?: string | null): Promise<string> {
+async function resolveFilePrefix(dairyUnitId: string, unitId?: string | null): Promise<string> {
   if (unitId) {
     const { data } = await supabase.from('bmcs').select('bmc_code').eq('id', unitId).maybeSingle();
     if (data?.bmc_code) return sanitizeFilenamePart(String(data.bmc_code).toUpperCase());
   }
-  const { data: z } = await supabase.from('zones').select('name').eq('id', zoneId).maybeSingle();
-  return sanitizeFilenamePart((z?.name || 'ZONE').toUpperCase());
+  const { data: z } = await supabase.from('dairy_units').select('name').eq('id', dairyUnitId).maybeSingle();
+  return sanitizeFilenamePart((z?.name || 'DAIRY_UNIT').toUpperCase());
 }
 
 function buildRangeTag(from?: string, to?: string): string {
@@ -80,21 +81,21 @@ router.get('/milk/template', async (_req, res) => {
 // GET /export/milk/pdf?from=&to=&bmc_id=&shift=&quality=
 router.get('/milk/pdf', async (req, res) => {
   const { from, to, bmc_id, shift, quality } = req.query as Record<string, string>;
-  const zoneId = req.profile.zone_id;
+  const dairyUnitId = req.profile.dairy_unit_id;
   const effectiveUnitId = req.profile.role === 'bmc' ? req.profile.bmc_id : bmc_id;
 
-  const [settings, rateHistory, zoneRes, prefix] = await Promise.all([
-    getZoneSettings(zoneId),
-    getSellingRateHistory(zoneId),
-    supabase.from('zones').select('name').eq('id', zoneId).maybeSingle(),
-    resolveFilePrefix(zoneId, effectiveUnitId),
+  const [settings, rateHistory, dairyUnitRes, prefix] = await Promise.all([
+    getZoneSettings(dairyUnitId),
+    getSellingRateHistory(dairyUnitId),
+    supabase.from('dairy_units').select('name').eq('id', dairyUnitId).maybeSingle(),
+    resolveFilePrefix(dairyUnitId, effectiveUnitId),
   ]);
 
   const runQ = (sel: string) => {
     let q = supabase
       .from('milk_entries')
       .select(sel)
-      .eq('zone_id', zoneId)
+      .eq('dairy_unit_id', dairyUnitId)
       .order('date', { ascending: true })
       .order('shift', { ascending: true });
     if (effectiveUnitId) q = q.eq('bmc_id', effectiveUnitId);
@@ -155,7 +156,7 @@ router.get('/milk/pdf', async (req, res) => {
   });
 
   const pdfBuffer = buildDailyPdfReport({
-    title: `AAVIN Dairy Daily Milk Report - ${zoneRes.data?.name || 'Zone'}`,
+    title: `AAVIN Dairy Daily Milk Report - ${dairyUnitRes.data?.name || 'Dairy Unit'}`,
     subtitle: `Period: ${buildRangeTag(from, to).replace(/_/g, ' ')} | Generated: ${formatDateDDMMYYYY(new Date().toISOString().slice(0, 10))}`,
     summaryLines: [
       `Entries: ${pdfRows.length} | Gross Qty: ${totalQty.toFixed(1)} L | Rejected: ${totalRej.toFixed(1)} L | Net Accepted: ${totalNet.toFixed(1)} L`,
@@ -173,14 +174,14 @@ router.get('/milk/pdf', async (req, res) => {
 // GET /export/milk?from=&to=&format=csv|xlsx&bmc_id=&shift=&quality=&search=
 router.get('/milk', async (req, res) => {
   const { from, to, format = 'xlsx', bmc_id, shift, quality, search } = req.query as Record<string, string>;
-  const zoneId = req.profile.zone_id;
+  const dairyUnitId = req.profile.dairy_unit_id;
   const effectiveUnitId = req.profile.role === 'bmc' ? req.profile.bmc_id : bmc_id;
 
   const [settings, rateHistory, prefix, profilesRes] = await Promise.all([
-    getZoneSettings(zoneId),
-    getSellingRateHistory(zoneId),
-    resolveFilePrefix(zoneId, effectiveUnitId),
-    supabase.from('users').select('auth_user_id, full_name').eq('zone_id', zoneId),
+    getZoneSettings(dairyUnitId),
+    getSellingRateHistory(dairyUnitId),
+    resolveFilePrefix(dairyUnitId, effectiveUnitId),
+    supabase.from('users').select('auth_user_id, full_name').eq('dairy_unit_id', dairyUnitId),
   ]);
 
   const nameMap = new Map<string, string>();
@@ -192,7 +193,7 @@ router.get('/milk', async (req, res) => {
     let q = supabase
       .from('milk_entries')
       .select(sel)
-      .eq('zone_id', zoneId)
+      .eq('dairy_unit_id', dairyUnitId)
       .order('date', { ascending: true })
       .order('shift', { ascending: true });
     if (effectiveUnitId) q = q.eq('bmc_id', effectiveUnitId);
@@ -290,33 +291,20 @@ router.get('/milk', async (req, res) => {
 // GET /export/tanker?from=&to=&format=csv|xlsx&bmc_id=&status=&stage=&waiting_team=&delayed_only=&search=
 router.get('/tanker', async (req, res) => {
   const { from, to, format = 'xlsx', bmc_id, status, stage, waiting_team, delayed_only, search } = req.query as Record<string, string>;
-  const zoneId = req.profile.zone_id;
+  const dairyUnitId = req.profile.dairy_unit_id;
   const effectiveUnitId = req.profile.role === 'bmc' ? req.profile.bmc_id : bmc_id;
-  const settings = await getZoneSettings(zoneId);
+  const settings = await getZoneSettings(dairyUnitId);
 
-  const runT = (sel: string) => {
-    let q = supabase
-      .from('tanker_dispatches')
-      .select(sel)
-      .eq('zone_id', zoneId)
-      .order('date', { ascending: true });
-    if (effectiveUnitId) q = q.eq('bmc_id', effectiveUnitId);
-    if (from) q = q.gte('date', from);
-    if (to) q = q.lte('date', to);
-    return q;
-  };
-
-  let resT = await runT('id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct, received_qty, receipt_time, received_fat_pct, received_snf_pct, gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data, bmcs(name, bmc_code)');
-  if (resT.error && isMissingSchemaError(resT.error)) {
-    resT = await runT('id, date, tanker_number, quantity_dispatched, destination, bmcs(name, bmc_code)');
+  let fetched;
+  try {
+    fetched = await fetchTrips({ dairyUnitId, from, to, bmcId: effectiveUnitId });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+    return;
   }
-  if (resT.error) { res.status(500).json({ error: resT.error.message }); return; }
-
-  const rawRows = (resT.data ?? []) as unknown as Array<Record<string, unknown>>;
-  const tripIds = rawRows.map((r) => String(r.id));
-  const { getTankerStagesForTrips } = await import('../lib/settingsStore');
+  const rawRows = [...fetched.rows].reverse() as Array<Record<string, unknown>>;
   const { deriveTankerJourneyState } = await import('../lib/tankerJourney');
-  const stageMap = await getTankerStagesForTrips(tripIds);
+  const stageMap = fetched.stages;
 
   let enrichedList: any[] = rawRows.map((r) => {
     const id = String(r.id);
@@ -421,40 +409,27 @@ router.get('/tanker', async (req, res) => {
 // GET /export/tanker/daily-report — Official Aavin IDMS Daily Milk & Tanker Reconciliation Report
 router.get('/tanker/daily-report', async (req, res) => {
   const { date, from, to, format = 'xlsx', bmc_id } = req.query as Record<string, string>;
-  const zoneId = req.profile.zone_id;
+  const dairyUnitId = req.profile.dairy_unit_id;
   const effectiveUnitId = req.profile.role === 'bmc' ? req.profile.bmc_id : bmc_id;
-  const settings = await getZoneSettings(zoneId);
+  const settings = await getZoneSettings(dairyUnitId);
 
   const targetDate = date || (from === to && from ? from : undefined);
 
-  const runT = (sel: string) => {
-    let q = supabase
-      .from('tanker_dispatches')
-      .select(sel)
-      .eq('zone_id', zoneId)
-      .order('date', { ascending: true })
-      .order('created_at', { ascending: true });
-    if (effectiveUnitId) q = q.eq('bmc_id', effectiveUnitId);
-    if (targetDate) {
-      q = q.eq('date', targetDate);
-    } else {
-      if (from) q = q.gte('date', from);
-      if (to) q = q.lte('date', to);
-    }
-    return q;
-  };
-
-  let resT = await runT('id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct, received_qty, receipt_time, received_fat_pct, received_snf_pct, gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data, bmcs(name, bmc_code)');
-  if (resT.error && isMissingSchemaError(resT.error)) {
-    resT = await runT('id, date, tanker_number, quantity_dispatched, destination, bmcs(name, bmc_code)');
+  let fetched;
+  try {
+    fetched = await fetchTrips({
+      dairyUnitId,
+      from: targetDate ?? from,
+      to: targetDate ?? to,
+      bmcId: effectiveUnitId,
+    });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+    return;
   }
-  if (resT.error) { res.status(500).json({ error: resT.error.message }); return; }
-
-  const rawRows = (resT.data ?? []) as unknown as Array<Record<string, unknown>>;
-  const tripIds = rawRows.map((r) => String(r.id));
-  const { getTankerStagesForTrips } = await import('../lib/settingsStore');
+  const rawRows = [...fetched.rows].reverse() as Array<Record<string, unknown>>;
   const { deriveTankerJourneyState } = await import('../lib/tankerJourney');
-  const stageMap = await getTankerStagesForTrips(tripIds);
+  const stageMap = fetched.stages;
 
   let totalDispatchedL = 0;
   let totalReceivedL = 0;
@@ -634,43 +609,26 @@ router.get('/tanker/daily-report', async (req, res) => {
 // GET /export/tanker/:id — Export complete single tanker dossier & compartment log
 router.get('/tanker/:id', async (req, res) => {
   const { id } = req.params;
-  const zoneId = req.profile.zone_id;
-  const settings = await getZoneSettings(zoneId);
+  const dairyUnitId = req.profile.dairy_unit_id;
+  const settings = await getZoneSettings(dairyUnitId);
 
-  let resT = await supabase
-    .from('tanker_dispatches')
-    .select('id, date, tanker_number, driver_name, seal_number, dispatch_time, quantity_dispatched, destination, dispatch_fat_pct, dispatch_snf_pct, received_qty, receipt_time, received_fat_pct, received_snf_pct, gross_weight_kg, tare_weight_kg, net_weight_kg, qc_status, trip_status, stage_data, bmcs(name, bmc_code)')
-    .eq('id', id)
-    .maybeSingle();
-
-  if (resT.error) {
-    resT = await supabase
-      .from('tanker_dispatches')
-      .select('*, bmcs(name, bmc_code)')
-      .eq('id', id)
-      .maybeSingle();
+  let found;
+  try {
+    found = await fetchTrip(dairyUnitId, String(id));
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+    return;
   }
-
-  if (resT.error) {
-    resT = await supabase
-      .from('tanker_dispatches')
-      .select('id, date, tanker_number, quantity_dispatched, destination, bmcs(name, bmc_code)')
-      .eq('id', id)
-      .maybeSingle();
-  }
-
-  if (resT.error || !resT.data) {
+  if (!found) {
     res.status(404).json({ error: 'Tanker record not found' });
     return;
   }
 
-  const r = resT.data as Record<string, unknown>;
-  const { getTankerStagesForTrips, getTankerDispatchMetadata } = await import('../lib/settingsStore');
+  const r = found.row as Record<string, unknown>;
   const { deriveTankerJourneyState } = await import('../lib/tankerJourney');
-  const stageMap = await getTankerStagesForTrips([id]);
-  const stages = stageMap[id] ?? [];
+  const stages = found.stages;
   const stageData = (r.stage_data as Record<string, any>) || {};
-  const fbMeta = getTankerDispatchMetadata(id) || (r.tanker_number ? getTankerDispatchMetadata(String(r.tanker_number)) : null);
+  const fbMeta = null as any;
 
   const drvName = (r.driver_name as string) || stageData.driver_name || fbMeta?.driver_name || null;
   const sealNo = (r.seal_number as string) || stageData.seal_number || fbMeta?.seal_number || null;
