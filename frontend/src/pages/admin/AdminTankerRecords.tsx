@@ -21,6 +21,7 @@ interface Unit {
 }
 
 interface StatsResponse {
+  team_user_counts?: Record<string, number>;
   chips: Record<string, { count: number; delayedCount: number; label: string; color: string }>;
   tabs: { waiting: number; processed: number; rejected: number; all: number };
   kpis: {
@@ -177,7 +178,6 @@ export default function AdminTankerRecords() {
     } catch {}
   };
 
-  const teamsLoadedRef = useRef(false);
   const unitsLoadedRef = useRef(false);
 
   // BMC list is only needed by the BMC filter: fetch it when the filter is first used
@@ -214,7 +214,7 @@ export default function AdminTankerRecords() {
         if (toDate) params.to = toDate;
         if (searchQuery.trim()) params.search = searchQuery.trim();
 
-        const [tResSettled, sResSettled, teamsResSettled] = await Promise.allSettled([
+        const [tResSettled, sResSettled] = await Promise.allSettled([
           api.get<any[]>('/tanker', { params }),
           api.get<StatsResponse>('/tanker/stats', {
             params: {
@@ -223,8 +223,6 @@ export default function AdminTankerRecords() {
               bmc_id: selectedUnitId || undefined,
             },
           }),
-          // Team counts (shown in the stage strip) rarely change: load once, not on every auto-refresh
-          silent && teamsLoadedRef.current ? Promise.resolve(null) : api.get<any[]>('/teams'),
         ]);
 
         if (tResSettled.status === 'fulfilled') {
@@ -242,18 +240,14 @@ export default function AdminTankerRecords() {
           setError(reason);
         }
 
-        if (teamsResSettled.status === 'fulfilled' && teamsResSettled.value) {
-          teamsLoadedRef.current = true;
-          const counts: Record<string, number> = {};
-          for (const tm of (teamsResSettled.value.data || [])) {
-            counts[tm.code.toUpperCase()] = tm.active_user_count || 0;
-            counts[tm.code.toLowerCase()] = tm.active_user_count || 0;
-          }
-          setTeamUserCounts(counts);
-        }
-
         if (sResSettled.status === 'fulfilled') {
           setStats(sResSettled.value.data);
+          const counts: Record<string, number> = {};
+          for (const [code, n] of Object.entries(sResSettled.value.data?.team_user_counts || {})) {
+            counts[code.toUpperCase()] = Number(n) || 0;
+            counts[code.toLowerCase()] = Number(n) || 0;
+          }
+          setTeamUserCounts(counts);
         } else if (tResSettled.status === 'fulfilled') {
           // Derive fallback stats locally from records if stats endpoint fails
           const list = tResSettled.value.data || [];

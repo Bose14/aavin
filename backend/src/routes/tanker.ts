@@ -37,6 +37,7 @@ import {
 } from '../lib/tripStore';
 import type { LegacyTripRow } from '../lib/tripStore';
 import { supabase } from '../supabase';
+import { computeActiveUsersPerTeam } from '../lib/teamCounts';
 import { syncTripAcknowledgements } from '../lib/ack';
 
 const router = Router();
@@ -313,7 +314,10 @@ router.get('/stats', async (req, res) => {
   try {
     const { from, to, bmc_id } = req.query as Record<string, string>;
     const dairyUnitId = req.profile.dairy_unit_id;
-    const settings = await getZoneSettings(dairyUnitId);
+    const [settings, teamUserCounts] = await Promise.all([
+      getZoneSettings(dairyUnitId),
+      computeActiveUsersPerTeam(dairyUnitId),
+    ]);
 
     const { rows, stages: stageMap } = await fetchTrips({
       dairyUnitId,
@@ -404,6 +408,7 @@ router.get('/stats', async (req, res) => {
 
     res.json({
       chips,
+      team_user_counts: teamUserCounts,
       tabs: {
         waiting: waitingCount,
         processed: processedCount,
