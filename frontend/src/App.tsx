@@ -7,10 +7,8 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import ChangePassword from './pages/ChangePassword';
 
-import SuperAdminDashboard from './pages/superadmin/SuperAdminDashboard';
-
 import AdminDashboard from './pages/admin/AdminDashboard';
-import AdminUnits from './pages/admin/AdminUnits';
+import AdminBmcs from './pages/admin/AdminBmcs';
 import AdminTeams from './pages/admin/AdminTeams';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminMilkRecords from './pages/admin/AdminMilkRecords';
@@ -44,37 +42,34 @@ export default function App() {
               }
             />
 
-            {/* Super Admin portal */}
-            <Route path="/superadmin" element={<ProtectedRoute role="superadmin"><Layout><SuperAdminDashboard /></Layout></ProtectedRoute>} />
-
             {/* Admin portal */}
             <Route path="/admin" element={<Navigate to="/admin/tanker" replace />} />
             <Route path="/admin/tanker" element={<ProtectedRoute role="admin"><Layout><AdminTankerRecords /></Layout></ProtectedRoute>} />
-            <Route path="/admin/units" element={<ProtectedRoute role="admin"><Layout><AdminUnits /></Layout></ProtectedRoute>} />
+            <Route path="/admin/bmcs" element={<ProtectedRoute role="admin"><Layout><AdminBmcs /></Layout></ProtectedRoute>} />
             <Route path="/admin/teams" element={<ProtectedRoute role="admin"><Layout><AdminTeams /></Layout></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute role="admin"><Layout><AdminUsers /></Layout></ProtectedRoute>} />
             <Route path="/admin/analytics" element={<ProtectedRoute role="admin"><Layout><AdminDashboard /></Layout></ProtectedRoute>} />
             <Route path="/admin/milk" element={<ProtectedRoute role="admin"><Layout><AdminMilkRecords /></Layout></ProtectedRoute>} />
             <Route path="/admin/settings" element={<ProtectedRoute role="admin"><Layout><AdminSettings /></Layout></ProtectedRoute>} />
 
-            {/* Unit portal */}
-            <Route path="/unit" element={<Navigate to="/unit/tanker" replace />} />
-            <Route path="/unit/tanker" element={<ProtectedRoute role="unit"><Layout><TankerDispatch /></Layout></ProtectedRoute>} />
-            <Route path="/unit/analytics" element={<ProtectedRoute role="unit"><Layout><UnitDashboard /></Layout></ProtectedRoute>} />
-            <Route path="/unit/milk-entry" element={<ProtectedRoute role="unit"><Layout><MilkEntry /></Layout></ProtectedRoute>} />
-            <Route path="/unit/records" element={<ProtectedRoute role="unit"><Layout><UnitRecords /></Layout></ProtectedRoute>} />
+            {/* BMC portal */}
+            <Route path="/bmc" element={<Navigate to="/bmc/tanker" replace />} />
+            <Route path="/bmc/tanker" element={<ProtectedRoute role="bmc"><Layout><TankerDispatch /></Layout></ProtectedRoute>} />
+            <Route path="/bmc/analytics" element={<ProtectedRoute role="bmc"><Layout><UnitDashboard /></Layout></ProtectedRoute>} />
+            <Route path="/bmc/milk-entry" element={<ProtectedRoute role="bmc"><Layout><MilkEntry /></Layout></ProtectedRoute>} />
+            <Route path="/bmc/records" element={<ProtectedRoute role="bmc"><Layout><UnitRecords /></Layout></ProtectedRoute>} />
 
             {/* Plant Team Portals */}
-            <Route path="/gate" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><GateOperations activeView="receipt" /></Layout></ProtectedRoute>} />
-            <Route path="/gate/gross-weight" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><GateOperations activeView="gross" /></Layout></ProtectedRoute>} />
-            <Route path="/gate/tare-weight" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><GateOperations activeView="tare" /></Layout></ProtectedRoute>} />
-            <Route path="/gate/tanker-out" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><GateOperations activeView="exit" /></Layout></ProtectedRoute>} />
-            <Route path="/gate/records" element={<ProtectedRoute role={['gate', 'admin', 'superadmin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />
-            <Route path="/qc" element={<ProtectedRoute role={['qc', 'admin', 'superadmin']}><Layout><QCLab activeView="qc" /></Layout></ProtectedRoute>} />
-            <Route path="/qc/cip" element={<ProtectedRoute role={['qc', 'admin', 'superadmin']}><Layout><QCLab activeView="cip" /></Layout></ProtectedRoute>} />
-            <Route path="/qc/records" element={<ProtectedRoute role={['qc', 'admin', 'superadmin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />
-            <Route path="/unloading" element={<ProtectedRoute role={['unloading', 'admin', 'superadmin']}><Layout><UnloadingBay /></Layout></ProtectedRoute>} />
-            <Route path="/unloading/records" element={<ProtectedRoute role={['unloading', 'admin', 'superadmin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />
+            <Route path="/gate" element={<ProtectedRoute role={['gate', 'admin']}><Layout><GateOperations activeView="receipt" /></Layout></ProtectedRoute>} />
+            <Route path="/gate/gross-weight" element={<ProtectedRoute role={['gate', 'admin']}><Layout><GateOperations activeView="gross" /></Layout></ProtectedRoute>} />
+            <Route path="/gate/tare-weight" element={<ProtectedRoute role={['gate', 'admin']}><Layout><GateOperations activeView="tare" /></Layout></ProtectedRoute>} />
+            <Route path="/gate/tanker-out" element={<ProtectedRoute role={['gate', 'admin']}><Layout><GateOperations activeView="exit" /></Layout></ProtectedRoute>} />
+            <Route path="/gate/records" element={<ProtectedRoute role={['gate', 'admin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />
+            <Route path="/qc" element={<ProtectedRoute role={['qc', 'admin']}><Layout><QCLab activeView="qc" /></Layout></ProtectedRoute>} />
+            <Route path="/qc/cip" element={<ProtectedRoute role={['qc', 'admin']}><Layout><QCLab activeView="cip" /></Layout></ProtectedRoute>} />
+            <Route path="/qc/records" element={<ProtectedRoute role={['qc', 'admin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />
+            <Route path="/unloading" element={<ProtectedRoute role={['unloading', 'admin']}><Layout><UnloadingBay /></Layout></ProtectedRoute>} />
+            <Route path="/unloading/records" element={<ProtectedRoute role={['unloading', 'admin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

@@ -282,20 +282,13 @@ test('UI primitives & DataTable render empty state CTA, sticky table & totals ro
 
   const unitChartHtml = renderToStaticMarkup(
     React.createElement(UnitProfitLossChart, {
-      data: [{ unit_id: 'u1', name: 'Rasipuram', unit_code: 'RNK-001', revenue: 13026, cost: 14411, profit: -1385 }],
+      data: [{ bmc_id: 'u1', name: 'Rasipuram', bmc_code: 'RNK-001', revenue: 13026, cost: 14411, profit: -1385 }],
       sellingRate: 52,
     }),
   );
   assert.ok(unitChartHtml.includes('Unit-wise Net Profit / Loss'));
   assert.ok(unitChartHtml.includes('Zone Revenue'));
   assert.ok(unitChartHtml.includes('Zone Cost'));
-
-  // Test SuperAdminDashboard SSR with responsive DataTable
-  const SuperAdminDashboard = loadTsModule('pages/superadmin/SuperAdminDashboard.tsx').default;
-  const superAdminHtml = renderToStaticMarkup(React.createElement(SuperAdminDashboard));
-  assert.ok(superAdminHtml.includes('Super Admin'));
-  assert.ok(superAdminHtml.includes('Create New Zone Admin'));
-  assert.ok(superAdminHtml.includes('desktop-table-wrap'));
 });
 
 test('Admin and Unit UI components render without SSR errors and expose responsive buttons', () => {

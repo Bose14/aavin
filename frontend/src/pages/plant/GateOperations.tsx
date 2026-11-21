@@ -368,8 +368,8 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
     setGrossDcNo(resolvedDc);
 
     const bmcSources: string[] = [];
-    if (activeTanker.units?.name) {
-      bmcSources.push(`${activeTanker.units.name.toUpperCase()}${activeTanker.units.unit_code ? ` [${activeTanker.units.unit_code}]` : ''}`);
+    if (activeTanker.bmcs?.name) {
+      bmcSources.push(`${activeTanker.bmcs.name.toUpperCase()}${activeTanker.bmcs.bmc_code ? ` [${activeTanker.bmcs.bmc_code}]` : ''}`);
     }
     if (activeTanker.compartments && Array.isArray(activeTanker.compartments)) {
       activeTanker.compartments.forEach((c: any) => {
@@ -401,7 +401,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
         initialRows.push({
           id: `comp_${idx}`,
           cell: cellLabel,
-          bmc: (c.bmc_name || activeTanker.units?.name || activeTanker.unit_name || '').toUpperCase(),
+          bmc: (c.bmc_name || activeTanker.bmcs?.name || activeTanker.unit_name || '').toUpperCase(),
           fat: String(c.fat_pct ?? c.fat ?? activeTanker.dispatch_fat_pct ?? ''),
           snf: String(c.snf_pct ?? c.snf ?? activeTanker.dispatch_snf_pct ?? ''),
           temp: String(c.temperature ?? c.temp ?? '4.0'),
@@ -410,7 +410,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
         });
       });
     } else {
-      const defaultBmc = (activeTanker.units?.name || activeTanker.unit_name || '').toUpperCase();
+      const defaultBmc = (activeTanker.bmcs?.name || activeTanker.unit_name || '').toUpperCase();
       const defaultFat = activeTanker.dispatch_fat_pct != null ? String(activeTanker.dispatch_fat_pct) : '';
       const defaultSnf = activeTanker.dispatch_snf_pct != null ? String(activeTanker.dispatch_snf_pct) : '';
       initialRows.push({
@@ -556,7 +556,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
     setNumberOfCells(count);
     const cellLabels = count === 1 ? ['FC'] : count === 2 ? ['FC', 'BC'] : count === 3 ? ['FC', 'MC', 'BC'] : ['FC', 'MC 1', 'MC 2', 'BC'];
     const defaultQty = grossDispatchQty ? String(Math.round(Number(grossDispatchQty) / count)) : '';
-    const defaultBmc = (activeTanker?.units?.name || activeTanker?.unit_name || '').toUpperCase();
+    const defaultBmc = (activeTanker?.bmcs?.name || activeTanker?.unit_name || '').toUpperCase();
     const defaultFat = activeTanker?.dispatch_fat_pct != null ? String(activeTanker.dispatch_fat_pct) : '';
     const defaultSnf = activeTanker?.dispatch_snf_pct != null ? String(activeTanker.dispatch_snf_pct) : '';
 
@@ -589,7 +589,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
     const q = searchQuery.toLowerCase();
     const v = (t.tanker_number || '').toLowerCase();
     const dc = (t.dc_number || t.stage_data?.dc_number || '').toLowerCase();
-    const bmc = (t.units?.name || '').toLowerCase();
+    const bmc = (t.bmcs?.name || '').toLowerCase();
     const driver = (t.driver_name || '').toLowerCase();
     return v.includes(q) || dc.includes(q) || bmc.includes(q) || driver.includes(q);
   };
@@ -774,7 +774,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                             #{dc}
                           </td>
                           <td style={{ padding: '10px 12px', color: '#334155' }}>
-                            {t.units?.name || 'BMC'}
+                            {t.bmcs?.name || 'BMC'}
                           </td>
                           <td style={{ padding: '10px 12px', color: '#475569' }}>
                             {t.driver_name || '—'}
@@ -861,7 +861,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                             #{dc}
                           </td>
                           <td style={{ padding: '10px 12px', color: '#334155' }}>
-                            {t.units?.name || 'BMC'}
+                            {t.bmcs?.name || 'BMC'}
                           </td>
                           <td style={{ padding: '10px 12px', color: '#475569' }}>
                             {t.driver_name || '—'}
@@ -948,7 +948,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                             #{dc}
                           </td>
                           <td style={{ padding: '10px 12px', color: '#334155' }}>
-                            {t.units?.name || 'BMC'}
+                            {t.bmcs?.name || 'BMC'}
                           </td>
                           <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0f172a' }}>
                             {gross !== '—' ? `${Number(gross).toLocaleString('en-IN')} kg` : '—'}
@@ -1033,7 +1033,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                             #{dc}
                           </td>
                           <td style={{ padding: '10px 12px', color: '#334155' }}>
-                            {t.units?.name || 'BMC'}
+                            {t.bmcs?.name || 'BMC'}
                           </td>
                           <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0f172a' }}>
                             {tare !== '—' ? `${Number(tare).toLocaleString('en-IN')} kg` : '—'}
@@ -1190,7 +1190,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                         color: '#1e293b',
                       }}
                     >
-                      {activeTanker.units?.name || 'BMC Inward'}
+                      {activeTanker.bmcs?.name || 'BMC Inward'}
                     </span>
                   </div>
                 </div>
@@ -1990,7 +1990,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                       color: '#1e293b',
                     }}
                   >
-                    {activeTanker.units?.name || 'MALLUR VADAKADU BMC [17226]'}
+                    {activeTanker.bmcs?.name || 'MALLUR VADAKADU BMC [17226]'}
                   </span>
                 </div>
 
@@ -2324,7 +2324,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                       color: '#1e293b',
                     }}
                   >
-                    {activeTanker.units?.name || 'MALLUR VADAKADU BMC [17226]'}
+                    {activeTanker.bmcs?.name || 'MALLUR VADAKADU BMC [17226]'}
                   </span>
                 </div>
 
@@ -2523,7 +2523,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
               <div><strong>DC Number:</strong> #{grossDcNo || activeTanker?.dc_number || '—'}</div>
               <div><strong>Weighment Date:</strong> {grossDate}</div>
               <div><strong>Entry Time:</strong> {grossEntryTime} {grossEntryAmPm}</div>
-              <div><strong>Contractor / Supplier:</strong> {activeTanker?.contractor_name || activeTanker?.units?.name || 'Aavin Transport'}</div>
+              <div><strong>Contractor / Supplier:</strong> {activeTanker?.contractor_name || activeTanker?.bmcs?.name || 'Aavin Transport'}</div>
               <div><strong>Number of Cells:</strong> {numberOfCells} Cells</div>
             </div>
 

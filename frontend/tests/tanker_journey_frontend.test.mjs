@@ -216,7 +216,7 @@ test('Frontend Tanker UX: All tab first, Total Dispatched removed, BMC column an
   assert.ok(!drawerSrc.includes('AuditLogItem'), 'AuditLogItem interface should not be present');
 
   // 5. Units renamed to BMC
-  assert.ok(recordsSrc.includes("{ id: 'unit', label: 'BMC' }"), 'Column label must be BMC');
+  assert.ok(recordsSrc.includes("{ id: 'bmc', label: 'BMC' }"), 'Column label must be BMC');
   assert.ok(recordsSrc.includes('<option value="">All BMCs</option>'), 'Filter must say All BMCs');
   assert.ok(drawerSrc.includes('BMC: <strong>'), 'Drawer header must say BMC');
 });
@@ -282,15 +282,15 @@ test('Frontend Feature Verification: 8-Feature Suite (User Creation, Gate/QC/Unl
   const qcSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/QCLab.tsx'), 'utf8');
   const unloadSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/plant/UnloadingBay.tsx'), 'utf8');
   const unitDashSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/unit/UnitDashboard.tsx'), 'utf8');
-  const adminUnitsSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/admin/AdminUnits.tsx'), 'utf8');
+  const adminUnitsSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/admin/AdminBmcs.tsx'), 'utf8');
   const drawerSrc = fs.readFileSync(path.resolve(__dirname, '../src/components/TankerDetailDrawer.tsx'), 'utf8');
   const adminRecordsSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/admin/AdminTankerRecords.tsx'), 'utf8');
 
   // Feature 1: User Creation
-  assert.ok(teamsSrc.includes('AV_IT_001'), 'Feature 1: User creation generates structured user ID (e.g. AV_IT_001)');
+  assert.ok(teamsSrc.includes('id_token'), 'Feature 1: Users are identified by id_token');
   assert.ok(teamsSrc.includes('GATE — Vehicle Entry & Weighbridge'), 'Feature 1: User modal has Gate team');
   assert.ok(teamsSrc.includes('QC — Quality Testing & CIP'), 'Feature 1: User modal has QC team');
-  assert.ok(teamsSrc.includes('UNLOAD — Silo & Milk Reception'), 'Feature 1: User modal has Unloading team');
+  assert.ok(teamsSrc.includes('UNLOADING — Silo & Milk Reception'), 'Feature 1: User modal has Unloading team');
 
   // Feature 2: Gate team Dashboard
   assert.ok(gateSrc.includes("Today's Gate Vehicle Register"), 'Feature 2: Gate Dashboard has vehicle register table');

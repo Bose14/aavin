@@ -274,8 +274,8 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     setCipDcNo(resolvedDc);
 
     const bmcSources: string[] = [];
-    if (activeTanker.units?.name) {
-      bmcSources.push(`${activeTanker.units.name.toUpperCase()}${activeTanker.units.unit_code ? ` [${activeTanker.units.unit_code}]` : ''}`);
+    if (activeTanker.bmcs?.name) {
+      bmcSources.push(`${activeTanker.bmcs.name.toUpperCase()}${activeTanker.bmcs.bmc_code ? ` [${activeTanker.bmcs.bmc_code}]` : ''}`);
     }
     if (activeTanker.compartments && Array.isArray(activeTanker.compartments)) {
       activeTanker.compartments.forEach((c: any) => {
@@ -609,7 +609,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     const q = searchQuery.toLowerCase();
     const v = (t.tanker_number || '').toLowerCase();
     const dc = (t.dc_number || t.stage_data?.dc_number || '').toLowerCase();
-    const bmc = (t.units?.name || '').toLowerCase();
+    const bmc = (t.bmcs?.name || '').toLowerCase();
     const driver = (t.driver_name || '').toLowerCase();
     return v.includes(q) || dc.includes(q) || bmc.includes(q) || driver.includes(q);
   };
@@ -804,7 +804,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                             #{dc}
                           </td>
                           <td style={{ padding: '10px 12px', color: '#334155' }}>
-                            {t.units?.name || 'BMC'}
+                            {t.bmcs?.name || 'BMC'}
                           </td>
                           <td style={{ padding: '10px 12px', color: '#475569' }}>
                             {t.driver_name || '—'}
@@ -889,7 +889,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                             #{dc}
                           </td>
                           <td style={{ padding: '10px 12px', color: '#334155' }}>
-                            {t.units?.name || 'BMC'}
+                            {t.bmcs?.name || 'BMC'}
                           </td>
                           <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0f172a' }}>
                             {tareKg !== '—' ? `${Number(tareKg).toLocaleString('en-IN')} kg` : '—'}

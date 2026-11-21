@@ -60,7 +60,7 @@ test('1. Role-based redirect routing in frontend ProtectedRoute', () => {
   const protectedRoutePath = path.resolve(__dirname, '../src/components/ProtectedRoute.tsx');
   const { roleHome } = loadTsModule(protectedRoutePath);
 
-  assert.equal(roleHome('superadmin'), '/superadmin');
+  assert.equal(roleHome('bmc'), '/bmc/tanker');
   assert.equal(roleHome('admin'), '/admin/tanker');
   assert.equal(roleHome('gate'), '/gate');
   assert.equal(roleHome('GATE'), '/gate');
@@ -68,7 +68,7 @@ test('1. Role-based redirect routing in frontend ProtectedRoute', () => {
   assert.equal(roleHome('QC'), '/qc');
   assert.equal(roleHome('unloading'), '/unloading');
   assert.equal(roleHome('UNLOADING'), '/unloading');
-  assert.equal(roleHome('unit'), '/unit/tanker');
+  assert.equal(roleHome('bmc'), '/bmc/tanker');
 });
 
 test('2. StagePipeline renders team names & active user counts in stage chip tooltips', () => {
@@ -138,7 +138,7 @@ test('3. English and Tamil translations symmetry for plant teams and navigation'
   assert.ok(TRANSLATIONS.ta.teamUnloading);
 });
 
-test('4. AdminTeams page structure: top Add User button, entire team list table, team dropdown (GATE, QC, UNLOAD), and AV_IT_001 unique ID', () => {
+test('4. AdminTeams page structure: top Add User button, entire team list table, single user form with team dropdown and id_token', () => {
   const teamsPageSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/admin/AdminTeams.tsx'), 'utf8');
 
   // 1. Top header has "Add User" button
@@ -148,18 +148,12 @@ test('4. AdminTeams page structure: top Add User button, entire team list table,
   // 2. Entire team list section and table
   assert.ok(teamsPageSrc.includes('Internal Team Users Management'), 'Must show internal team users management list');
   assert.ok(teamsPageSrc.includes('userColumns'), 'Must define userColumns for DataTable');
-  assert.ok(teamsPageSrc.includes('Unique User ID'), 'Table must display Unique User ID column');
+  assert.ok(teamsPageSrc.includes("header: 'User ID'"), 'Table must display the id_token as User ID');
 
-  // 3. Add user modal contains team dropdown with GATE, QC, UNLOAD
-  assert.ok(teamsPageSrc.includes('<option value="GATE">GATE'), 'Modal must have GATE team option');
-  assert.ok(teamsPageSrc.includes('<option value="QC">QC'), 'Modal must have QC team option');
-  assert.ok(teamsPageSrc.includes('<option value="UNLOADING">UNLOAD'), 'Modal must have UNLOAD team option');
-
-  // 4. Unique User ID format (AV_IT_001)
-  assert.ok(teamsPageSrc.includes('AV_IT_001'), 'Must include AV_IT_001 example for Unique User ID');
-  assert.ok(teamsPageSrc.includes('fetchNextUserId'), 'Must support fetching/generating next unique user ID');
-
-  // 5. Clean Add User modal without BMC Staff toggle or shift, with manual password entry
-  assert.ok(!teamsPageSrc.includes('BMC Staff (Unit)</button>'), 'Modal must not have BMC Staff (Unit) button');
-  assert.ok(teamsPageSrc.includes('Enter user password'), 'Must have password input for direct manual entry');
+  // 3. ONE create form: team dropdown, BMC dropdown only for the BMC team, posting to POST /users
+  assert.ok(teamsPageSrc.includes("api.post<{") && teamsPageSrc.includes("'/users'"), 'Single create form must post to /users');
+  assert.ok(!teamsPageSrc.includes('/users/create') && !teamsPageSrc.includes('/teams/users'), 'Old create endpoints must be gone');
+  assert.ok(teamsPageSrc.includes("addTeam === 'BMC'"), 'BMC dropdown must depend on the selected team');
+  assert.ok(teamsPageSrc.includes('TEAM_OPTIONS'), 'Team dropdown is driven by one TEAM_OPTIONS list');
+  assert.ok(!teamsPageSrc.includes('setAddUserType'), 'No separate plant/BMC form toggle');
 });

@@ -166,8 +166,8 @@ export default function UnitDashboard() {
       ? (((kpis?.completed_count ?? 0) / totalCompleted) * 100).toFixed(1)
       : '100.0';
 
-  const unitHeading = profile?.units
-    ? `${profile.units.name} · ${profile.units.unit_code}`
+  const unitHeading = profile?.bmcs
+    ? `${profile.bmcs.name} · ${profile.bmcs.bmc_code}`
     : profile?.full_name ?? 'BMC Unit';
 
   // Delayed tankers alert check
@@ -314,7 +314,7 @@ export default function UnitDashboard() {
           <button
             type="button"
             className="btn btn-primary btn-sm"
-            onClick={() => navigate('/unit/tanker')}
+            onClick={() => navigate('/bmc/tanker')}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', height: '34px', padding: '0 14px' }}
           >
             <span>+</span> Dispatch Tanker
@@ -357,7 +357,7 @@ export default function UnitDashboard() {
           <button
             type="button"
             className="btn btn-secondary btn-sm"
-            onClick={() => navigate('/unit/records?status=waiting')}
+            onClick={() => navigate('/bmc/records?status=waiting')}
             style={{ fontSize: '0.78rem', height: 28, padding: '0 10px', whiteSpace: 'nowrap' }}
           >
             Track in Records &rarr;
@@ -482,21 +482,21 @@ export default function UnitDashboard() {
               label="Total Dispatched"
               value={formatLitres(processData.kpis.total_dispatched_litres, 1)}
               sub={`${processData.kpis.total_dispatched_count} outward trips`}
-              onClick={() => navigate('/unit/records')}
+              onClick={() => navigate('/bmc/records')}
             />
             <StatCard
               label="Active in Plant"
               value={`${processData.kpis.active_in_plant_count} tankers`}
               sub="Navigating dairy stages"
               valueTone={processData.kpis.active_in_plant_count > 0 ? 'warning' : undefined}
-              onClick={() => navigate('/unit/records?status=waiting')}
+              onClick={() => navigate('/bmc/records?status=waiting')}
             />
             <StatCard
               label="Received in Silos"
               value={formatLitres(processData.kpis.completed_litres, 1)}
               sub={`${processData.kpis.completed_count} trips completed`}
               positive={processData.kpis.completed_count > 0}
-              onClick={() => navigate('/unit/records?status=processed')}
+              onClick={() => navigate('/bmc/records?status=processed')}
             />
             <StatCard
               label="Transit Loss"
@@ -514,7 +514,7 @@ export default function UnitDashboard() {
                   : 'Attention needed'
               }
               positive={processData.kpis.transit_loss_tone === 'green'}
-              onClick={() => navigate('/unit/records')}
+              onClick={() => navigate('/bmc/records')}
             />
             <StatCard
               label="QC Acceptance"
@@ -522,13 +522,13 @@ export default function UnitDashboard() {
               sub={`${processData.kpis.qc_rejected_count} rejected`}
               valueTone={processData.kpis.qc_rejected_count > 0 ? 'negative' : 'positive'}
               positive={processData.kpis.qc_rejected_count === 0}
-              onClick={() => navigate('/unit/records?status=rejected')}
+              onClick={() => navigate('/bmc/records?status=rejected')}
             />
             <StatCard
               label="Avg Turnaround"
               value={formatDuration(processData.kpis.avg_plant_turnaround_min)}
               sub="Gate In to Gate Out"
-              onClick={() => navigate('/unit/records')}
+              onClick={() => navigate('/bmc/records')}
             />
             <StatCard
               label="SLA Compliance"
@@ -536,7 +536,7 @@ export default function UnitDashboard() {
               sub={`${processData.kpis.sla_delayed_count} delayed stages`}
               valueTone={processData.kpis.sla_compliance_pct >= 90 ? 'positive' : 'warning'}
               positive={processData.kpis.sla_compliance_pct >= 90}
-              onClick={() => navigate('/unit/records')}
+              onClick={() => navigate('/bmc/records')}
             />
           </div>
 
@@ -617,7 +617,7 @@ export default function UnitDashboard() {
               data={processData.daily_trend}
               title="Daily Milk Volume: Dispatched vs Received"
               emptyActionLabel="Dispatch Tanker"
-              onEmptyAction={() => navigate('/unit/tanker')}
+              onEmptyAction={() => navigate('/bmc/tanker')}
             />
 
             <TransitLossTrendChart
@@ -650,7 +650,7 @@ export default function UnitDashboard() {
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
-                onClick={() => navigate('/unit/records')}
+                onClick={() => navigate('/bmc/records')}
                 style={{ fontSize: '0.8rem', fontWeight: 600 }}
               >
                 View Full Audit Register &rarr;
@@ -662,7 +662,7 @@ export default function UnitDashboard() {
                 No outward tankers dispatched yet during this period.{' '}
                 <button
                   type="button"
-                  onClick={() => navigate('/unit/tanker')}
+                  onClick={() => navigate('/bmc/tanker')}
                   style={{ background: 'none', border: 'none', color: '#0284c7', fontWeight: 600, cursor: 'pointer', padding: 0 }}
                 >
                   Create first tanker dispatch

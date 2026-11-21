@@ -23,22 +23,22 @@ const router = Router();
 router.use(authMiddleware);
 
 const BASE_SELECT = `
-  id, unit_id, date, shift, fat_pct, snf_pct, quantity_litres,
+  id, bmc_id, date, shift, fat_pct, snf_pct, quantity_litres,
   rejection_qty, temperature, rate_per_litre, created_by, created_at,
-  units(name, unit_code)
+  bmcs(name, bmc_code)
 `;
 
 const EXTENDED_SELECT = `
-  id, unit_id, date, shift, fat_pct, snf_pct, quantity_litres,
+  id, bmc_id, date, shift, fat_pct, snf_pct, quantity_litres,
   rejection_qty, temperature, rate_per_litre, created_by, created_at,
   rejection_reason, rate_override, rate_override_reason, selling_rate_applied,
   status, verified_by, verified_at, updated_at,
-  units(name, unit_code)
+  bmcs(name, bmc_code)
 `;
 
-// GET /milk?from=YYYY-MM-DD&to=YYYY-MM-DD&unit_id=...&shift=AM|PM
+// GET /milk?from=YYYY-MM-DD&to=YYYY-MM-DD&bmc_id=...&shift=AM|PM
 router.get('/', async (req, res) => {
-  const { from, to, unit_id, shift } = req.query as Record<string, string>;
+  const { from, to, bmc_id, shift } = req.query as Record<string, string>;
   const zoneId = req.profile.zone_id;
 
   const runQuery = (columns: string) => {
@@ -49,8 +49,8 @@ router.get('/', async (req, res) => {
       .order('date', { ascending: false })
       .order('shift', { ascending: true });
 
-    if (req.profile.role === 'unit') query = query.eq('unit_id', req.profile.unit_id!);
-    else if (unit_id) query = query.eq('unit_id', unit_id);
+    if (req.profile.role === 'bmc') query = query.eq('bmc_id', req.profile.bmc_id!);
+    else if (bmc_id) query = query.eq('bmc_id', bmc_id);
     if (shift === 'AM' || shift === 'PM') query = query.eq('shift', shift);
     if (from) query = query.gte('date', from);
     if (to) query = query.lte('date', to);
@@ -69,17 +69,17 @@ router.get('/', async (req, res) => {
   const [settings, rateHistory, profilesRes] = await Promise.all([
     getZoneSettings(zoneId),
     getSellingRateHistory(zoneId),
-    supabase.from('profiles').select('id, full_name').eq('zone_id', zoneId),
+    supabase.from('users').select('auth_user_id, full_name').eq('zone_id', zoneId),
   ]);
 
   const nameById = new Map<string, string>();
   for (const p of (profilesRes.data ?? [])) {
-    if (p.full_name) nameById.set(p.id, p.full_name);
+    if (p.full_name) nameById.set(p.auth_user_id, p.full_name);
   }
 
   const nowMs = Date.now();
   const lockMs = settings.edit_lock_hours * 3600 * 1000;
-  const includeProfit = req.profile.role !== 'unit' || settings.show_unit_profit;
+  const includeProfit = req.profile.role !== 'bmc' || settings.show_unit_profit;
 
   const enriched = ((data ?? []) as unknown as Array<Record<string, unknown>>).map((row) => {
     const financials = calculateEntryFinancials(
@@ -98,7 +98,7 @@ router.get('/', async (req, res) => {
 
     const createdMs = row.created_at ? new Date(String(row.created_at)).getTime() : nowMs;
     const status = String(row.status ?? 'submitted');
-    const isLocked = req.profile.role === 'unit' && (nowMs - createdMs > lockMs || status === 'verified');
+    const isLocked = req.profile.role === 'bmc' && (nowMs - createdMs > lockMs || status === 'verified');
     const rejectionPct = financials.quantity > 0
       ? +((financials.rejection / financials.quantity) * 100).toFixed(1)
       : 0;
@@ -122,7 +122,7 @@ router.get('/', async (req, res) => {
 // GET /milk/correction-requests — list correction requests
 router.get('/correction-requests', async (req, res) => {
   try {
-    const unitFilter = req.profile.role === 'unit' ? req.profile.unit_id : undefined;
+    const unitFilter = req.profile.role === 'bmc' ? req.profile.bmc_id : undefined;
     const rows = await listCorrectionRequests(req.profile.zone_id, unitFilter);
     res.json(rows);
   } catch (err) {
@@ -217,13 +217,13 @@ router.post('/', async (req, res) => {
     finalRate = +manualRate.toFixed(2);
   }
 
-  const unit_id = req.profile.role === 'unit' ? req.profile.unit_id : req.body.unit_id;
-  if (!unit_id) { res.status(400).json({ error: 'unit_id required' }); return; }
+  const bmc_id = req.profile.role === 'bmc' ? req.profile.bmc_id : req.body.bmc_id;
+  if (!bmc_id) { res.status(400).json({ error: 'bmc_id required' }); return; }
 
   const sellingRateApplied = getEffectiveSellingRate(date, rateHistory);
 
   const extendedRow = {
-    unit_id,
+    bmc_id,
     zone_id: zoneId,
     date,
     shift,
@@ -246,7 +246,7 @@ router.post('/', async (req, res) => {
     const baseInsert = await supabase
       .from('milk_entries')
       .insert({
-        unit_id,
+        bmc_id,
         zone_id: zoneId,
         date,
         shift,
@@ -269,7 +269,7 @@ router.post('/', async (req, res) => {
       const { data: existing } = await supabase
         .from('milk_entries')
         .select('id')
-        .eq('unit_id', unit_id)
+        .eq('bmc_id', bmc_id)
         .eq('date', date)
         .eq('shift', shift)
         .maybeSingle();
@@ -286,7 +286,7 @@ router.post('/', async (req, res) => {
 
   await writeAuditLog({
     zone_id: zoneId,
-    unit_id,
+    bmc_id,
     entity_type: 'milk_entry',
     entity_id: data.id,
     action: rate_override ? 'create_with_rate_override' : 'create',
@@ -316,7 +316,7 @@ router.patch('/:id', async (req, res) => {
   const zoneId = req.profile.zone_id;
 
   let existingQuery = supabase.from('milk_entries').select('*').eq('id', entryId);
-  if (req.profile.role === 'unit') existingQuery = existingQuery.eq('unit_id', req.profile.unit_id!);
+  if (req.profile.role === 'bmc') existingQuery = existingQuery.eq('bmc_id', req.profile.bmc_id!);
   else existingQuery = existingQuery.eq('zone_id', zoneId);
 
   const { data: existing, error: fetchErr } = await existingQuery.maybeSingle();
@@ -324,7 +324,7 @@ router.patch('/:id', async (req, res) => {
   if (!existing) { res.status(404).json({ error: 'Entry not found' }); return; }
 
   const settings = await getZoneSettings(zoneId);
-  if (req.profile.role === 'unit') {
+  if (req.profile.role === 'bmc') {
     const ageMs = Date.now() - new Date(existing.created_at).getTime();
     if (ageMs > settings.edit_lock_hours * 3600 * 1000) {
       res.status(403).json({
@@ -407,7 +407,7 @@ router.patch('/:id', async (req, res) => {
 
   await writeAuditLog({
     zone_id: zoneId,
-    unit_id: existing.unit_id,
+    bmc_id: existing.bmc_id,
     entity_type: 'milk_entry',
     entity_id: entryId,
     action: 'edit',
@@ -438,7 +438,7 @@ router.patch('/:id/verify', requireRole('admin'), async (req, res) => {
 
   await writeAuditLog({
     zone_id: req.profile.zone_id,
-    unit_id: data.unit_id,
+    bmc_id: data.bmc_id,
     entity_type: 'milk_entry',
     entity_id: entryId,
     action: 'verify',
@@ -465,7 +465,7 @@ router.post('/:id/correction-request', async (req, res) => {
 
   const { data: entry } = await supabase
     .from('milk_entries')
-    .select('id, zone_id, unit_id')
+    .select('id, zone_id, bmc_id')
     .eq('id', entryId)
     .eq('zone_id', req.profile.zone_id)
     .maybeSingle();
@@ -476,7 +476,7 @@ router.post('/:id/correction-request', async (req, res) => {
     const reqRecord = await createCorrectionRequest({
       milk_entry_id: entry.id,
       zone_id: entry.zone_id,
-      unit_id: entry.unit_id,
+      bmc_id: entry.bmc_id,
       requested_by: req.user.id,
       requested_by_name: req.profile.full_name ?? req.user.email ?? 'Staff',
       reason: reason.trim(),
@@ -485,7 +485,7 @@ router.post('/:id/correction-request', async (req, res) => {
 
     await writeAuditLog({
       zone_id: entry.zone_id,
-      unit_id: entry.unit_id,
+      bmc_id: entry.bmc_id,
       entity_type: 'milk_entry',
       entity_id: entry.id,
       action: 'correction_request',
@@ -524,14 +524,14 @@ router.post('/bulk', requireRole('admin'), async (req, res) => {
 
   const zoneId = req.profile.zone_id;
   const [unitsRes, settings, rateHistory] = await Promise.all([
-    supabase.from('units').select('id, unit_code').eq('zone_id', zoneId),
+    supabase.from('bmcs').select('id, bmc_code').eq('zone_id', zoneId),
     getZoneSettings(zoneId),
     getSellingRateHistory(zoneId),
   ]);
 
   const unitByCode = new Map<string, string>();
   for (const u of (unitsRes.data ?? [])) {
-    unitByCode.set(String(u.unit_code).trim().toUpperCase(), u.id);
+    unitByCode.set(String(u.bmc_code).trim().toUpperCase(), u.id);
   }
 
   let inserted = 0;
@@ -540,7 +540,7 @@ router.post('/bulk', requireRole('admin'), async (req, res) => {
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     const rowNum = i + 2; // Excel row index (after header)
-    const code = String(r.unit_code ?? r['Unit Code'] ?? '').trim().toUpperCase();
+    const code = String(r.bmc_code ?? r['Unit Code'] ?? '').trim().toUpperCase();
     const unitId = unitByCode.get(code);
     if (!unitId) {
       errors.push({ row: rowNum, error: `Unknown unit code "${code}"` });
@@ -594,7 +594,7 @@ router.post('/bulk', requireRole('admin'), async (req, res) => {
     const sellingRateApplied = getEffectiveSellingRate(isoDate, rateHistory);
 
     let { error } = await supabase.from('milk_entries').insert({
-      unit_id: unitId,
+      bmc_id: unitId,
       zone_id: zoneId,
       date: isoDate,
       shift,
@@ -611,7 +611,7 @@ router.post('/bulk', requireRole('admin'), async (req, res) => {
 
     if (error && isMissingSchemaError(error)) {
       const fb = await supabase.from('milk_entries').insert({
-        unit_id: unitId,
+        bmc_id: unitId,
         zone_id: zoneId,
         date: isoDate,
         shift,
@@ -640,14 +640,14 @@ router.delete('/:id', async (req, res) => {
   const entryId = String(req.params.id);
   const { data: existing } = await supabase
     .from('milk_entries')
-    .select('id, unit_id, zone_id, created_at, date, shift')
+    .select('id, bmc_id, zone_id, created_at, date, shift')
     .eq('id', entryId)
     .eq('zone_id', req.profile.zone_id)
     .maybeSingle();
 
   if (!existing) { res.status(404).json({ error: 'Entry not found' }); return; }
-  if (req.profile.role === 'unit') {
-    if (existing.unit_id !== req.profile.unit_id) {
+  if (req.profile.role === 'bmc') {
+    if (existing.bmc_id !== req.profile.bmc_id) {
       res.status(403).json({ error: 'Insufficient permissions' });
       return;
     }
@@ -663,7 +663,7 @@ router.delete('/:id', async (req, res) => {
 
   await writeAuditLog({
     zone_id: existing.zone_id,
-    unit_id: existing.unit_id,
+    bmc_id: existing.bmc_id,
     entity_type: 'milk_entry',
     entity_id: entryId,
     action: 'delete_undo',

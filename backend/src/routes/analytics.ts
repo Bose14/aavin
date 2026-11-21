@@ -83,7 +83,7 @@ function buildDateSequence(fromISO: string, toISO: string): string[] {
 }
 
 interface AnalyticsMilkRow {
-  unit_id?: string;
+  bmc_id?: string;
   date: string;
   shift?: string;
   quantity_litres: number;
@@ -92,7 +92,7 @@ interface AnalyticsMilkRow {
   snf_pct: number;
   rate_per_litre: number;
   selling_rate_applied?: number | null;
-  units?: { name: string; unit_code?: string } | null;
+  bmcs?: { name: string; bmc_code?: string } | null;
 }
 
 async function fetchMilkRows(
@@ -111,35 +111,35 @@ async function fetchMilkRows(
       .gte('date', from)
       .lte('date', to)
       .order('date', { ascending: true });
-    if (role === 'unit') q = q.eq('unit_id', profileUnitId!);
-    else if (filterUnitId) q = q.eq('unit_id', filterUnitId);
+    if (role === 'bmc') q = q.eq('bmc_id', profileUnitId!);
+    else if (filterUnitId) q = q.eq('bmc_id', filterUnitId);
     return q;
   };
 
-  let res = await run('unit_id, date, shift, quantity_litres, rejection_qty, fat_pct, snf_pct, rate_per_litre, selling_rate_applied, units(name, unit_code)');
+  let res = await run('bmc_id, date, shift, quantity_litres, rejection_qty, fat_pct, snf_pct, rate_per_litre, selling_rate_applied, bmcs(name, bmc_code)');
   if (res.error && isMissingSchemaError(res.error)) {
-    res = await run('unit_id, date, shift, quantity_litres, rejection_qty, fat_pct, snf_pct, rate_per_litre, units(name, unit_code)');
+    res = await run('bmc_id, date, shift, quantity_litres, rejection_qty, fat_pct, snf_pct, rate_per_litre, bmcs(name, bmc_code)');
   }
   if (res.error) return { data: [], error: res.error.message };
   return { data: (res.data ?? []) as unknown as AnalyticsMilkRow[], error: null };
 }
 
-// GET /analytics/summary?period=week|month|year|custom&from=&to=&unit_id=
+// GET /analytics/summary?period=week|month|year|custom&from=&to=&bmc_id=
 router.get('/summary', async (req, res) => {
-  const { period = 'week', unit_id, from, to } = req.query as Record<string, string>;
+  const { period = 'week', bmc_id, from, to } = req.query as Record<string, string>;
   const zoneId = req.profile.zone_id;
   const { todayISO, fromDate, toDate, prevFromDate, prevToDate } = resolveDateRange(period, from, to);
 
   const [settings, rateHistory, currRes, prevRes, todayMilkRes, todayTankerRes, periodTankerRes] = await Promise.all([
     getZoneSettings(zoneId),
     getSellingRateHistory(zoneId),
-    fetchMilkRows(zoneId, fromDate, toDate, req.profile.role, req.profile.unit_id, unit_id),
-    fetchMilkRows(zoneId, prevFromDate, prevToDate, req.profile.role, req.profile.unit_id, unit_id),
-    fetchMilkRows(zoneId, todayISO, todayISO, req.profile.role, req.profile.unit_id, unit_id),
+    fetchMilkRows(zoneId, fromDate, toDate, req.profile.role, req.profile.bmc_id, bmc_id),
+    fetchMilkRows(zoneId, prevFromDate, prevToDate, req.profile.role, req.profile.bmc_id, bmc_id),
+    fetchMilkRows(zoneId, todayISO, todayISO, req.profile.role, req.profile.bmc_id, bmc_id),
     (async () => {
-      let tq = supabase.from('tanker_dispatches').select('unit_id, quantity_dispatched').eq('zone_id', zoneId).eq('date', todayISO);
-      if (req.profile.role === 'unit') tq = tq.eq('unit_id', req.profile.unit_id!);
-      else if (unit_id) tq = tq.eq('unit_id', unit_id);
+      let tq = supabase.from('tanker_dispatches').select('bmc_id, quantity_dispatched').eq('zone_id', zoneId).eq('date', todayISO);
+      if (req.profile.role === 'bmc') tq = tq.eq('bmc_id', req.profile.bmc_id!);
+      else if (bmc_id) tq = tq.eq('bmc_id', bmc_id);
       return tq;
     })(),
     (async () => {
@@ -150,8 +150,8 @@ router.get('/summary', async (req, res) => {
           .eq('zone_id', zoneId)
           .gte('date', fromDate)
           .lte('date', toDate);
-        if (req.profile.role === 'unit') tq = tq.eq('unit_id', req.profile.unit_id!);
-        else if (unit_id) tq = tq.eq('unit_id', unit_id);
+        if (req.profile.role === 'bmc') tq = tq.eq('bmc_id', req.profile.bmc_id!);
+        else if (bmc_id) tq = tq.eq('bmc_id', bmc_id);
         return tq;
       };
       let resT = await runT('quantity_dispatched, received_qty');
@@ -167,7 +167,7 @@ router.get('/summary', async (req, res) => {
     return;
   }
 
-  const hideProfitForUnit = req.profile.role === 'unit' && !settings.show_unit_profit;
+  const hideProfitForUnit = req.profile.role === 'bmc' && !settings.show_unit_profit;
 
   const calcStats = (rows: AnalyticsMilkRow[]) => {
     if (rows.length === 0) {
@@ -245,33 +245,33 @@ router.get('/summary', async (req, res) => {
   let adminTodayStatus: {
     total_active_units: number;
     units_reported: number;
-    units_pending: Array<{ id: string; name: string; unit_code: string }>;
-    units_flagged: Array<{ id: string; name: string; unit_code: string; reasons: string[] }>;
+    units_pending: Array<{ id: string; name: string; bmc_code: string }>;
+    units_flagged: Array<{ id: string; name: string; bmc_code: string; reasons: string[] }>;
   } | null = null;
 
-  if (req.profile.role === 'admin' || req.profile.role === 'superadmin') {
+  if (req.profile.role === 'admin') {
     const unitsRes = await supabase
-      .from('units')
-      .select('id, name, unit_code, is_active')
+      .from('bmcs')
+      .select('id, name, bmc_code, is_active')
       .eq('zone_id', zoneId)
       .eq('is_active', true);
 
     const activeUnits = unitsRes.data ?? [];
     const byUnitToday = new Map<string, AnalyticsMilkRow[]>();
     for (const r of todayRows) {
-      if (!r.unit_id) continue;
-      const list = byUnitToday.get(r.unit_id) ?? [];
+      if (!r.bmc_id) continue;
+      const list = byUnitToday.get(r.bmc_id) ?? [];
       list.push(r);
-      byUnitToday.set(r.unit_id, list);
+      byUnitToday.set(r.bmc_id, list);
     }
 
-    const pending: Array<{ id: string; name: string; unit_code: string }> = [];
-    const flagged: Array<{ id: string; name: string; unit_code: string; reasons: string[] }> = [];
+    const pending: Array<{ id: string; name: string; bmc_code: string }> = [];
+    const flagged: Array<{ id: string; name: string; bmc_code: string; reasons: string[] }> = [];
 
     for (const u of activeUnits) {
       const list = byUnitToday.get(u.id);
       if (!list || list.length === 0) {
-        pending.push({ id: u.id, name: u.name, unit_code: u.unit_code });
+        pending.push({ id: u.id, name: u.name, bmc_code: u.bmc_code });
       } else {
         const qty = list.reduce((s, r) => s + Number(r.quantity_litres), 0);
         const rej = list.reduce((s, r) => s + Number(r.rejection_qty ?? 0), 0);
@@ -281,7 +281,7 @@ router.get('/summary', async (req, res) => {
         if (rejPct >= settings.rejection_warn_pct) reasons.push(`Rejection ${rejPct.toFixed(1)}%`);
         if (qual.avg_fat < settings.fat_benchmark) reasons.push(`Fat ${qual.avg_fat.toFixed(2)}%`);
         if (qual.avg_snf < settings.snf_benchmark) reasons.push(`SNF ${qual.avg_snf.toFixed(2)}%`);
-        if (reasons.length > 0) flagged.push({ id: u.id, name: u.name, unit_code: u.unit_code, reasons });
+        if (reasons.length > 0) flagged.push({ id: u.id, name: u.name, bmc_code: u.bmc_code, reasons });
       }
     }
 
@@ -319,22 +319,22 @@ router.get('/summary', async (req, res) => {
   });
 });
 
-// GET /analytics/trend?period=week|month|year|custom&from=&to=&unit_id=
+// GET /analytics/trend?period=week|month|year|custom&from=&to=&bmc_id=
 // Returns every calendar day in range with stacked AM/PM quantities & non-interpolated gaps
 router.get('/trend', async (req, res) => {
-  const { period = 'week', unit_id, from, to } = req.query as Record<string, string>;
+  const { period = 'week', bmc_id, from, to } = req.query as Record<string, string>;
   const zoneId = req.profile.zone_id;
   const { fromDate, toDate } = resolveDateRange(period, from, to);
 
   const [settings, rateHistory, milkRes] = await Promise.all([
     getZoneSettings(zoneId),
     getSellingRateHistory(zoneId),
-    fetchMilkRows(zoneId, fromDate, toDate, req.profile.role, req.profile.unit_id, unit_id),
+    fetchMilkRows(zoneId, fromDate, toDate, req.profile.role, req.profile.bmc_id, bmc_id),
   ]);
 
   if (milkRes.error) { res.status(500).json({ error: milkRes.error }); return; }
 
-  const hideProfitForUnit = req.profile.role === 'unit' && !settings.show_unit_profit;
+  const hideProfitForUnit = req.profile.role === 'bmc' && !settings.show_unit_profit;
   const byDate = new Map<string, {
     am_quantity: number;
     pm_quantity: number;
@@ -411,9 +411,9 @@ router.get('/trend', async (req, res) => {
   res.json(trend);
 });
 
-// GET /analytics/units — admin: per-unit weighted quality, cost/L, profit/L, rejection %, health indicator
-router.get('/units', async (req, res) => {
-  if (req.profile.role !== 'admin' && req.profile.role !== 'superadmin') {
+// GET /analytics/bmcs — admin: per-unit weighted quality, cost/L, profit/L, rejection %, health indicator
+router.get('/bmcs', async (req, res) => {
+  if (req.profile.role !== 'admin') {
     res.status(403).json({ error: 'Admin only' });
     return;
   }
@@ -425,16 +425,16 @@ router.get('/units', async (req, res) => {
   const [settings, rateHistory, unitsRes, milkRes] = await Promise.all([
     getZoneSettings(zoneId),
     getSellingRateHistory(zoneId),
-    supabase.from('units').select('id, name, unit_code, location, is_active').eq('zone_id', zoneId),
+    supabase.from('bmcs').select('id, name, bmc_code, location, is_active').eq('zone_id', zoneId),
     fetchMilkRows(zoneId, resolved.fromDate, resolved.toDate, 'admin', null),
   ]);
 
   if (milkRes.error) { res.status(500).json({ error: milkRes.error }); return; }
 
   const byUnit = new Map<string, {
-    unit_id: string;
+    bmc_id: string;
     name: string;
-    unit_code: string;
+    bmc_code: string;
     location: string;
     is_active: boolean;
     quantity: number;
@@ -446,9 +446,9 @@ router.get('/units', async (req, res) => {
 
   for (const u of (unitsRes.data ?? [])) {
     byUnit.set(u.id, {
-      unit_id: u.id,
+      bmc_id: u.id,
       name: u.name,
-      unit_code: u.unit_code,
+      bmc_code: u.bmc_code,
       location: u.location ?? '',
       is_active: u.is_active !== false,
       quantity: 0,
@@ -460,13 +460,13 @@ router.get('/units', async (req, res) => {
   }
 
   for (const row of milkRes.data) {
-    if (!row.unit_id) continue;
-    let bucket = byUnit.get(row.unit_id);
+    if (!row.bmc_id) continue;
+    let bucket = byUnit.get(row.bmc_id);
     if (!bucket) {
       bucket = {
-        unit_id: row.unit_id,
-        name: row.units?.name ?? '',
-        unit_code: row.units?.unit_code ?? '',
+        bmc_id: row.bmc_id,
+        name: row.bmcs?.name ?? '',
+        bmc_code: row.bmcs?.bmc_code ?? '',
         location: '',
         is_active: true,
         quantity: 0,
@@ -475,7 +475,7 @@ router.get('/units', async (req, res) => {
         revenue: 0,
         rows: [],
       };
-      byUnit.set(row.unit_id, bucket);
+      byUnit.set(row.bmc_id, bucket);
     }
     const fin = calculateEntryFinancials(row, settings, rateHistory);
 
@@ -509,9 +509,9 @@ router.get('/units', async (req, res) => {
     }
 
     return {
-      unit_id: u.unit_id,
+      bmc_id: u.bmc_id,
       name: u.name,
-      unit_code: u.unit_code,
+      bmc_code: u.bmc_code,
       location: u.location,
       is_active: u.is_active,
       entries_count: u.rows.length,
@@ -533,10 +533,10 @@ router.get('/units', async (req, res) => {
   res.json(result);
 });
 
-// GET /analytics/process?period=today|week|month|year|custom&from=&to=&unit_id=
+// GET /analytics/process?period=today|week|month|year|custom&from=&to=&bmc_id=
 router.get('/process', async (req, res) => {
   try {
-    const { period = 'week', unit_id, from, to } = req.query as Record<string, string>;
+    const { period = 'week', bmc_id, from, to } = req.query as Record<string, string>;
     const zoneId = req.profile.zone_id;
     const settings = await getZoneSettings(zoneId);
 
@@ -563,18 +563,18 @@ router.get('/process', async (req, res) => {
           .order('date', { ascending: false })
           .order('created_at', { ascending: false });
 
-        if (req.profile.role === 'unit') {
-          q = q.eq('unit_id', req.profile.unit_id!);
-        } else if (unit_id) {
-          q = q.eq('unit_id', unit_id);
+        if (req.profile.role === 'bmc') {
+          q = q.eq('bmc_id', req.profile.bmc_id!);
+        } else if (bmc_id) {
+          q = q.eq('bmc_id', bmc_id);
         }
         if (fromDate) q = q.gte('date', fromDate);
         if (toDate) q = q.lte('date', toDate);
         return q;
       }),
       supabase
-        .from('units')
-        .select('id, name, unit_code, location')
+        .from('bmcs')
+        .select('id, name, bmc_code, location')
         .eq('zone_id', zoneId),
     ]);
 
@@ -582,7 +582,7 @@ router.get('/process', async (req, res) => {
     const tripIds = rows.map((r) => String(r.id));
     const stageMap = await getTankerStagesForTrips(tripIds);
 
-    const unitMap = new Map<string, { id: string; name: string; unit_code: string; location: string }>();
+    const unitMap = new Map<string, { id: string; name: string; bmc_code: string; location: string }>();
     for (const u of (unitsResult.data ?? [])) {
       unitMap.set(u.id, u);
     }
@@ -642,9 +642,9 @@ router.get('/process', async (req, res) => {
 
     // Per-BMC accumulators
     const bmcAccum = new Map<string, {
-      unit_id: string;
+      bmc_id: string;
       name: string;
-      unit_code: string;
+      bmc_code: string;
       dispatched_count: number;
       dispatched_litres: number;
       received_litres: number;
@@ -695,8 +695,8 @@ router.get('/process', async (req, res) => {
       const dLitres = Number(item.quantity_dispatched || 0);
       const rLitres = item.calculated?.received_litres != null ? Number(item.calculated.received_litres) : null;
       const tripDate = item.date || getIstTodayISO();
-      const uId = item.unit_id ? String(item.unit_id) : 'unknown';
-      const uInfo = unitMap.get(uId) || { id: uId, name: (item.units?.name as string) || 'BMC', unit_code: (item.units?.unit_code as string) || '', location: '' };
+      const uId = item.bmc_id ? String(item.bmc_id) : 'unknown';
+      const uInfo = unitMap.get(uId) || { id: uId, name: (item.bmcs?.name as string) || 'BMC', bmc_code: (item.bmcs?.bmc_code as string) || '', location: '' };
 
       totalDispatchedLitres += dLitres;
 
@@ -726,7 +726,7 @@ router.get('/process', async (req, res) => {
             tanker_number: item.tanker_number || '',
             dc_number: item.dc_number || item.dc_no || '',
             bmc_name: uInfo.name,
-            bmc_code: uInfo.unit_code,
+            bmc_code: uInfo.bmc_code,
             current_stage_key: trip.currentStageKey || status,
             current_stage_title: trip.currentStageTitle || status,
             stage_color: trip.stageColor?.dot || '#0284c7',
@@ -837,9 +837,9 @@ router.get('/process', async (req, res) => {
       let bmcRec = bmcAccum.get(uId);
       if (!bmcRec) {
         bmcRec = {
-          unit_id: uId,
+          bmc_id: uId,
           name: uInfo.name,
-          unit_code: uInfo.unit_code,
+          bmc_code: uInfo.bmc_code,
           dispatched_count: 0,
           dispatched_litres: 0,
           received_litres: 0,
@@ -1030,9 +1030,9 @@ router.get('/process', async (req, res) => {
       }
 
       return {
-        unit_id: b.unit_id,
+        bmc_id: b.bmc_id,
         name: b.name,
-        unit_code: b.unit_code,
+        bmc_code: b.bmc_code,
         dispatched_count: b.dispatched_count,
         dispatched_litres: +b.dispatched_litres.toFixed(1),
         received_litres: +b.received_litres.toFixed(1),

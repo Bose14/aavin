@@ -256,7 +256,6 @@ input[type="checkbox"], input[type="radio"] {
 .input-error { border-color: var(--danger) !important; }
 
 /* ── Role badges extra ── */
-.role-badge.superadmin { background: #fce7f3; color: #9d174d; }
 
 /* ── Misc ── */
 .btn-link { background: none; border: none; color: var(--primary); font-size: 0.8rem; cursor: pointer; margin-left: 0.5rem; text-decoration: underline; padding: 0; }

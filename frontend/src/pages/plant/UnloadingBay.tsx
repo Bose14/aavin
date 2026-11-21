@@ -177,8 +177,8 @@ export default function UnloadingBay() {
     setDcNumber(resolvedDc);
 
     const bmcSources: string[] = [];
-    if (t.units?.name) {
-      bmcSources.push(`${t.units.name.toUpperCase()}${t.units.unit_code ? ` [${t.units.unit_code}]` : ''}`);
+    if (t.bmcs?.name) {
+      bmcSources.push(`${t.bmcs.name.toUpperCase()}${t.bmcs.bmc_code ? ` [${t.bmcs.bmc_code}]` : ''}`);
     }
     if (t.compartments && Array.isArray(t.compartments)) {
       t.compartments.forEach((c: any) => {
@@ -187,8 +187,8 @@ export default function UnloadingBay() {
         }
       });
     }
-    if (bmcSources.length === 0 && (t.source_bmc_name || t.units?.name)) {
-      bmcSources.push(t.source_bmc_name || t.units?.name);
+    if (bmcSources.length === 0 && (t.source_bmc_name || t.bmcs?.name)) {
+      bmcSources.push(t.source_bmc_name || t.bmcs?.name);
     }
     setReceivedFromList(bmcSources);
 
@@ -361,7 +361,7 @@ export default function UnloadingBay() {
     const q = searchQuery.toLowerCase();
     const v = (t.tanker_number || '').toLowerCase();
     const dc = (t.dc_number || t.stage_data?.dc_number || '').toLowerCase();
-    const bmc = (t.units?.name || '').toLowerCase();
+    const bmc = (t.bmcs?.name || '').toLowerCase();
     const driver = (t.driver_name || '').toLowerCase();
     return v.includes(q) || dc.includes(q) || bmc.includes(q) || driver.includes(q);
   };
@@ -603,7 +603,7 @@ export default function UnloadingBay() {
                         #{dc}
                       </td>
                       <td style={{ padding: '10px 12px', color: '#334155' }}>
-                        {t.units?.name || 'BMC'}
+                        {t.bmcs?.name || 'BMC'}
                       </td>
                       <td style={{ padding: '10px 12px', color: '#475569' }}>
                         {t.driver_name || '—'}

@@ -1,44 +1,25 @@
 import type { Request, Response, NextFunction } from 'express';
-import { supabase, createUserScopedClient } from '../supabase';
+import { supabase } from '../supabase';
+import type { UserProfile } from '../types/express';
 
-const EXTENDED_PROFILE_COLUMNS = 'id, role, zone_id, unit_id, full_name, team_id, shift, username';
-const BASE_PROFILE_COLUMNS = 'id, role, zone_id, unit_id, full_name';
+const USER_COLUMNS =
+  'id, id_token, auth_user_id, zone_id, team_id, bmc_id, full_name, email, phone, shift, sub_role, is_active, must_change_password, teams(code, active)';
 
-async function loadProfile(userId: string, token: string) {
-  let result = await supabase
-    .from('profiles')
-    .select(EXTENDED_PROFILE_COLUMNS)
-    .eq('id', userId)
-    .maybeSingle();
+const ROLE_BY_TEAM: Record<string, UserProfile['role']> = {
+  ADMIN: 'admin',
+  GATE: 'gate',
+  QC: 'qc',
+  UNLOADING: 'unloading',
+  BMC: 'bmc',
+};
 
-  // If extended columns are not yet in database, fall back to base columns
-  if (result.error && (result.error.message.includes('column') || result.error.code === '42703')) {
-    result = await supabase
-      .from('profiles')
-      .select(BASE_PROFILE_COLUMNS)
-      .eq('id', userId)
-      .maybeSingle();
-  }
+async function loadProfile(authUserId: string) {
+  let result = await supabase.from('users').select(USER_COLUMNS).eq('auth_user_id', authUserId).maybeSingle();
 
-  // Retry once on transient network/DB failure
+  // Retry once on a transient network/DB failure
   if (result.error) {
-    result = await supabase
-      .from('profiles')
-      .select(BASE_PROFILE_COLUMNS)
-      .eq('id', userId)
-      .maybeSingle();
+    result = await supabase.from('users').select(USER_COLUMNS).eq('auth_user_id', authUserId).maybeSingle();
   }
-
-  // Fallback to user-scoped JWT client in case RLS filtered an un-elevated key
-  if (!result.error && !result.data) {
-    const userClient = createUserScopedClient(token);
-    result = await userClient
-      .from('profiles')
-      .select(BASE_PROFILE_COLUMNS)
-      .eq('id', userId)
-      .maybeSingle();
-  }
-
   return result;
 }
 
@@ -76,44 +57,49 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     return;
   }
 
-  const { data: profile, error: profileError } = await loadProfile(user.id, token);
+  const { data: row, error: profileError } = await loadProfile(user.id);
 
   if (profileError) {
-    console.error('[authMiddleware] Profile lookup failed for user', user.id, profileError.message);
-    res.status(500).json({ error: `Failed to verify profile: ${profileError.message}` });
+    console.error('[authMiddleware] User lookup failed for', user.id, profileError.message);
+    res.status(500).json({ error: `Failed to verify user: ${profileError.message}` });
     return;
   }
 
-  if (!profile) {
-    console.warn('[authMiddleware] No profile row found for user', user.id, user.email);
-    res.status(403).json({ error: 'Profile not found — complete registration first' });
+  if (!row) {
+    console.warn('[authMiddleware] No users row for auth user', user.id, user.email);
+    res.status(403).json({ error: 'Your account is not set up. Contact your zone administrator.' });
     return;
   }
 
-  // Block deactivated user accounts (stored in auth metadata and/or profiles table)
-  if (user.user_metadata?.is_active === false || (profile as { is_active?: boolean }).is_active === false) {
+  const { teams: team, ...rest } = row as unknown as Omit<UserProfile, 'role' | 'team_code'> & {
+    teams: { code: UserProfile['team_code']; active: boolean } | null;
+  };
+  if (!team) {
+    res.status(403).json({ error: 'Your account has no team assigned. Contact your zone administrator.' });
+    return;
+  }
+
+  if (rest.is_active === false) {
     res.status(403).json({ error: 'Your account has been deactivated. Contact your zone administrator.' });
     return;
   }
 
-  // Resilient role resolution: if legacy database constraint forced profile.role to 'unit',
-  // resolve true plant team role from user_metadata.team
-  const teamInMeta = typeof user.user_metadata?.team === 'string'
-    ? user.user_metadata.team.trim().toLowerCase()
-    : undefined;
-  if (teamInMeta && ['gate', 'qc', 'unloading'].includes(teamInMeta)) {
-    profile.role = teamInMeta;
+  if (team.active === false && team.code !== 'ADMIN') {
+    res.status(403).json({ error: 'Your team is currently deactivated. Contact your zone administrator.' });
+    return;
   }
 
-  // Block unit users belonging to a deactivated unit
-  if (profile.role === 'unit' && profile.unit_id) {
-    const { data: unitRow } = await supabase
-      .from('units')
+  const profile: UserProfile = { ...rest, role: ROLE_BY_TEAM[team.code], team_code: team.code };
+
+  // Block BMC users whose BMC has been deactivated
+  if (profile.role === 'bmc' && profile.bmc_id) {
+    const { data: bmcRow } = await supabase
+      .from('bmcs')
       .select('is_active')
-      .eq('id', profile.unit_id)
+      .eq('id', profile.bmc_id)
       .maybeSingle();
-    if (unitRow && unitRow.is_active === false) {
-      res.status(403).json({ error: 'Your unit is currently deactivated. Contact your zone administrator.' });
+    if (bmcRow && bmcRow.is_active === false) {
+      res.status(403).json({ error: 'Your BMC is currently deactivated. Contact your zone administrator.' });
       return;
     }
   }

@@ -12,22 +12,18 @@ interface NavItem {
   fallbackLabel: string;
 }
 
-const superAdminNav: NavItem[] = [
-  { to: '/superadmin', fallbackLabel: 'User Management' },
-];
-
 const adminNav: NavItem[] = [
   { to: '/admin/tanker', labelKey: 'navTankerRecords', fallbackLabel: 'Tanker Records' },
-  { to: '/admin/units', labelKey: 'navUnits', fallbackLabel: 'BMCs' },
+  { to: '/admin/bmcs', labelKey: 'navUnits', fallbackLabel: 'BMCs' },
   { to: '/admin/users', labelKey: 'navTeamsAndUsers', fallbackLabel: 'Teams & Users' },
   { to: '/admin/analytics', labelKey: 'navAnalytics', fallbackLabel: 'Analytics' },
   { to: '/admin/settings', labelKey: 'navSettings', fallbackLabel: 'Settings' },
 ];
 
 const unitNav: NavItem[] = [
-  { to: '/unit/tanker', labelKey: 'navTankerDispatch', fallbackLabel: 'Tanker Dispatch' },
-  { to: '/unit/analytics', labelKey: 'navAnalytics', fallbackLabel: 'Analytics' },
-  { to: '/unit/records', labelKey: 'navMyRecords', fallbackLabel: 'My Records' },
+  { to: '/bmc/tanker', labelKey: 'navTankerDispatch', fallbackLabel: 'Tanker Dispatch' },
+  { to: '/bmc/analytics', labelKey: 'navAnalytics', fallbackLabel: 'Analytics' },
+  { to: '/bmc/records', labelKey: 'navMyRecords', fallbackLabel: 'My Records' },
 ];
 
 const gateNav: NavItem[] = [
@@ -88,8 +84,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   }, []);
 
   const userRole = (profile?.role || '').toLowerCase();
-  const nav = userRole === 'superadmin' ? superAdminNav
-    : userRole === 'admin' ? adminNav
+  const nav = userRole === 'admin' ? adminNav
     : userRole === 'gate' ? gateNav
     : userRole === 'qc' ? qcNav
     : userRole === 'unloading' ? unloadingNav
@@ -109,7 +104,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     }
   };
 
-  const unitLabel = profile?.units ? `${profile.units.name} · ${profile.units.unit_code}` : null;
+  const unitLabel = profile?.bmcs ? `${profile.bmcs.name} · ${profile.bmcs.bmc_code}` : null;
 
   return (
     <div className="layout">
