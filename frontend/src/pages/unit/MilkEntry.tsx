@@ -18,9 +18,7 @@ import {
   listOfflineMilkEntries,
   syncOfflineMilkEntries,
 } from '../../lib/offlineQueue';
-import { DataTable } from '../../components/DataTable';
-import type { DataColumn } from '../../components/DataTable';
-import { ConfirmDialog, StatusBadge, TableSkeleton } from '../../components/UiPrimitives';
+import { ConfirmDialog, StatusBadge } from '../../components/UiPrimitives';
 
 interface Society {
   id: string;
@@ -94,6 +92,7 @@ export default function MilkEntry() {
   const [showModal, setShowModal] = useState(() => Boolean(searchParams.get('editId')));
   const [recent, setRecent] = useState<RecentEntry[]>([]);
   const [listLoading, setListLoading] = useState(true);
+  const [search, setSearch] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<RecentEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(() => searchParams.get('editId'));
@@ -456,91 +455,47 @@ export default function MilkEntry() {
     }
   };
 
-  const columns: DataColumn<RecentEntry>[] = [
-    {
-      key: 'date',
-      header: 'Collection date',
-      sortValue: r => `${r.date}-${r.shift}`,
-      render: r => formatDateDDMMYYYY(r.date),
-    },
-    {
-      key: 'shift',
-      header: t('shiftLabel'),
-      render: r => (r.shift === 'AM' ? 'Morning' : 'Evening'),
-    },
-    {
-      key: 'dispatch',
-      header: 'Dispatch date',
-      render: r => (r.dispatch_date ? formatDateDDMMYYYY(r.dispatch_date) : '—'),
-    },
-    { key: 'cans', header: 'Cans', align: 'right', render: r => (r.cans != null ? String(r.cans) : '—') },
-    {
-      key: 'litres',
-      header: 'Litres',
-      align: 'right',
-      sortValue: r => Number(r.quantity_litres),
-      render: r => formatLitres(Number(r.quantity_litres), 1),
-    },
-    {
-      key: 'quality',
-      header: 'Fat / SNF',
-      render: r => `${formatFatSnf(Number(r.fat_pct))}% / ${formatFatSnf(Number(r.snf_pct))}%`,
-    },
-    {
-      key: 'amount',
-      header: 'Amount',
-      align: 'right',
-      sortValue: r => Number(r.quantity_litres) * Number(r.rate_per_litre),
-      render: r => formatINR(Number(r.quantity_litres) * Number(r.rate_per_litre)),
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: r => (
-        <StatusBadge tone={r.status === 'verified' ? 'green' : 'amber'}>
-          {r.status === 'verified' ? 'Verified' : 'Submitted'}
-        </StatusBadge>
-      ),
-    },
-    {
-      key: 'actions',
-      header: '',
-      render: r => (
-        <div style={{ display: 'flex', gap: '6px' }}>
-          <button type="button" className="btn btn-secondary btn-sm" disabled={Boolean(r.is_locked)} onClick={() => loadForEdit(r.id)}>
-            Edit
-          </button>
-          <button type="button" className="btn-danger btn-sm" disabled={Boolean(r.is_locked)} onClick={() => setDeleteTarget(r)}>
-            Delete
-          </button>
-        </div>
-      ),
-    },
-  ];
-
   const unitLabel = profile?.bmcs ? `${profile.bmcs.name} · ${profile.bmcs.bmc_code}` : null;
-  const cell = { padding: '4px 6px', whiteSpace: 'nowrap' as const };
-  const input = {
-    width: '100%', height: 34, padding: '0 8px', borderRadius: 6,
-    border: '1px solid #cbd5e1', fontSize: 14, textAlign: 'right' as const,
-  };
 
-  const sectionTitle = {
-    fontSize: '13px', fontWeight: 700, color: '#334155', textTransform: 'uppercase' as const,
-    letterSpacing: '0.05em', marginBottom: '10px',
+  const q = search.trim().toLowerCase();
+  const filteredRecent = recent.filter(r =>
+    !q ||
+    formatDateDDMMYYYY(r.date).includes(q) ||
+    r.date.includes(q) ||
+    (r.shift === 'AM' ? 'morning' : 'evening').includes(q),
+  );
+
+  // Gate-screen look: slate sheet table, label-left forms, dark title bar
+  const th = { padding: '10px 12px' } as const;
+  const td = { padding: '10px 12px' } as const;
+  const rowLabel = { width: 220, fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' } as const;
+  const smallInput = {
+    height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3,
+  } as const;
+  const cellInput = {
+    width: '100%', height: 28, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2, textAlign: 'right' as const,
   };
-  const labelStyle = { fontSize: '12px', fontWeight: 700, color: '#1e293b' };
+  const sh = { padding: '8px 10px', whiteSpace: 'nowrap' as const, textAlign: 'right' as const };
+  const sd = { padding: '6px 10px', whiteSpace: 'nowrap' as const, textAlign: 'right' as const, color: '#475569' };
 
   return (
-    <div className="page" style={{ maxWidth: '1100px', margin: '0 auto', padding: '16px' }}>
-      <div className="page-header" style={{ marginBottom: '16px' }}>
+    <div className="page" style={{ maxWidth: '1180px', margin: '0 auto', padding: '1.25rem' }}>
+      <div
+        className="page-header"
+        style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem',
+          marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem',
+        }}
+      >
         <div>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>{t('milkEntryTitle')}</h1>
+          <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
+            Milk Collection Entry (BMC Collection)
+          </h1>
           {unitLabel && (
             <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>{unitLabel}</div>
           )}
         </div>
-        <div className="header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           {offlineCount > 0 && (
             <>
               <StatusBadge tone="amber">{t('pendingSync')} ({offlineCount})</StatusBadge>
@@ -549,139 +504,217 @@ export default function MilkEntry() {
           )}
           <button
             type="button"
-            className="btn btn-primary"
             onClick={openCreate}
-            style={{
-              backgroundColor: '#16a34a', borderColor: '#15803d', color: '#ffffff', fontWeight: 700,
-              fontSize: '13px', padding: '8px 16px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
-            }}
+            className="btn btn-primary"
+            style={{ height: '38px', padding: '0 1rem', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.88rem', fontWeight: 600 }}
           >
-            🥛 + Create Milk Entry
+            + New Milk Entry
           </button>
         </div>
       </div>
 
+      {!showModal && error && <p className="auth-error" style={{ marginBottom: '1rem' }}>{error}</p>}
       {savedBanner && (
-        <div className={savedBanner.offline ? 'warning-banner' : 'success-banner'} style={{ marginBottom: '16px' }}>
-          <div><strong>{savedBanner.offline ? t('pendingSync') : savedBanner.message}</strong></div>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div className={savedBanner.offline ? 'warning-banner' : 'success-banner'} style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+          <span><strong>{savedBanner.offline ? t('pendingSync') : savedBanner.message}</strong></span>
+          <span style={{ display: 'flex', gap: '0.5rem' }}>
             {savedBanner.id && savedBanner.canUndo && (
               <>
-                <button type="button" className="btn-secondary btn-sm" onClick={() => loadForEdit(savedBanner.id!)}>
-                  {t('editEntry')}
-                </button>
+                <button type="button" className="btn-secondary btn-sm" onClick={() => loadForEdit(savedBanner.id!)}>{t('editEntry')}</button>
                 <button type="button" className="btn-danger btn-sm" onClick={handleUndo}>{t('undoSave')}</button>
               </>
             )}
-          </div>
+            <button type="button" onClick={() => setSavedBanner(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534' }}>✕</button>
+          </span>
         </div>
       )}
 
-      {!showModal && error && <p className="auth-error" style={{ marginBottom: '16px' }}>{error}</p>}
-
-      <div className="card table-card" style={{ padding: '20px', marginBottom: '24px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>Recent Milk Entries</h2>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={openCreate}
-            style={{
-              backgroundColor: '#16a34a', borderColor: '#15803d', color: '#ffffff', fontWeight: 700,
-              fontSize: '12px', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
-            }}
-          >
-            🥛 + Create Milk Entry
-          </button>
+      <div
+        className="card"
+        style={{
+          backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06)', padding: '1.25rem', minHeight: '350px',
+        }}
+      >
+        <div style={{ marginBottom: '0.75rem' }}>
+          <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
+            📋 BMC Milk Collection Register ({filteredRecent.length} Entries)
+          </h3>
         </div>
-        {listLoading ? (
-          <TableSkeleton rows={4} cols={7} />
-        ) : (
-          <DataTable
-            rows={recent}
-            columns={columns}
-            getRowKey={r => r.id}
-            emptyMessage="No milk entries yet. Click '+ Create Milk Entry' above to record a shift."
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>Search Entries:</span>
+          <input
+            type="text"
+            placeholder="Filter by date, Morning / Evening..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ width: 260, height: 32, padding: '4px 10px', border: '1px solid #cbd5e1', borderRadius: 4, fontSize: '0.85rem' }}
           />
+          {search && (
+            <button type="button" onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '0.85rem' }}>
+              Clear
+            </button>
+          )}
+        </div>
+
+        {listLoading ? (
+          <div style={{ padding: '3rem 1rem', textAlign: 'center', color: '#64748b' }}>Loading entries…</div>
+        ) : filteredRecent.length === 0 ? (
+          <div style={{ padding: '3rem 1rem', textAlign: 'center', color: '#64748b' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🥛</div>
+            <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '1.1rem' }}>No milk entries yet</div>
+            <p style={{ fontSize: '0.85rem', margin: '0.4rem 0' }}>
+              Click “+ New Milk Entry” to record a morning or evening collection.
+            </p>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', textAlign: 'left', color: '#475569' }}>
+                  <th style={th}>COLLECTION DATE</th>
+                  <th style={th}>SHIFT</th>
+                  <th style={th}>DISPATCH DATE</th>
+                  <th style={th}>CANS</th>
+                  <th style={th}>LITRES</th>
+                  <th style={th}>FAT / SNF</th>
+                  <th style={th}>AMOUNT</th>
+                  <th style={th}>STATUS</th>
+                  <th style={{ ...th, textAlign: 'right' }}>ACTION</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRecent.map(r => (
+                  <tr
+                    key={r.id}
+                    onClick={() => { if (!r.is_locked) loadForEdit(r.id); }}
+                    style={{ borderBottom: '1px solid #f1f5f9', cursor: r.is_locked ? 'default' : 'pointer', backgroundColor: '#ffffff' }}
+                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                  >
+                    <td style={{ ...td, fontWeight: 700, color: '#0f172a' }}>
+                      <span style={{ backgroundColor: '#fef9c3', border: '1px solid #fde047', padding: '2px 8px', borderRadius: 3 }}>
+                        {formatDateDDMMYYYY(r.date)}
+                      </span>
+                    </td>
+                    <td style={{ ...td, color: '#334155' }}>{r.shift === 'AM' ? 'Morning' : 'Evening'}</td>
+                    <td style={{ ...td, color: '#475569' }}>{r.dispatch_date ? formatDateDDMMYYYY(r.dispatch_date) : '—'}</td>
+                    <td style={{ ...td, color: '#475569' }}>{r.cans != null ? r.cans : '—'}</td>
+                    <td style={{ ...td, fontWeight: 700, color: '#0f172a' }}>{formatLitres(Number(r.quantity_litres), 1)}</td>
+                    <td style={{ ...td, color: '#475569' }}>{formatFatSnf(Number(r.fat_pct))}% / {formatFatSnf(Number(r.snf_pct))}%</td>
+                    <td style={{ ...td, fontWeight: 700, color: '#0f172a' }}>{formatINR(Number(r.quantity_litres) * Number(r.rate_per_litre))}</td>
+                    <td style={td}>
+                      <StatusBadge tone={r.status === 'verified' ? 'green' : 'amber'}>{r.status === 'verified' ? 'Verified' : 'Submitted'}</StatusBadge>
+                    </td>
+                    <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button
+                        type="button"
+                        disabled={Boolean(r.is_locked)}
+                        onClick={e => { e.stopPropagation(); loadForEdit(r.id); }}
+                        className="btn btn-primary btn-sm"
+                        style={{ backgroundColor: '#16a34a', borderColor: '#15803d', fontWeight: 700, padding: '4px 12px', marginRight: 6 }}
+                      >
+                        📝 Edit
+                      </button>
+                      <button
+                        type="button"
+                        disabled={Boolean(r.is_locked)}
+                        onClick={e => { e.stopPropagation(); setDeleteTarget(r); }}
+                        className="btn-danger btn-sm"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
       {showModal && (
         <div
-          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
           style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1050, padding: '16px', overflowY: 'auto',
+            position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(2px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '1rem',
           }}
           onClick={closeModal}
         >
           <div
-            className="modal-dialog card"
             style={{
-              backgroundColor: '#ffffff', borderRadius: '12px', maxWidth: '1000px', width: '100%', maxHeight: '92vh',
-              overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-              border: '1px solid #cbd5e1', padding: '24px',
+              backgroundColor: '#ffffff', borderRadius: 8, width: '100%', maxWidth: 1000, maxHeight: '92vh',
+              display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', overflow: 'hidden',
             }}
             onClick={e => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '16px' }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>
-                  🥛 {editingId ? 'Edit Milk Entry' : 'Milk Collection Entry Form'}
-                </h2>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>
-                  Select the societies you collected from and enter cans, litres, fat and SNF. Rate, amount and totals are calculated.
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={closeModal}
-                title="Close"
-                style={{
-                  background: '#f1f5f9', border: 'none', borderRadius: '6px', width: '32px', height: '32px', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', fontSize: '16px', color: '#64748b', cursor: 'pointer', fontWeight: 700,
-                }}
-              >
+            <div
+              style={{
+                backgroundColor: '#52525b', color: '#ffffff', padding: '0.5rem 1rem', fontSize: '0.88rem', fontWeight: 700,
+                letterSpacing: '0.04em', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}
+            >
+              <span>{editingId ? 'EDIT MILK COLLECTION DETAILS' : 'MILK COLLECTION DETAILS'}</span>
+              <button type="button" onClick={closeModal} style={{ background: 'none', border: 'none', color: '#ffffff', fontSize: '1.2rem', cursor: 'pointer' }}>
                 ✕
               </button>
             </div>
 
-            {existingForSlot && (
-              <div className="warning-banner" role="alert" style={{ marginBottom: '16px' }}>
-                <span>
-                  A {shift === 'AM' ? 'Morning (AM)' : 'Evening (PM)'} entry for <strong>{formatDateDDMMYYYY(date)}</strong> already exists. Edit it?
-                </span>
-                <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={() => loadForEdit(existingForSlot.id)}>
-                  {t('editEntry')}
-                </button>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="entry-form">
-              <div style={sectionTitle}>1. COLLECTION DETAILS</div>
-              <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '18px' }}>
-                <div className="form-group">
-                  <label style={labelStyle}>Collection Date * <span className="hint">({formatDateDDMMYYYY(date)})</span></label>
-                  <input type="date" value={date} onChange={e => setDate(e.target.value)} disabled={Boolean(editingId)} required />
+            <div style={{ padding: '1.25rem 1.5rem', overflowY: 'auto' }}>
+              {existingForSlot && (
+                <div className="warning-banner" role="alert" style={{ marginBottom: '1rem' }}>
+                  <span>
+                    A {shift === 'AM' ? 'Morning (AM)' : 'Evening (PM)'} entry for <strong>{formatDateDDMMYYYY(date)}</strong> already exists. Edit it?
+                  </span>
+                  <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={() => loadForEdit(existingForSlot.id)}>
+                    {t('editEntry')}
+                  </button>
                 </div>
-                <div className="form-group">
-                  <label style={labelStyle}>{t('shiftLabel')} *</label>
-                  <select value={shift} onChange={e => setShift(e.target.value as 'AM' | 'PM')} disabled={Boolean(editingId)}>
+              )}
+
+              <form onSubmit={handleSubmit}>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <label style={rowLabel}>BMC</label>
+                  <span style={{ backgroundColor: '#fef9c3', border: '1px solid #fde047', padding: '2px 8px', borderRadius: 3, fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
+                    {unitLabel ?? '—'}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <label style={rowLabel}>Collection Date <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input type="date" required value={date} onChange={e => setDate(e.target.value)} disabled={Boolean(editingId)} style={{ ...smallInput, width: 170 }} />
+                  <span style={{ marginLeft: 10, fontSize: '0.8rem', color: '#64748b' }}>({formatDateDDMMYYYY(date)})</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <label style={rowLabel}>Shift <span style={{ color: '#ef4444' }}>*</span></label>
+                  <select
+                    value={shift}
+                    onChange={e => setShift(e.target.value as 'AM' | 'PM')}
+                    disabled={Boolean(editingId)}
+                    style={{ ...smallInput, width: 170, backgroundColor: '#ffffff' }}
+                  >
                     <option value="AM">{t('morningShift')}</option>
                     <option value="PM">{t('eveningShift')}</option>
                   </select>
                 </div>
-                <div className="form-group">
-                  <label style={labelStyle}>Dispatch Date</label>
+
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <label style={rowLabel}>Dispatch Date</label>
                   <input
                     type="date"
                     value={dispatchDate}
                     min={date}
                     onChange={e => { setDispatchTouched(true); setDispatchDate(e.target.value); }}
+                    style={{ ...smallInput, width: 170 }}
                   />
                 </div>
-                <div className="form-group">
-                  <label style={labelStyle}>{t('temperatureLabel')} <span className="hint">(optional)</span></label>
+
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <label style={rowLabel}>Temperature(°C)</label>
                   <input
                     type="number"
                     inputMode="decimal"
@@ -689,172 +722,172 @@ export default function MilkEntry() {
                     value={temperature}
                     onChange={e => setTemperature(e.target.value)}
                     placeholder="e.g. 4.5"
+                    style={{ ...smallInput, width: 150 }}
                   />
                 </div>
-              </div>
 
-              <div style={sectionTitle}>2. SOCIETY-WISE COLLECTION</div>
-              <div>
-                <div style={{ marginBottom: 8 }}>
-                  <span className="hint">
-                    Fat {formatFatSnf(settings.fat_min)}–{formatFatSnf(settings.fat_max)}, SNF {formatFatSnf(settings.snf_min)}–{formatFatSnf(settings.snf_max)}.
-                  </span>
+                <div style={{ marginTop: '1.5rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#334155', marginBottom: '0.75rem' }}>
+                    Society Wise Collection
+                    <span style={{ fontWeight: 400, fontSize: '0.8rem', color: '#64748b', marginLeft: 10 }}>
+                      Fat {formatFatSnf(settings.fat_min)}–{formatFatSnf(settings.fat_max)}, SNF {formatFatSnf(settings.snf_min)}–{formatFatSnf(settings.snf_max)}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+                    <select
+                      value=""
+                      onChange={e => addSocietyRow(e.target.value)}
+                      disabled={societiesLoading || availableSocieties.length === 0}
+                      style={{ ...smallInput, height: 30, minWidth: 260, backgroundColor: '#ffffff' }}
+                    >
+                      <option value="">
+                        {availableSocieties.length > 0
+                          ? '+ Select society to add…'
+                          : societies.length === 0
+                            ? 'No societies for this BMC yet'
+                            : 'All societies added'}
+                      </option>
+                      {availableSocieties.map(sc => (
+                        <option key={sc.id} value={sc.id}>{sc.name} ({sc.code})</option>
+                      ))}
+                    </select>
+                    {availableSocieties.length > 1 && (
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAddedIds(prev => [...prev, ...availableSocieties.map(sc => sc.id)])}>
+                        Add all ({availableSocieties.length})
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 4 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860, fontSize: '13px' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}>
+                          <th style={{ ...sh, textAlign: 'left', position: 'sticky', left: 0, background: '#f8fafc' }}>SOCIETY NAME</th>
+                          <th style={{ ...sh, width: 70 }}>CANS</th>
+                          <th style={{ ...sh, width: 90 }}>LITRES</th>
+                          <th style={sh}>LR</th>
+                          <th style={{ ...sh, width: 70 }}>FAT</th>
+                          <th style={{ ...sh, width: 70 }}>SNF</th>
+                          <th style={sh}>RATE</th>
+                          <th style={sh}>AMOUNT</th>
+                          <th style={sh}>LT.FAT</th>
+                          <th style={sh}>LT.SNF</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {societiesLoading && (
+                          <tr><td colSpan={10} style={{ ...sd, textAlign: 'center', padding: 16 }}>Loading societies…</td></tr>
+                        )}
+                        {!societiesLoading && computed.length === 0 && (
+                          <tr>
+                            <td colSpan={10} style={{ ...sd, textAlign: 'center', padding: 16 }}>
+                              {societies.length === 0
+                                ? 'This BMC has no societies yet. Click “Society not in the list? Add new” below to add the first one.'
+                                : 'Select a society from the dropdown above to start.'}
+                            </td>
+                          </tr>
+                        )}
+                        {computed.map(c => {
+                          const r = rows[c.society.id] ?? EMPTY_ROW;
+                          const bg = c.problem ? '#fef2f2' : c.ok ? '#f0fdf4' : '#ffffff';
+                          return (
+                            <tr key={c.society.id} style={{ borderBottom: '1px solid #f1f5f9', background: bg }}>
+                              <td style={{ ...sd, textAlign: 'left', position: 'sticky', left: 0, background: bg, fontWeight: 600, color: '#0f172a' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => removeSocietyRow(c.society.id)}
+                                  aria-label={`Remove ${c.society.name}`}
+                                  title="Remove"
+                                  style={{ border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', marginRight: 6, fontSize: 14 }}
+                                >
+                                  ✕
+                                </button>
+                                {c.society.name}
+                                <div style={{ fontSize: 11, color: c.problem ? '#b91c1c' : '#94a3b8', fontWeight: 400 }}>
+                                  {c.problem || c.society.code}
+                                </div>
+                              </td>
+                              <td style={sd}><input style={cellInput} type="number" inputMode="numeric" min="0" step="1" value={r.cans} onChange={e => setCell(c.society.id, 'cans', e.target.value)} /></td>
+                              <td style={sd}><input id={`litres-${c.society.id}`} style={cellInput} type="number" inputMode="decimal" min="0" step="0.1" value={r.litres} onChange={e => setCell(c.society.id, 'litres', e.target.value)} /></td>
+                              <td style={sd}>{c.ok ? fmt(c.lr, 1) : '–'}</td>
+                              <td style={sd}><input style={cellInput} type="number" inputMode="decimal" step="0.1" value={r.fat} onChange={e => setCell(c.society.id, 'fat', e.target.value)} /></td>
+                              <td style={sd}><input style={cellInput} type="number" inputMode="decimal" step="0.1" value={r.snf} onChange={e => setCell(c.society.id, 'snf', e.target.value)} /></td>
+                              <td style={sd}>{c.ok ? fmt(c.rate) : '–'}</td>
+                              <td style={{ ...sd, fontWeight: 700, color: '#0f172a' }}>{c.ok ? formatINR(c.amount) : '–'}</td>
+                              <td style={sd}>{c.ok ? fmt(c.ltFat, 3) : '–'}</td>
+                              <td style={sd}>{c.ok ? fmt(c.ltSnf, 3) : '–'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ background: '#f1f5f9', fontWeight: 700, borderTop: '2px solid #cbd5e1', color: '#0f172a' }}>
+                          <td style={{ ...sd, textAlign: 'left', position: 'sticky', left: 0, background: '#f1f5f9', color: '#0f172a' }}>
+                            TOTAL ({totals.societies})
+                          </td>
+                          <td style={{ ...sd, color: '#0f172a' }}>{totals.cans}</td>
+                          <td style={{ ...sd, color: '#0f172a' }}>{fmt(totals.litres, 1)}</td>
+                          <td style={sd} />
+                          <td style={{ ...sd, color: '#0f172a' }}>{totals.litres > 0 ? fmt(totals.fat) : '–'}</td>
+                          <td style={{ ...sd, color: '#0f172a' }}>{totals.litres > 0 ? fmt(totals.snf) : '–'}</td>
+                          <td style={{ ...sd, color: '#0f172a' }}>{totals.litres > 0 ? fmt(totals.amount / totals.litres) : '–'}</td>
+                          <td style={{ ...sd, color: '#0f172a' }}>{formatINR(totals.amount)}</td>
+                          <td style={{ ...sd, color: '#0f172a' }}>{fmt(totals.ltFat, 3)}</td>
+                          <td style={{ ...sd, color: '#0f172a' }}>{fmt(totals.ltSnf, 3)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+
+                  <div style={{ marginTop: 10 }}>
+                    {!showAdd ? (
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowAdd(true)}>Society not in the list? Add new</button>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <input style={{ ...smallInput, width: 120 }} placeholder="Code" value={newCode} onChange={e => setNewCode(e.target.value)} />
+                        <input style={{ ...smallInput, width: 220 }} placeholder="Society name" value={newName} onChange={e => setNewName(e.target.value)} />
+                        <button type="button" className="btn btn-primary btn-sm" style={{ width: 'auto' }} disabled={!newCode.trim() || !newName.trim()} onClick={() => void handleAddSociety()}>
+                          Add
+                        </button>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setShowAdd(false); setAddError(''); }}>Cancel</button>
+                        {addError && <span style={{ color: '#b91c1c', fontSize: 13 }}>{addError}</span>}
+                      </div>
+                    )}
+                  </div>
                 </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-              <select
-                value=""
-                onChange={e => addSocietyRow(e.target.value)}
-                disabled={societiesLoading || availableSocieties.length === 0}
-                style={{ height: 38, minWidth: 260, padding: '0 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 14 }}
-              >
-                <option value="">
-                  {availableSocieties.length === 0 ? 'All societies added' : '+ Select society to add…'}
-                </option>
-                {availableSocieties.map(sc => (
-                  <option key={sc.id} value={sc.id}>{sc.name} ({sc.code})</option>
-                ))}
-              </select>
-              {availableSocieties.length > 1 && (
-                <button type="button" className="btn-secondary btn-sm" onClick={() => setAddedIds(prev => [...prev, ...availableSocieties.map(sc => sc.id)])}>
-                  Add all ({availableSocieties.length})
-                </button>
-              )}
-            </div>
 
-            <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820, fontSize: 14 }}>
-                <thead>
-                  <tr style={{ background: '#f1f5f9', textAlign: 'right' }}>
-                    <th style={{ ...cell, textAlign: 'left', position: 'sticky', left: 0, background: '#f1f5f9' }}>Society</th>
-                    <th style={{ ...cell, width: 80 }}>Cans</th>
-                    <th style={{ ...cell, width: 100 }}>Litres</th>
-                    <th style={cell}>LR</th>
-                    <th style={{ ...cell, width: 80 }}>Fat %</th>
-                    <th style={{ ...cell, width: 80 }}>SNF %</th>
-                    <th style={cell}>Lt Fat (kg)</th>
-                    <th style={cell}>Lt SNF (kg)</th>
-                    <th style={cell}>Rate ₹/L</th>
-                    <th style={cell}>Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {societiesLoading && (
-                    <tr><td colSpan={10} style={{ ...cell, textAlign: 'center', color: '#64748b', padding: 16 }}>Loading societies…</td></tr>
-                  )}
-                  {!societiesLoading && computed.length === 0 && (
-                    <tr><td colSpan={10} style={{ ...cell, textAlign: 'center', color: '#64748b', padding: 16 }}>
-                      {societies.length === 0
-                        ? 'No societies yet. Use “Society not in the list?” below.'
-                        : 'Select a society from the dropdown above to start.'}
-                    </td></tr>
-                  )}
-                  {computed.map(c => {
-                    const r = rows[c.society.id] ?? EMPTY_ROW;
-                    return (
-                      <tr key={c.society.id} style={{ borderTop: '1px solid #e2e8f0', background: c.problem ? '#fef2f2' : c.ok ? '#f0fdf4' : undefined }}>
-                        <td style={{ ...cell, position: 'sticky', left: 0, background: c.problem ? '#fef2f2' : c.ok ? '#f0fdf4' : '#ffffff', fontWeight: 600 }}>
-                          <button
-                            type="button"
-                            onClick={() => removeSocietyRow(c.society.id)}
-                            aria-label={`Remove ${c.society.name}`}
-                            title="Remove"
-                            style={{ border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', marginRight: 6, fontSize: 16 }}
-                          >
-                            ✕
-                          </button>
-                          {c.society.name}
-                          <div style={{ fontSize: 11, color: c.problem ? '#b91c1c' : '#94a3b8', fontWeight: 400 }}>
-                            {c.problem || c.society.code}
-                          </div>
-                        </td>
-                        <td style={cell}>
-                          <input style={input} type="number" inputMode="numeric" min="0" step="1" value={r.cans} onChange={e => setCell(c.society.id, 'cans', e.target.value)} />
-                        </td>
-                        <td style={cell}>
-                          <input id={`litres-${c.society.id}`} style={input} type="number" inputMode="decimal" min="0" step="0.1" value={r.litres} onChange={e => setCell(c.society.id, 'litres', e.target.value)} />
-                        </td>
-                        <td style={{ ...cell, textAlign: 'right', color: '#475569' }}>{c.ok ? fmt(c.lr, 1) : '–'}</td>
-                        <td style={cell}>
-                          <input style={input} type="number" inputMode="decimal" step="0.1" value={r.fat} onChange={e => setCell(c.society.id, 'fat', e.target.value)} />
-                        </td>
-                        <td style={cell}>
-                          <input style={input} type="number" inputMode="decimal" step="0.1" value={r.snf} onChange={e => setCell(c.society.id, 'snf', e.target.value)} />
-                        </td>
-                        <td style={{ ...cell, textAlign: 'right', color: '#475569' }}>{c.ok ? fmt(c.ltFat, 3) : '–'}</td>
-                        <td style={{ ...cell, textAlign: 'right', color: '#475569' }}>{c.ok ? fmt(c.ltSnf, 3) : '–'}</td>
-                        <td style={{ ...cell, textAlign: 'right', color: '#475569' }}>{c.ok ? fmt(c.rate) : '–'}</td>
-                        <td style={{ ...cell, textAlign: 'right', fontWeight: 600 }}>{c.ok ? formatINR(c.amount) : '–'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr style={{ background: '#e2e8f0', fontWeight: 700, textAlign: 'right', borderTop: '2px solid #94a3b8' }}>
-                    <td style={{ ...cell, textAlign: 'left', position: 'sticky', left: 0, background: '#e2e8f0' }}>
-                      Total ({totals.societies} {totals.societies === 1 ? 'society' : 'societies'})
-                    </td>
-                    <td style={cell}>{totals.cans}</td>
-                    <td style={cell}>{fmt(totals.litres, 1)}</td>
-                    <td style={cell} />
-                    <td style={cell}>{totals.litres > 0 ? fmt(totals.fat) : '–'}</td>
-                    <td style={cell}>{totals.litres > 0 ? fmt(totals.snf) : '–'}</td>
-                    <td style={cell}>{fmt(totals.ltFat, 3)}</td>
-                    <td style={cell}>{fmt(totals.ltSnf, 3)}</td>
-                    <td style={cell}>{totals.litres > 0 ? fmt(totals.amount / totals.litres) : '–'}</td>
-                    <td style={cell}>{formatINR(totals.amount)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+                {error && <p className="auth-error" style={{ marginTop: '12px' }}>{error}</p>}
 
-            <div style={{ marginTop: 10 }}>
-              {!showAdd ? (
-                <button type="button" className="btn-secondary btn-sm" onClick={() => setShowAdd(true)}>Society not in the list? Add new</button>
-              ) : (
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <input style={{ ...input, width: 120, textAlign: 'left' }} placeholder="Code" value={newCode} onChange={e => setNewCode(e.target.value)} />
-                  <input style={{ ...input, width: 220, textAlign: 'left' }} placeholder="Society name" value={newName} onChange={e => setNewName(e.target.value)} />
-                  <button type="button" className="btn-primary btn-sm" style={{ width: 'auto' }} disabled={!newCode.trim() || !newName.trim()} onClick={() => void handleAddSociety()}>
-                    Add
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px', marginTop: '1.5rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0' }}>
+                  <button type="button" onClick={closeModal} className="btn btn-secondary" style={{ padding: '6px 16px' }}>
+                    {t('cancel')}
                   </button>
-                  <button type="button" className="btn-secondary btn-sm" onClick={() => { setShowAdd(false); setAddError(''); }}>Cancel</button>
-                  {addError && <span style={{ color: '#b91c1c', fontSize: 13 }}>{addError}</span>}
-                </div>
-              )}
-            </div>
-          </div>
-
-
-              {error && <p className="auth-error" style={{ marginTop: '12px' }}>{error}</p>}
-
-              <div style={{ display: 'flex', gap: '12px', marginTop: '18px', flexWrap: 'wrap' }}>
-                <button type="button" onClick={closeModal} className="btn-secondary" style={{ flex: 1, padding: '12px', fontSize: '14px', fontWeight: 700 }}>
-                  {t('cancel')}
-                </button>
-                {!editingId && (
+                  {!editingId && (
+                    <button
+                      type="button"
+                      disabled={loading || !isFormValid}
+                      onClick={() => void submitEntry(true)}
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 16px' }}
+                    >
+                      {t('saveAndAddNext')}
+                    </button>
+                  )}
                   <button
-                    type="button"
+                    type="submit"
                     disabled={loading || !isFormValid}
-                    className="btn-secondary"
-                    style={{ flex: 1, padding: '12px', fontSize: '14px', fontWeight: 700 }}
-                    onClick={() => void submitEntry(true)}
+                    style={{
+                      backgroundColor: '#65a30d', color: '#ffffff', border: 'none', borderRadius: 3, padding: '6px 20px',
+                      fontWeight: 700, fontSize: '0.88rem', cursor: loading || !isFormValid ? 'not-allowed' : 'pointer',
+                      opacity: loading || !isFormValid ? 0.7 : 1,
+                    }}
                   >
-                    {t('saveAndAddNext')}
+                    {loading ? 'Saving…' : editingId ? 'Update' : 'Submit'}
                   </button>
-                )}
-                <button
-                  type="submit"
-                  disabled={loading || !isFormValid}
-                  className="btn-primary"
-                  style={{
-                    flex: 2, padding: '12px', fontSize: '15px', fontWeight: 800, backgroundColor: '#16a34a', borderColor: '#15803d',
-                    cursor: loading || !isFormValid ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {loading ? t('saving') : editingId ? t('save') : '🥛 Submit Milk Entry'}
-                </button>
-              </div>
-            </form>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
