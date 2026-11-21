@@ -177,7 +177,25 @@ export default function AdminTankerRecords() {
     } catch {}
   };
 
+  const teamsLoadedRef = useRef(false);
   const unitsLoadedRef = useRef(false);
+
+  // BMC list is only needed by the BMC filter: fetch it when the filter is first used
+  // (or at start if a saved BMC filter has to show its name).
+  const loadUnits = useCallback(async () => {
+    if (unitsLoadedRef.current) return;
+    unitsLoadedRef.current = true;
+    try {
+      const res = await api.get<Unit[]>('/bmcs');
+      setUnits(res.data || []);
+    } catch {
+      unitsLoadedRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedUnitId) void loadUnits();
+  }, [selectedUnitId, loadUnits]);
 
   // Fetch Tanker Records and Stats
   const fetchData = useCallback(
@@ -196,7 +214,7 @@ export default function AdminTankerRecords() {
         if (toDate) params.to = toDate;
         if (searchQuery.trim()) params.search = searchQuery.trim();
 
-        const [tResSettled, sResSettled, uResSettled, teamsResSettled] = await Promise.allSettled([
+        const [tResSettled, sResSettled, teamsResSettled] = await Promise.allSettled([
           api.get<any[]>('/tanker', { params }),
           api.get<StatsResponse>('/tanker/stats', {
             params: {
@@ -205,9 +223,8 @@ export default function AdminTankerRecords() {
               bmc_id: selectedUnitId || undefined,
             },
           }),
-          // BMC and team lists rarely change: load them once, not on every auto-refresh
-          silent && unitsLoadedRef.current ? Promise.resolve(null) : api.get<Unit[]>('/bmcs'),
-          silent && unitsLoadedRef.current ? Promise.resolve(null) : api.get<any[]>('/teams'),
+          // Team counts (shown in the stage strip) rarely change: load once, not on every auto-refresh
+          silent && teamsLoadedRef.current ? Promise.resolve(null) : api.get<any[]>('/teams'),
         ]);
 
         if (tResSettled.status === 'fulfilled') {
@@ -225,12 +242,8 @@ export default function AdminTankerRecords() {
           setError(reason);
         }
 
-        if (uResSettled.status === 'fulfilled' && uResSettled.value) {
-          setUnits(uResSettled.value.data || []);
-          unitsLoadedRef.current = true;
-        }
-
         if (teamsResSettled.status === 'fulfilled' && teamsResSettled.value) {
+          teamsLoadedRef.current = true;
           const counts: Record<string, number> = {};
           for (const tm of (teamsResSettled.value.data || [])) {
             counts[tm.code.toUpperCase()] = tm.active_user_count || 0;
@@ -787,6 +800,8 @@ export default function AdminTankerRecords() {
           <select
             value={selectedUnitId}
             onChange={(e) => setSelectedUnitId(e.target.value)}
+            onFocus={() => void loadUnits()}
+            onMouseDown={() => void loadUnits()}
             style={{ height: '36px', padding: '0 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff' }}
           >
             <option value="">All BMCs</option>
