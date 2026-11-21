@@ -387,15 +387,21 @@ export function enrichTankerRow(row: Record<string, unknown>, stages?: StageReco
 
 async function computeAvailableStock(zoneId: string, unitId?: string | null) {
   let milkQ = supabase.from('milk_entries').select('quantity_litres, rejection_qty').eq('zone_id', zoneId);
-  let tankerQ = supabase.from('tanker_dispatches').select('quantity_dispatched, unit_id, stage_data').eq('zone_id', zoneId);
-
   if (unitId) {
     milkQ = milkQ.eq('unit_id', unitId);
   }
 
-  const [mRes, tRes] = await Promise.all([milkQ, tankerQ]);
-  if (mRes.error || tRes.error) {
-    throw new Error(mRes.error?.message || tRes.error?.message || 'Failed to compute stock');
+  const [mRes, tankerQueryResult] = await Promise.all([
+    milkQ,
+    runResilientTankerQuery((selectStr) => {
+      let q = supabase.from('tanker_dispatches').select(selectStr);
+      if (zoneId) q = q.eq('zone_id', zoneId);
+      return q;
+    }),
+  ]);
+
+  if (mRes.error) {
+    throw new Error(mRes.error?.message || 'Failed to compute milk entries stock');
   }
 
   const totalCollectedNet = (mRes.data ?? []).reduce(
@@ -403,21 +409,37 @@ async function computeAvailableStock(zoneId: string, unitId?: string | null) {
     0,
   );
 
+  // Read fallback store for any multi-BMC dispatches or fallback stage_data
+  let fallbackMap: Record<string, any> = {};
+  try {
+    const store = readFallback();
+    if (store.tankerDispatches) {
+      fallbackMap = store.tankerDispatches as Record<string, any>;
+    }
+  } catch {
+    // non-fatal
+  }
+
+  const tankerRows = tankerQueryResult.data ?? [];
   let totalDispatched = 0;
-  for (const r of (tRes.data ?? [])) {
+  for (const r of tankerRows) {
+    const id = String((r as any).id);
+    const fb = fallbackMap[id];
+    const stageData = (r as any).stage_data || fb?.stage_data;
+    const bmcList = stageData?.bmc_dispatches;
+
     if (!unitId) {
-      totalDispatched += Number(r.quantity_dispatched ?? 0);
+      totalDispatched += Number((r as any).quantity_dispatched ?? 0);
     } else {
-      const bmcList = (r as any).stage_data?.bmc_dispatches;
       if (Array.isArray(bmcList) && bmcList.length > 0) {
         const myEntries = bmcList.filter((b: any) => b.unit_id === unitId);
         if (myEntries.length > 0) {
           totalDispatched += myEntries.reduce((s: number, b: any) => s + Number(b.quantity_dispatched || b.quantity || 0), 0);
         } else if ((r as any).unit_id === unitId) {
-          totalDispatched += Number(r.quantity_dispatched ?? 0);
+          totalDispatched += Number((r as any).quantity_dispatched ?? 0);
         }
       } else if ((r as any).unit_id === unitId) {
-        totalDispatched += Number(r.quantity_dispatched ?? 0);
+        totalDispatched += Number((r as any).quantity_dispatched ?? 0);
       }
     }
   }
@@ -1222,17 +1244,34 @@ router.post('/', async (req, res) => {
       bmc_dispatches: updatedBmcList,
     };
 
-    await supabase
-      .from('tanker_dispatches')
-      .update({
-        quantity_dispatched: newTotalQty,
-        dispatch_fat_pct: combinedFat,
-        dispatch_snf_pct: combinedSnf,
-        dc_number: combinedDc,
-        compartments: mergedComps,
-        stage_data: updatedStageData,
-      })
-      .eq('id', existingTrip.id);
+    try {
+      const upRes = await supabase
+        .from('tanker_dispatches')
+        .update({
+          quantity_dispatched: newTotalQty,
+          dispatch_fat_pct: combinedFat,
+          dispatch_snf_pct: combinedSnf,
+          dc_number: combinedDc,
+          compartments: mergedComps,
+          stage_data: updatedStageData,
+        })
+        .eq('id', existingTrip.id);
+
+      if (upRes.error) {
+        // Fallback update with standard base columns if extra columns don't exist in Supabase
+        await supabase
+          .from('tanker_dispatches')
+          .update({
+            quantity_dispatched: newTotalQty,
+            ...(combinedFat != null ? { dispatch_fat_pct: combinedFat } : {}),
+            ...(combinedSnf != null ? { dispatch_snf_pct: combinedSnf } : {}),
+            ...(combinedDc ? { dc_number: combinedDc } : {}),
+          })
+          .eq('id', existingTrip.id);
+      }
+    } catch (uErr) {
+      console.warn('[tanker] multi-BMC append update warning:', (uErr as Error).message);
+    }
 
     const mergedTripObj = {
       ...existingTrip,
