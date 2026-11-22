@@ -492,6 +492,8 @@ export default function TankerDispatch() {
               alignItems: 'center',
               gap: '6px',
               cursor: 'pointer',
+              maxWidth: '100%',
+              whiteSpace: 'normal',
             }}
           >
             🚛 + Create Dispatch Entry
@@ -614,7 +616,7 @@ export default function TankerDispatch() {
           onClick={() => setShowDispatchModal(false)}
         >
           <div
-            className="modal-dialog card"
+            className="modal-dialog card dispatch-modal"
             style={{
               backgroundColor: '#ffffff',
               borderRadius: '12px',
@@ -1074,6 +1076,8 @@ export default function TankerDispatch() {
                   className="btn-primary"
                   style={{
                     flex: 2,
+                    minWidth: 0,
+                    whiteSpace: 'normal',
                     padding: '12px',
                     fontSize: '15px',
                     fontWeight: 800,

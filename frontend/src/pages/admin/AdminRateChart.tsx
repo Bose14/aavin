@@ -225,7 +225,7 @@ export default function AdminRateChart() {
           No {milkTypeLabel(tab).toLowerCase()} rate chart yet. BMCs set to {milkTypeLabel(tab).toLowerCase()} milk cannot save entries until one is added.
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 280px) 1fr', gap: 14, alignItems: 'start' }}>
+        <div className="rc-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 280px) 1fr', gap: 14, alignItems: 'start' }}>
           <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: 10 }}>
             <div style={{ fontSize: '0.74rem', textTransform: 'uppercase', color: '#475569', fontWeight: 700, marginBottom: 6 }}>Versions</div>
             {ofType.map((v) => (
@@ -307,35 +307,35 @@ export default function AdminRateChart() {
       )}
 
       {showUpload && (
-        <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '1rem' }}>
-          <div style={{ width: '100%', maxWidth: 600, background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)' }}>
+        <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '1rem', overflowY: 'auto' }}>
+          <div style={{ width: '100%', maxWidth: 600, margin: 'auto', background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)' }}>
             <div style={{ background: '#52525b', color: '#fff', padding: '0.5rem 1rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', fontSize: '0.88rem', display: 'flex', justifyContent: 'space-between' }}>
               <span>Upload New Rate Chart</span>
               <button type="button" onClick={() => setShowUpload(false)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.1rem', cursor: 'pointer' }}>✕</button>
             </div>
-            <div style={{ padding: '1.1rem 1.4rem' }}>
+            <div className="sheet-modal-body" style={{ padding: '1.1rem 1.4rem' }}>
               {upError && <div style={{ background: '#fee2e2', color: '#991b1b', padding: '8px 12px', borderRadius: 4, marginBottom: 12, fontSize: '0.85rem' }}>{upError}</div>}
 
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+              <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
                 <label style={lbl}>Milk Type</label>
                 <select value={upType} onChange={(e) => setUpType(e.target.value as MilkType)} style={{ ...input, width: 160 }}>
                   <option value="COW">Cow</option>
                   <option value="BUFFALO">Buffalo</option>
                 </select>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+              <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
                 <label style={lbl}>Applies From</label>
                 <input type="date" value={upDate} onChange={(e) => setUpDate(e.target.value)} style={{ ...input, width: 160 }} />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+              <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
                 <label style={lbl}>Name (optional)</label>
                 <input value={upName} onChange={(e) => setUpName(e.target.value)} placeholder="e.g. Dec 2026 rate card" style={{ ...input, width: 260 }} />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
+              <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
                 <label style={lbl}>Rate Card (CSV)</label>
                 <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={(e) => void onFile(e.target.files?.[0])} />
               </div>
-              <div style={{ fontSize: '0.76rem', color: '#64748b', marginLeft: 150, marginBottom: 10 }}>
+              <div className="fl-hint" style={{ fontSize: '0.76rem', color: '#64748b', marginLeft: 150, marginBottom: 10 }}>
                 First row: Fat/Snf then the SNF values. Each next row: a fat value then its rate for every SNF column. Download the current chart as a template.
               </div>
 

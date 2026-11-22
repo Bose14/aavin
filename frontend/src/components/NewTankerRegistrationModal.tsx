@@ -183,7 +183,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
         )}
       </div>
 
-      <div style={{ padding: '1.25rem 1.5rem' }}>
+      <div className="sheet-modal-body" style={{ padding: '1.25rem 1.5rem' }}>
         {error && (
           <div style={{ backgroundColor: '#fee2e2', color: '#991b1b', padding: '8px 12px', borderRadius: 4, marginBottom: '1rem', fontSize: '0.85rem' }}>
             {error}
@@ -197,7 +197,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
 
         <form onSubmit={handleSubmit}>
           {/* 1. Vehicle Number */}
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
             <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>
               1. Vehicle Number <span style={{ color: '#ef4444' }}>*</span>
             </label>
@@ -219,7 +219,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
           </div>
 
           {/* 2. Contractor Name */}
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
             <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>
               2. Contractor Name <span style={{ color: '#ef4444' }}>*</span>
             </label>
@@ -240,7 +240,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
           </div>
 
           {/* 3. From Date */}
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
             <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>
               3. From Date
             </label>
@@ -259,7 +259,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
           </div>
 
           {/* 4. Vehicle Type */}
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
             <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>
               4. Vehicle Type
             </label>
@@ -288,7 +288,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
           </div>
 
           {/* 5. Number of Cells */}
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
             <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>
               5. Number of Cells
             </label>
@@ -316,7 +316,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
           </div>
 
           {/* 6. Cell Capacities */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+          <div className="fl-row" style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
             <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem', paddingTop: '4px' }}>
               6. Cell Capacities (Ltrs)
             </label>
@@ -361,7 +361,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
           </div>
 
           {/* 7. Supplier Name */}
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
             <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>
               7. Supplier Name <span style={{ color: '#ef4444' }}>*</span>
             </label>
@@ -382,7 +382,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
           </div>
 
           {/* 8. Driver */}
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
             <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>
               8. Driver Name <span style={{ color: '#ef4444' }}>*</span>
             </label>
@@ -396,7 +396,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
             />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
             <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>
               9. Driver Mobile
             </label>
@@ -410,7 +410,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
           </div>
 
           {/* 10. Route name (shown in reports) */}
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
             <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>
               10. Route Name <span style={{ color: '#ef4444' }}>*</span>
             </label>
@@ -425,7 +425,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
           </div>
 
           {/* 11. Route BMCs */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+          <div className="fl-row" style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
             <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem', paddingTop: '4px' }}>
               11. Route (BMCs) <span style={{ color: '#ef4444' }}>*</span>
               <div style={{ fontWeight: 400, fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>
@@ -516,9 +516,10 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
         justifyContent: 'center',
         zIndex: 9999,
         padding: '1rem',
+        overflowY: 'auto',
       }}
     >
-      <div style={{ width: '100%', maxWidth: 640, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)' }}>
+      <div style={{ width: '100%', maxWidth: 640, margin: 'auto', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)' }}>
         {formContent}
       </div>
     </div>
