@@ -17,6 +17,7 @@ const adminNav: NavItem[] = [
   { to: '/admin/tankers', labelKey: 'navTankers', fallbackLabel: 'Tankers' },
   { to: '/admin/bmcs', labelKey: 'navUnits', fallbackLabel: 'BMCs' },
   { to: '/admin/users', labelKey: 'navTeamsAndUsers', fallbackLabel: 'Teams & Users' },
+  { to: '/admin/rates', labelKey: 'navRateChart', fallbackLabel: 'Rate Chart' },
   { to: '/admin/analytics', labelKey: 'navAnalytics', fallbackLabel: 'Analytics' },
   { to: '/admin/settings', labelKey: 'navSettings', fallbackLabel: 'Settings' },
 ];

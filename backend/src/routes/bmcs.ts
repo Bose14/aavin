@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
 
   let unitsQuery = supabase
     .from('bmcs')
-    .select('id, id_token, name, location, bmc_code, route_name, team_name, kind, code_no, is_active, created_at, dairy_unit_id, dairy_units(name)')
+    .select('id, id_token, name, location, bmc_code, route_name, team_name, kind, code_no, milk_type, is_active, created_at, dairy_unit_id, dairy_units(name)')
     .order('name');
   let profilesQuery = supabase
     .from('users')
@@ -80,7 +80,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
 
   const rawBody = req.body as {
     name?: string; location?: string; bmc_code?: string;
-    route_name?: string; team_name?: string; kind?: string; code_no?: number | string;
+    route_name?: string; team_name?: string; kind?: string; code_no?: number | string; milk_type?: string;
   };
   const name = typeof rawBody.name === 'string' ? rawBody.name.trim() : '';
   const unitCode = typeof rawBody.bmc_code === 'string' ? rawBody.bmc_code.trim() : '';
@@ -98,6 +98,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
       team_name: optText(rawBody.team_name),
       kind: rawBody.kind === 'CC' ? 'CC' : 'BMC',
       code_no: optInt(rawBody.code_no),
+      milk_type: String(rawBody.milk_type ?? '').toUpperCase() === 'BUFFALO' ? 'BUFFALO' : 'COW',
     })
     .select()
     .single();
@@ -138,7 +139,7 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
   if (!lookup) { res.status(404).json({ error: 'BMC not found' }); return; }
   const rawBody = req.body as {
     name?: string; bmc_code?: string; location?: string | null; is_active?: boolean;
-    route_name?: string | null; team_name?: string | null; kind?: string; code_no?: number | string | null;
+    route_name?: string | null; team_name?: string | null; kind?: string; code_no?: number | string | null; milk_type?: string;
   };
 
   const patch: Record<string, unknown> = {};
@@ -159,6 +160,11 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
   if (rawBody.team_name !== undefined) patch.team_name = optText(rawBody.team_name);
   if (rawBody.kind !== undefined) patch.kind = rawBody.kind === 'CC' ? 'CC' : 'BMC';
   if (rawBody.code_no !== undefined) patch.code_no = optInt(rawBody.code_no);
+  if (rawBody.milk_type !== undefined) {
+    const mt = String(rawBody.milk_type).toUpperCase();
+    if (mt !== 'COW' && mt !== 'BUFFALO') { res.status(400).json({ error: 'Milk type must be cow or buffalo' }); return; }
+    patch.milk_type = mt;
+  }
   if (typeof rawBody.is_active === 'boolean') {
     patch.is_active = rawBody.is_active;
   }

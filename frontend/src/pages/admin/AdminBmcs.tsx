@@ -12,6 +12,7 @@ interface Unit {
   name: string;
   bmc_code: string;
   location: string | null;
+  milk_type?: 'COW' | 'BUFFALO';
   is_active: boolean;
   users_count: number;
   last_record_date: string | null;
@@ -37,6 +38,7 @@ export default function AdminBmcs() {
   const [editName, setEditName] = useState('');
   const [editCode, setEditCode] = useState('');
   const [editLocation, setEditLocation] = useState('');
+  const [editMilkType, setEditMilkType] = useState<'COW' | 'BUFFALO'>('COW');
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [toggleTarget, setToggleTarget] = useState<Unit | null>(null);
@@ -87,6 +89,7 @@ export default function AdminBmcs() {
     setEditName(u.name);
     setEditCode(u.bmc_code);
     setEditLocation(u.location ?? settings.locations[0] ?? '');
+    setEditMilkType(u.milk_type === 'BUFFALO' ? 'BUFFALO' : 'COW');
   };
 
   const handleSaveEdit = async () => {
@@ -98,6 +101,7 @@ export default function AdminBmcs() {
         name: editName.trim(),
         bmc_code: editCode.trim().toUpperCase(),
         location: editLocation.trim() || null,
+        milk_type: editMilkType,
       });
       setEditTarget(null);
       await fetchUnits();
@@ -564,6 +568,13 @@ export default function AdminBmcs() {
                     placeholder="Enter village or taluk"
                   />
                 )}
+              </div>
+              <div className="form-group">
+                <label>Milk Type (decides the rate chart)</label>
+                <select value={editMilkType} onChange={e => setEditMilkType(e.target.value as 'COW' | 'BUFFALO')}>
+                  <option value="COW">Cow</option>
+                  <option value="BUFFALO">Buffalo</option>
+                </select>
               </div>
             </div>
             <div className="modal-actions">

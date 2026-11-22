@@ -5,9 +5,9 @@ import { authMiddleware } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
 import { idLookup } from '../lib/ids';
 import { prepareCollectionLines, summarizeCollection } from '../lib/milkCollection';
+import { getBmcMilkType, getChartFor, resolveRate } from '../lib/rateChart';
 import {
   calculateEntryFinancials,
-  calculateRateFromChart,
   formatDateDDMMYYYY,
   getEffectiveSellingRate,
 } from '../lib/calculations';
@@ -66,6 +66,7 @@ router.get('/', async (req, res) => {
     error = fallback.error;
   }
 
+  if (error?.code === 'P0001') { res.status(400).json({ error: error.message }); return; }
   if (error) { console.error('[api]', req.method, req.originalUrl, error.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
 
   const [settings, rateHistory, profilesRes] = await Promise.all([
@@ -175,8 +176,21 @@ async function saveCollection(req: any, res: any, existing: { id: string; bmc_id
     bmcId = String(ownBmc.id);
   }
 
-  const [settings, rateHistory] = await Promise.all([getZoneSettings(dairyUnitId), getSellingRateHistory(dairyUnitId)]);
-  const prepared = prepareCollectionLines(body.lines, settings);
+  // The entry's date decides which rate chart version prices it (an edit keeps the original date)
+  let entryDate = date;
+  if (existing) {
+    const { data: row } = await supabase.from('milk_entries').select('date').eq('id', existing.id).maybeSingle();
+    entryDate = row?.date ? String(row.date) : undefined;
+  }
+  if (!entryDate) { res.status(404).json({ error: 'Entry not found' }); return; }
+  const rateHistory = await getSellingRateHistory(dairyUnitId);
+  const milkType = await getBmcMilkType(String(bmcId));
+  const chart = await getChartFor(dairyUnitId, milkType, entryDate);
+  if (!chart) {
+    res.status(400).json({ error: `No ${milkType === 'BUFFALO' ? 'buffalo' : 'cow'} rate chart is set for ${formatDateDDMMYYYY(entryDate)}. Ask the admin to add one.` });
+    return;
+  }
+  const prepared = prepareCollectionLines(body.lines, chart);
   if ('error' in prepared) { res.status(400).json({ error: prepared.error }); return; }
   const totals = summarizeCollection(prepared.lines);
 
@@ -312,7 +326,13 @@ router.post('/', requireRole('admin', 'bmc'), async (req, res) => {
     return;
   }
 
-  const chartRate = calculateRateFromChart(fat, snf, settings);
+  const bmcForRate = req.profile.role === 'bmc' ? req.profile.bmc_id : req.body.bmc_id;
+  let chartRate = 0;
+  if (bmcForRate && !rate_override) {
+    const priced = await resolveRate({ dairyUnitId, bmcId: String(bmcForRate), date: String(date), fat, snf });
+    if ('error' in priced) { res.status(400).json({ error: priced.error }); return; }
+    chartRate = priced.rate;
+  }
   let finalRate = chartRate;
 
   if (rate_override) {
@@ -482,9 +502,20 @@ router.patch('/:id', requireRole('admin', 'bmc'), async (req, res) => {
     return;
   }
 
-  const nextRate = body.rate_override && body.rate_per_litre != null
-    ? +Number(body.rate_per_litre).toFixed(2)
-    : calculateRateFromChart(fat, snf, settings);
+  let nextRate: number;
+  if (body.rate_override && body.rate_per_litre != null) {
+    nextRate = +Number(body.rate_per_litre).toFixed(2);
+  } else {
+    const priced = await resolveRate({
+      dairyUnitId: String(existing.dairy_unit_id ?? req.profile.dairy_unit_id),
+      bmcId: String(existing.bmc_id),
+      date: String(existing.date),
+      fat,
+      snf,
+    });
+    if ('error' in priced) { res.status(400).json({ error: priced.error }); return; }
+    nextRate = priced.rate;
+  }
 
   if (body.rate_override && !String(body.rate_override_reason ?? '').trim()) {
     res.status(400).json({ error: 'Override reason is required when manually overriding rate' });
@@ -709,7 +740,12 @@ router.post('/bulk', requireRole('admin'), async (req, res) => {
       continue;
     }
 
-    const rate = calculateRateFromChart(fat, snf, settings);
+    const priced = await resolveRate({ dairyUnitId, bmcId: String(unitId), date: isoDate, fat, snf });
+    if ('error' in priced) {
+      errors.push({ row: rowNum, error: priced.error });
+      continue;
+    }
+    const rate = priced.rate;
     const sellingRateApplied = getEffectiveSellingRate(isoDate, rateHistory);
 
     let { error } = await supabase.from('milk_entries').insert({
@@ -778,6 +814,7 @@ router.delete('/:id', requireRole('admin', 'bmc'), async (req, res) => {
   }
 
   const { error } = await supabase.from('milk_entries').delete().eq('id', entryId);
+  if (error?.code === 'P0001') { res.status(400).json({ error: error.message }); return; }
   if (error) { console.error('[api]', req.method, req.originalUrl, error.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
 
   await writeAuditLog({
