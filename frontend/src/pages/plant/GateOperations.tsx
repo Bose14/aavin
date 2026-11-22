@@ -4,7 +4,6 @@ import { formatLitres, getLocalTodayIso } from '../../lib/format';
 import { ErrorBanner } from '../../components/UiPrimitives';
 import { useTranslation } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
-import NewTankerRegistrationModal from '../../components/NewTankerRegistrationModal';
 
 export interface GrossQualityRow {
   id: string;
@@ -188,7 +187,6 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
   const [showGrossModal, setShowGrossModal] = useState(false);
   const [showTareModal, setShowTareModal] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
-  const [showNewTankerModal, setShowNewTankerModal] = useState(false);
   const [showGrossReportModal, setShowGrossReportModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -694,16 +692,6 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
           </h1>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => setShowNewTankerModal(true)}
-            className="btn btn-primary"
-            style={{ height: '38px', padding: '0 1rem', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.88rem', fontWeight: 600 }}
-          >
-            + New Tanker Registration
-          </button>
-        </div>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={fetchTankers} />}
@@ -2677,18 +2665,6 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
             </div>
           </div>
         </div>
-      )}
-
-      {/* NEW TANKER REGISTRATION MODAL */}
-      {showNewTankerModal && (
-        <NewTankerRegistrationModal
-          isOpen={showNewTankerModal}
-          onClose={() => setShowNewTankerModal(false)}
-          onSuccess={() => {
-            setShowNewTankerModal(false);
-            void fetchTankers();
-          }}
-        />
       )}
     </div>
   );

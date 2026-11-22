@@ -14,6 +14,7 @@ interface NavItem {
 
 const adminNav: NavItem[] = [
   { to: '/admin/tanker', labelKey: 'navTankerRecords', fallbackLabel: 'Tanker Records' },
+  { to: '/admin/tankers', labelKey: 'navTankers', fallbackLabel: 'Tankers' },
   { to: '/admin/bmcs', labelKey: 'navUnits', fallbackLabel: 'BMCs' },
   { to: '/admin/users', labelKey: 'navTeamsAndUsers', fallbackLabel: 'Teams & Users' },
   { to: '/admin/analytics', labelKey: 'navAnalytics', fallbackLabel: 'Analytics' },

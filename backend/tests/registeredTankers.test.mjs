@@ -18,6 +18,9 @@ const input = {
   front_cell_capacity: 6000,
   back_cell_capacity: 5000,
   supplier_name: 'Test BMC',
+  driver_name: 'Ravi',
+  driver_phone: '9876543210',
+  route_bmc_ids: [3, 4],
 };
 
 /** Minimal chainable stand-in for the `tankers` table. */
@@ -25,14 +28,15 @@ function fakeTankers({ fail = false } = {}) {
   const rows = [];
   const chain = (result) => {
     const c = {
-      select: () => c, eq: () => c, order: () => c, neq: () => c, is: () => c,
+      select: () => c, eq: () => c, in: () => c, order: () => c, neq: () => c, is: () => c,
       single: async () => result(),
       maybeSingle: async () => result(),
       then: (res, rej) => Promise.resolve(result()).then(res, rej),
     };
     return c;
   };
-  supabase.from = () => ({
+  const bmcs = [{ id: 3, name: 'Alpha BMC' }, { id: 4, name: 'Beta BMC' }];
+  supabase.from = (table) => table === 'bmcs' ? { select: () => chain(() => ({ data: bmcs, error: null })) } : ({
     select: () => chain(() => ({ data: rows, error: null })),
     insert: (row) => {
       const saved = { id: rows.length + 1, id_token: 'TK00TEST001', is_active: true, created_at: 'now', ...row };
@@ -56,6 +60,19 @@ test('a registered tanker is saved to the tankers table with its cells', async (
   assert.equal(rows.length, 1);
   assert.equal(rows[0].total_capacity_litres, 11000);
   assert.equal(rows[0].dairy_unit_id, '6');
+  assert.equal(rows[0].driver_name, 'Ravi');
+  assert.deepEqual(rows[0].route_bmc_ids, ['3', '4']);
+  assert.deepEqual(saved.route.map((r) => r.name), ['Alpha BMC', 'Beta BMC']);
+});
+
+test('a new tanker needs a route', async () => {
+  fakeTankers();
+  await assert.rejects(() => saveTanker('6', { ...input, route_bmc_ids: [] }), /route/i);
+});
+
+test('a route with a BMC of another dairy unit is refused', async () => {
+  fakeTankers();
+  await assert.rejects(() => saveTanker('6', { ...input, route_bmc_ids: [3, 99] }), /dairy unit/i);
 });
 
 test('a database failure is reported instead of pretending the tanker was saved', async () => {

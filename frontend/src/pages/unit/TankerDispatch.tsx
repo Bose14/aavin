@@ -15,7 +15,6 @@ import type { DataColumn } from '../../components/DataTable';
 import { ConfirmDialog, ErrorBanner, StatusBadge, TableSkeleton } from '../../components/UiPrimitives';
 import { TankerTimeline } from '../../components/TankerTimeline';
 import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
-import NewTankerRegistrationModal from '../../components/NewTankerRegistrationModal';
 
 interface CompartmentFormItem {
   compartment_no: number;
@@ -60,6 +59,8 @@ interface StockSummary {
   collected_net_qty: number;
   dispatched_qty: number;
   available_stock_qty: number;
+  available_fat_pct?: number | null;
+  available_snf_pct?: number | null;
 }
 
 export default function TankerDispatch() {
@@ -71,7 +72,6 @@ export default function TankerDispatch() {
 
   // Dialog Modals
   const [showDispatchModal, setShowDispatchModal] = useState(false);
-  const [showNewRegModal, setShowNewRegModal] = useState(false);
 
   // Registered Tankers with Cell Capacity Tracking
   const [registeredTankers, setRegisteredTankers] = useState<any[]>([]);
@@ -80,8 +80,6 @@ export default function TankerDispatch() {
   // Form State
   const [date, setDate] = useState(() => getLocalTodayIso());
   const [tankerNumber, setTankerNumber] = useState('');
-  const [driverName, setDriverName] = useState('');
-  const [driverPhone, setDriverPhone] = useState('');
   const [dcNumber, setDcNumber] = useState('');
   const [outletSealNo, setOutletSealNo] = useState('');
   const [dispatchTime, setDispatchTime] = useState(() => {
@@ -89,44 +87,11 @@ export default function TankerDispatch() {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   });
   const [dispatchAmPm, setDispatchAmPm] = useState<'AM' | 'PM'>('AM');
-  const [destination, setDestination] = useState(settings.destinations[0] ?? 'Namakkal Dairy');
+  // The tanker always goes to this admin's dairy unit (set when the tanker is registered)
+  const destination = settings.destinations[0] ?? 'Namakkal Dairy';
 
   // Multi-Compartment Form State
-  const [compartments, setCompartments] = useState<CompartmentFormItem[]>([
-    {
-      compartment_no: 1,
-      compartment_name: 'Front Compartment (Comp 1)',
-      quantity_litres: '',
-      capacity_litres: '5000',
-      fat_pct: '4.30',
-      snf_pct: '8.45',
-      seal_number: '',
-      milk_type: 'Raw Cow Milk',
-      temperature: '4.0',
-    },
-    {
-      compartment_no: 2,
-      compartment_name: 'Middle Compartment (Comp 2)',
-      quantity_litres: '',
-      capacity_litres: '5000',
-      fat_pct: '4.25',
-      snf_pct: '8.42',
-      seal_number: '',
-      milk_type: 'Raw Cow Milk',
-      temperature: '4.0',
-    },
-    {
-      compartment_no: 3,
-      compartment_name: 'Rear Compartment (Comp 3)',
-      quantity_litres: '',
-      capacity_litres: '5000',
-      fat_pct: '4.20',
-      snf_pct: '8.40',
-      seal_number: '',
-      milk_type: 'Raw Cow Milk',
-      temperature: '4.0',
-    },
-  ]);
+  const [compartments, setCompartments] = useState<CompartmentFormItem[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [listLoading, setListLoading] = useState(true);
@@ -171,121 +136,37 @@ export default function TankerDispatch() {
     });
   }, [registeredTankers]);
 
+  // Fat/SNF of the milk still at the BMC, used to pre-fill every cell (the BMC can edit them)
+  const defaultFat = stock?.available_fat_pct != null ? String(stock.available_fat_pct) : '';
+  const defaultSnf = stock?.available_snf_pct != null ? String(stock.available_snf_pct) : '';
+
   const handleTankerSelect = (vehNum: string) => {
     setTankerNumber(vehNum);
     const found = registeredTankers.find((t) => t.vehicle_number === vehNum);
     setSelectedTanker(found || null);
 
-    if (found) {
-      if (found.active_driver_name) {
-        setDriverName(found.active_driver_name);
-      }
-      if (found.active_driver_phone) {
-        setDriverPhone(found.active_driver_phone);
-      }
-
-      if (found.cells && Array.isArray(found.cells) && found.cells.length > 0) {
-        const cellItems: CompartmentFormItem[] = found.cells.map((cell: any, idx: number) => {
-          const avail = cell.available_litres != null ? cell.available_litres : (cell.capacity || 5000);
-          return {
-            compartment_no: idx + 1,
-            compartment_name: cell.cell_name || `Compartment ${idx + 1}`,
-            cell_key: cell.cell_key,
-            quantity_litres: avail > 0 ? '' : '0',
-            capacity_litres: String(cell.capacity || 5000),
-            fat_pct: '4.30',
-            snf_pct: '8.45',
-            seal_number: '',
-            milk_type: 'Raw Cow Milk',
-            temperature: '4.0',
-            already_filled_litres: cell.filled_litres || 0,
-            available_litres: avail,
-            loaded_by_bmc_name: cell.loaded_by_bmc_name,
-            loaded_dc_no: cell.dc_number,
-          };
-        });
-        setCompartments(cellItems);
-      } else {
-        const count = found.number_of_cells || 2;
-        setPresetCompartments(count);
-      }
-    }
-  };
-
-  // Compartment Quick Presets (1, 2, or 3 compartments)
-  const setPresetCompartments = (count: number) => {
-    const defaultLitres = count === 1 ? '9000' : count === 2 ? '4500' : '3000';
-    const names = [
-      'Front Compartment (Comp 1)',
-      'Middle Compartment (Comp 2)',
-      'Rear Compartment (Comp 3)',
-    ];
-    if (count === 2) {
-      names[1] = 'Rear Compartment (Comp 2)';
-    }
-    const newItems: CompartmentFormItem[] = [];
-    const validCount = Math.min(Math.max(count, 1), 3);
-    for (let i = 1; i <= validCount; i++) {
-      newItems.push({
-        compartment_no: i,
-        compartment_name: names[i - 1] || `Compartment ${i}`,
-        quantity_litres: defaultLitres,
-        capacity_litres: '5000',
-        fat_pct: (4.30 - (i - 1) * 0.05).toFixed(2),
-        snf_pct: (8.45 - (i - 1) * 0.02).toFixed(2),
-        seal_number: `CMP-${i}-78${8 + i}`,
-        milk_type: 'Raw Cow Milk',
-        temperature: '4.0',
-      });
-    }
-    setCompartments(newItems);
-  };
-
-  const addCompartment = () => {
-    setCompartments((prev) => {
-      const nextNo = prev.length + 1;
-      const names = [
-        'Front Compartment (Comp 1)',
-        'Middle Compartment (Comp 2)',
-        'Rear Compartment (Comp 3)',
-        'Auxiliary Compartment (Comp 4)',
-        'Rear Auxiliary Compartment (Comp 5)',
-      ];
-      return [
-        ...prev,
-        {
-          compartment_no: nextNo,
-          compartment_name: names[nextNo - 1] || `Compartment ${nextNo}`,
-          quantity_litres: '3000',
-          capacity_litres: '5000',
-          fat_pct: '4.20',
-          snf_pct: '8.40',
-          seal_number: `CMP-${nextNo}-79${nextNo}`,
+    const cells: any[] = Array.isArray(found?.cells) ? found.cells : [];
+    setCompartments(
+      cells.map((cell: any, idx: number) => {
+        const avail = cell.available_litres != null ? cell.available_litres : cell.capacity || 0;
+        return {
+          compartment_no: idx + 1,
+          compartment_name: cell.cell_name || `Compartment ${idx + 1}`,
+          cell_key: cell.cell_key,
+          quantity_litres: '',
+          capacity_litres: String(cell.capacity || 0),
+          fat_pct: defaultFat,
+          snf_pct: defaultSnf,
+          seal_number: '',
           milk_type: 'Raw Cow Milk',
           temperature: '4.0',
-        },
-      ];
-    });
-  };
-
-  const removeCompartment = (index: number) => {
-    if (compartments.length <= 1) return;
-    setCompartments((prev) => {
-      const updated = prev.filter((_, idx) => idx !== index);
-      const names = [
-        'Front Compartment (Comp 1)',
-        'Middle Compartment (Comp 2)',
-        'Rear Compartment (Comp 3)',
-      ];
-      if (updated.length === 2) {
-        names[1] = 'Rear Compartment (Comp 2)';
-      }
-      return updated.map((item, idx) => ({
-        ...item,
-        compartment_no: idx + 1,
-        compartment_name: names[idx] || `Compartment ${idx + 1}`,
-      }));
-    });
+          already_filled_litres: cell.filled_litres || 0,
+          available_litres: avail,
+          loaded_by_bmc_name: cell.loaded_by_bmc_name,
+          loaded_dc_no: cell.dc_number,
+        };
+      }),
+    );
   };
 
   const updateCompartment = (index: number, field: keyof CompartmentFormItem, value: string) => {
@@ -321,7 +202,8 @@ export default function TankerDispatch() {
     return +(sumSnf / totalCompartmentLitres).toFixed(2);
   }, [compartments, totalCompartmentLitres]);
 
-  const exceedsStock = stock != null && totalCompartmentLitres > stock.available_stock_qty;
+  const availableMilk = stock ? stock.available_stock_qty : null;
+  const exceedsStock = availableMilk != null && totalCompartmentLitres > availableMilk + 0.0001;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -331,10 +213,6 @@ export default function TankerDispatch() {
 
     if (!tankerNumber.trim()) {
       setError('Please select a registered Lorry / Tanker Number');
-      return;
-    }
-    if (!driverName.trim()) {
-      setError('Driver name is mandatory');
       return;
     }
     if (!dcNumber.trim()) {
@@ -367,6 +245,11 @@ export default function TankerDispatch() {
       }
     }
 
+    if (availableMilk != null && totalCompartmentLitres > availableMilk + 0.0001) {
+      setError(`Only ${availableMilk.toLocaleString('en-IN')} L of milk is available. You entered ${totalCompartmentLitres.toLocaleString('en-IN')} L.`);
+      return;
+    }
+
     setLoading(true);
     try {
       const structuredCompartments = activeCompartments.map((c) => ({
@@ -382,11 +265,9 @@ export default function TankerDispatch() {
         temperature: c.temperature ? parseFloat(c.temperature) : null,
       }));
 
-      const res = await api.post<Dispatch & { stock_warning?: string | null }>('/tanker', {
+      await api.post<Dispatch>('/tanker', {
         date,
         tanker_number: tankerNumber.trim().toUpperCase(),
-        driver_name: driverName.trim(),
-        driver_phone: driverPhone.trim() || undefined,
         dc_number: dcNumber.trim().toUpperCase(),
         seal_number: outletSealNo.trim().toUpperCase(),
         dispatch_time: `${dispatchTime} ${dispatchAmPm}`,
@@ -398,8 +279,6 @@ export default function TankerDispatch() {
         compartments: structuredCompartments,
       });
 
-      if (res.data.stock_warning) setWarningMsg(res.data.stock_warning);
-
       setSuccessMsg(
         `✓ Lorry ${tankerNumber.trim().toUpperCase()} (DC #${dcNumber.trim().toUpperCase()}) with ${activeCompartments.length} compartment(s) (${totalCompartmentLitres.toLocaleString('en-IN')} L) dispatched successfully! On the way to ${destination}.`
       );
@@ -408,11 +287,9 @@ export default function TankerDispatch() {
       setShowDispatchModal(false);
       setTankerNumber('');
       setSelectedTanker(null);
-      setDriverName('');
-      setDriverPhone('');
       setDcNumber('');
       setOutletSealNo('');
-      setPresetCompartments(3);
+      setCompartments([]);
 
       await fetchAll();
     } catch (err: unknown) {
@@ -786,9 +663,28 @@ export default function TankerDispatch() {
             {error && <ErrorBanner message={error} />}
 
             <form onSubmit={handleSubmit} className="entry-form">
-              {/* SECTION 1: LORRY & DRIVER PARTICULARS */}
+              {/* Available milk at this BMC (collected via Milk Entry minus already dispatched) */}
+              {stock && (
+                <div
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px',
+                    backgroundColor: stock.available_stock_qty > 0 ? '#f0fdf4' : '#fef2f2',
+                    border: `1px solid ${stock.available_stock_qty > 0 ? '#86efac' : '#fecaca'}`,
+                    borderRadius: '6px', padding: '10px 14px', marginBottom: '14px',
+                  }}
+                >
+                  <div style={{ fontSize: '13px', color: '#14532d', fontWeight: 700 }}>
+                    Available milk to dispatch: <span style={{ fontSize: '17px' }}>{formatLitres(stock.available_stock_qty, 1)}</span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#475569' }}>
+                    Collected {formatLitres(stock.collected_net_qty, 1)} − Dispatched {formatLitres(stock.dispatched_qty, 1)}
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION 1: LORRY & INVOICE */}
               <div style={{ fontSize: '13px', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>
-                1. LORRY &amp; DRIVER PARTICULARS
+                1. LORRY &amp; INVOICE
               </div>
 
               <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '14px' }}>
@@ -797,22 +693,6 @@ export default function TankerDispatch() {
                     <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
                       Lorry / Tanker Number *
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => setShowNewRegModal(true)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#0284c7',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        textDecoration: 'underline',
-                        padding: 0,
-                      }}
-                    >
-                      + Register Tanker
-                    </button>
                   </div>
                   <select
                     value={tankerNumber}
@@ -835,35 +715,8 @@ export default function TankerDispatch() {
                 </div>
 
                 <div className="form-group">
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
-                    Driver Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={driverName}
-                    onChange={(e) => setDriverName(e.target.value)}
-                    placeholder="e.g. R. Murugan"
-                    required
-                    style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>
-                    Driver Mobile (+91)
-                  </label>
-                  <input
-                    type="tel"
-                    value={driverPhone}
-                    onChange={(e) => setDriverPhone(e.target.value)}
-                    placeholder="9876543210"
-                    style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-                  />
-                </div>
-
-                <div className="form-group">
                   <label style={{ fontSize: '12px', fontWeight: 700, color: '#0284c7' }}>
-                    DC No (Delivery Challan / Invoice No) *
+                    Invoice No (DC No) *
                   </label>
                   <input
                     type="text"
@@ -901,6 +754,22 @@ export default function TankerDispatch() {
                     </div>
                   </div>
 
+                  <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '12px', color: '#334155', margin: '4px 0 6px' }}>
+                    <span>
+                      Driver: <strong>{selectedTanker.driver_name || '—'}</strong>
+                      {selectedTanker.driver_phone ? ` · ${selectedTanker.driver_phone}` : ''}
+                    </span>
+                    <span>
+                      Route:{' '}
+                      <strong>
+                        {Array.isArray(selectedTanker.route) && selectedTanker.route.length > 0
+                          ? selectedTanker.route.map((b: { name: string }) => b.name).join(' → ')
+                          : 'Any BMC'}
+                      </strong>{' '}
+                      → {destination}
+                    </span>
+                  </div>
+
                   {selectedTanker.filled_capacity > 0 && (
                     <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '6px 10px', fontSize: '12px', color: '#1e40af', marginTop: '6px' }}>
                       ℹ <strong>Multi-BMC Route Active:</strong> This tanker has {(selectedTanker.filled_capacity || 0).toLocaleString('en-IN')} L of milk from prior BMC loading. You can fill remaining empty cell(s) up to {(selectedTanker.available_capacity || 0).toLocaleString('en-IN')} L under your BMC Delivery Challan (DC No).
@@ -926,17 +795,11 @@ export default function TankerDispatch() {
 
                 <div className="form-group">
                   <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
-                    Destination Dairy *
+                    Destination Dairy
                   </label>
-                  <select
-                    value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
-                    style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff' }}
-                  >
-                    {settings.destinations.map((dest) => (
-                      <option key={dest} value={dest}>{dest}</option>
-                    ))}
-                  </select>
+                  <div style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '13px', fontWeight: 600 }}>
+                    {destination}
+                  </div>
                 </div>
 
                 <div className="form-group">
@@ -983,48 +846,17 @@ export default function TankerDispatch() {
                       2. LORRY COMPARTMENT DETAILS
                     </span>
                     <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '8px' }}>
-                      Enter milk volume, Fat, and SNF for available cells
+                      Enter litres for each cell. Fat and SNF are filled from your collection and can be edited.
                     </span>
                   </div>
 
-                  {/* Quick Presets & Add */}
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Presets:</span>
-                    {[1, 2, 3].map((count) => (
-                      <button
-                        key={count}
-                        type="button"
-                        onClick={() => setPresetCompartments(count)}
-                        className="btn btn-secondary btn-sm"
-                        style={{
-                          fontSize: '11px',
-                          padding: '3px 8px',
-                          backgroundColor: compartments.length === count ? '#e0f2fe' : '#ffffff',
-                          borderColor: compartments.length === count ? '#0284c7' : '#cbd5e1',
-                          color: compartments.length === count ? '#0369a1' : '#475569',
-                          fontWeight: 700,
-                        }}
-                      >
-                        {count} Comp
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={addCompartment}
-                      className="btn btn-secondary btn-sm"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        color: '#16a34a',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                      title="Add compartment"
-                    >
-                      + Add
-                    </button>
-                  </div>
                 </div>
+
+                {compartments.length === 0 && (
+                  <div style={{ fontSize: '12px', color: '#64748b', padding: '8px 0' }}>
+                    Select a tanker above to see its cells.
+                  </div>
+                )}
 
                 {/* Compartment Cards Grid */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
@@ -1102,22 +934,6 @@ export default function TankerDispatch() {
                             )}
                           </div>
 
-                          {compartments.length > 1 && !selectedTanker && (
-                            <button
-                              type="button"
-                              onClick={() => removeCompartment(idx)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                color: '#ef4444',
-                                fontSize: '12px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              ✕ Remove
-                            </button>
-                          )}
                         </div>
 
                         {isCellFull ? (
@@ -1194,21 +1010,7 @@ export default function TankerDispatch() {
                               />
                             </div>
 
-                            <div>
-                              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '3px' }}>
-                                Milk Type
-                              </label>
-                              <select
-                                value={comp.milk_type}
-                                onChange={(e) => updateCompartment(idx, 'milk_type', e.target.value)}
-                                style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px', backgroundColor: '#ffffff' }}
-                              >
-                                <option value="Raw Cow Milk">Raw Cow Milk</option>
-                                <option value="Buffalo Milk">Buffalo Milk</option>
-                                <option value="Mixed Milk">Mixed Milk</option>
-                              </select>
-                            </div>
-                          </div>
+                                                    </div>
                         )}
                       </div>
                     );
@@ -1246,9 +1048,9 @@ export default function TankerDispatch() {
                 </div>
               </div>
 
-              {exceedsStock && (
-                <div className="warning-banner" style={{ marginBottom: '16px' }}>
-                  <span>⚠ Dispatched volume exceeds available stock at BMC ({formatLitres(stock.available_stock_qty, 1)})</span>
+              {exceedsStock && stock && (
+                <div style={{ marginBottom: '16px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: '6px', padding: '10px 14px', fontSize: '13px', fontWeight: 600 }}>
+                  ✕ You can send only the available milk. Available: {formatLitres(stock.available_stock_qty, 1)}, entered: {formatLitres(totalCompartmentLitres, 1)}. Reduce the litres to continue.
                 </div>
               )}
 
@@ -1268,7 +1070,7 @@ export default function TankerDispatch() {
                 </button>
                 <button
                   type="submit"
-                  disabled={loading || totalCompartmentLitres <= 0}
+                  disabled={loading || totalCompartmentLitres <= 0 || exceedsStock}
                   className="btn-primary"
                   style={{
                     flex: 2,
@@ -1277,7 +1079,7 @@ export default function TankerDispatch() {
                     fontWeight: 800,
                     backgroundColor: '#16a34a',
                     borderColor: '#15803d',
-                    cursor: loading || totalCompartmentLitres <= 0 ? 'not-allowed' : 'pointer',
+                    cursor: loading || totalCompartmentLitres <= 0 || exceedsStock ? 'not-allowed' : 'pointer',
                   }}
                 >
                   {loading ? 'Dispatching Tanker…' : '🚛 Confirm & Dispatch Tanker to Dairy Plant'}
@@ -1288,19 +1090,6 @@ export default function TankerDispatch() {
         </div>
       )}
 
-      {/* New Tanker Registration Modal */}
-      <NewTankerRegistrationModal
-        isOpen={showNewRegModal}
-        onClose={() => setShowNewRegModal(false)}
-        onSuccess={(newTanker) => {
-          setShowNewRegModal(false);
-          void fetchAll().then(() => {
-            if (newTanker?.vehicle_number) {
-              handleTankerSelect(newTanker.vehicle_number);
-            }
-          });
-        }}
-      />
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

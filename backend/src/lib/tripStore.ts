@@ -102,6 +102,11 @@ export interface TankerRecord {
   supplier_name: string;
   dairy_unit_id: string;
   is_active: boolean;
+  driver_name: string | null;
+  driver_phone: string | null;
+  /** BMCs this tanker collects from; empty = any BMC of the dairy unit (older tankers) */
+  route_bmc_ids: string[];
+  route: { id: string; name: string }[];
   cells: TankerCell[];
   created_at: string;
 }
@@ -141,9 +146,26 @@ export function shapeTanker(row: Record<string, any>): TankerRecord {
     supplier_name: String(row.supplier_name ?? ''),
     dairy_unit_id: String(row.dairy_unit_id ?? ''),
     is_active: row.is_active !== false,
+    driver_name: row.driver_name ?? null,
+    driver_phone: row.driver_phone ?? null,
+    route_bmc_ids: Array.isArray(row.route_bmc_ids) ? row.route_bmc_ids.map(String) : [],
+    route: [],
     cells,
     created_at: String(row.created_at ?? ''),
   };
+}
+
+/** Fill in the BMC names of each tanker's route (one query for all tankers). */
+async function attachRouteNames(tankers: TankerRecord[]): Promise<TankerRecord[]> {
+  const ids = [...new Set(tankers.flatMap((t) => t.route_bmc_ids))];
+  if (ids.length === 0) return tankers;
+  const { data, error } = await supabase.from('bmcs').select('id, name').in('id', ids);
+  if (error) throw new Error(error.message);
+  const names = new Map((data ?? []).map((b) => [String(b.id), String(b.name)]));
+  return tankers.map((t) => ({
+    ...t,
+    route: t.route_bmc_ids.map((id) => ({ id, name: names.get(id) ?? id })),
+  }));
 }
 
 export async function listTankers(dairyUnitId: string): Promise<TankerRecord[]> {
@@ -154,7 +176,7 @@ export async function listTankers(dairyUnitId: string): Promise<TankerRecord[]> 
     .eq('is_active', true)
     .order('vehicle_number');
   if (error) throw new Error(error.message);
-  return (data ?? []).map(shapeTanker);
+  return attachRouteNames((data ?? []).map(shapeTanker));
 }
 
 export async function findTanker(dairyUnitId: string, vehicleNumber: string): Promise<TankerRecord | null> {
@@ -174,6 +196,22 @@ export interface TankerRegistrationInput {
   front_cell_capacity?: number | string | null;
   middle_cell_capacity?: number | string | null;
   back_cell_capacity?: number | string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  /** BMC ids the tanker collects from; required when registering a new tanker */
+  route_bmc_ids?: (string | number)[] | null;
+}
+
+/** Keeps only valid BMC ids of this dairy unit; throws when one is unknown. */
+async function validateRoute(dairyUnitId: string, ids: (string | number)[]): Promise<string[]> {
+  const unique = [...new Set(ids.map(String))];
+  if (unique.length === 0) return [];
+  const { data, error } = await supabase.from('bmcs').select('id').eq('dairy_unit_id', dairyUnitId).in('id', unique);
+  if (error) throw new Error(error.message);
+  const ok = new Set((data ?? []).map((b) => String(b.id)));
+  const bad = unique.filter((id) => !ok.has(id));
+  if (bad.length) throw new Error('Route contains a BMC that does not belong to this dairy unit');
+  return unique;
 }
 
 /** Register a new tanker, or update the details of one that already exists. */
@@ -192,27 +230,32 @@ export async function saveTanker(dairyUnitId: string, input: TankerRegistrationI
     from_date: input.from_date || null,
     cells,
     total_capacity_litres: total,
+    driver_name: input.driver_name?.trim() || null,
+    driver_phone: input.driver_phone?.trim() || null,
   };
+  const route = input.route_bmc_ids ? await validateRoute(dairyUnitId, input.route_bmc_ids) : null;
+  if (!existing && (!route || route.length === 0)) throw new Error('Select at least one BMC for the tanker route');
+  const withRoute: Record<string, unknown> = route ? { ...fields, route_bmc_ids: route } : { ...fields };
 
   if (existing) {
     // Cells can only change while the tanker has no trip in progress
     const open = await getOpenTripForTanker(existing.id);
-    const patch = open ? { ...fields, cells: undefined, total_capacity_litres: undefined } : fields;
+    const patch = open ? { ...withRoute, cells: undefined, total_capacity_litres: undefined } : withRoute;
     const { data, error } = await supabase.from('tankers').update(patch).eq('id', existing.id).select('*').single();
     if (error) throw new Error(error.message);
-    return shapeTanker(data);
+    return (await attachRouteNames([shapeTanker(data)]))[0];
   }
 
   const { data, error } = await supabase
     .from('tankers')
-    .insert({ ...fields, dairy_unit_id: dairyUnitId })
+    .insert({ ...withRoute, dairy_unit_id: dairyUnitId })
     .select('*')
     .single();
   if (error) {
     if (error.code === '23505') throw new Error(`Tanker ${vehicle} is already registered`);
     throw new Error(error.message);
   }
-  return shapeTanker(data);
+  return (await attachRouteNames([shapeTanker(data)]))[0];
 }
 
 async function getOpenTripForTanker(tankerId: string): Promise<{ id: string } | null> {
@@ -777,14 +820,18 @@ export function buildTankerAvailability(tanker: TankerRecord, openTrip: LegacyTr
   };
 }
 
-export async function listTankerAvailability(dairyUnitId: string, vehicleNumber?: string) {
+export async function listTankerAvailability(dairyUnitId: string, vehicleNumber?: string, forBmcId?: string | null) {
   const tankers = vehicleNumber
     ? [await findTanker(dairyUnitId, vehicleNumber)].filter((t): t is TankerRecord => t != null)
     : await listTankers(dairyUnitId);
-  if (tankers.length === 0) return [];
+  // A BMC only sees tankers whose route includes it (a tanker with no route is open to every BMC)
+  const visible = forBmcId
+    ? tankers.filter((t) => t.route_bmc_ids.length === 0 || t.route_bmc_ids.includes(String(forBmcId)))
+    : tankers;
+  if (visible.length === 0) return [];
   const { rows } = await fetchTrips({ dairyUnitId, openOnly: true });
   const byTanker = new Map(rows.map((r) => [String(r.tanker_id), r]));
-  return tankers.map((t) => buildTankerAvailability(t, byTanker.get(t.id) ?? null));
+  return visible.map((t) => buildTankerAvailability(t, byTanker.get(t.id) ?? null));
 }
 
 // ---------------------------------------------------------------------------
@@ -798,10 +845,52 @@ export async function computeStock(dairyUnitId: string, bmcId?: string | null) {
   if (error) throw new Error(error.message);
   const collected = (data ?? []).reduce((s, r) => s + Number(r.collected_litres ?? 0), 0);
   const dispatched = (data ?? []).reduce((s, r) => s + Number(r.dispatched_litres ?? 0), 0);
+  const available = Math.max(0, round2(collected - dispatched));
+  const quality = bmcId && available > 0 ? await availableQuality(bmcId, available) : { fat: null, snf: null };
   return {
     collected_net_qty: round2(collected),
     dispatched_qty: round2(dispatched),
-    available_stock_qty: Math.max(0, round2(collected - dispatched)),
+    available_stock_qty: available,
     raw_balance_qty: round2(collected - dispatched),
+    available_fat_pct: quality.fat,
+    available_snf_pct: quality.snf,
   };
+}
+
+/**
+ * Litre-weighted fat/SNF of the milk still at the BMC. Dispatch takes the oldest milk
+ * first, so what is left is the most recent collections covering `available` litres.
+ */
+export async function availableQuality(bmcId: string, available: number): Promise<{ fat: number | null; snf: number | null }> {
+  const { data, error } = await supabase
+    .from('milk_entries')
+    .select('quantity_litres, rejection_qty, fat_pct, snf_pct')
+    .eq('bmc_id', bmcId)
+    .order('date', { ascending: false })
+    .order('shift', { ascending: false }) // PM before AM, so the latest shift comes first
+    .limit(60);
+  if (error) throw new Error(error.message);
+  return weightedQuality(data ?? [], available);
+}
+
+export function weightedQuality(
+  entriesNewestFirst: { quantity_litres: unknown; rejection_qty: unknown; fat_pct: unknown; snf_pct: unknown }[],
+  available: number,
+): { fat: number | null; snf: number | null } {
+  let left = available;
+  let litres = 0;
+  let fat = 0;
+  let snf = 0;
+  for (const e of entriesNewestFirst) {
+    if (left <= 0) break;
+    const net = Math.max(0, Number(e.quantity_litres ?? 0) - Number(e.rejection_qty ?? 0));
+    const take = Math.min(net, left);
+    if (take <= 0 || e.fat_pct == null || e.snf_pct == null) continue;
+    litres += take;
+    fat += take * Number(e.fat_pct);
+    snf += take * Number(e.snf_pct);
+    left -= take;
+  }
+  if (litres <= 0) return { fat: null, snf: null };
+  return { fat: round2(fat / litres), snf: round2(snf / litres) };
 }
