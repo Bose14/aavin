@@ -122,7 +122,7 @@ export default function AdminTankers() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search vehicle, driver, BMC…"
-          style={{ width: 280, height: 30, padding: '2px 10px', border: '1px solid #94a3b8', borderRadius: 3, marginBottom: 10 }}
+          style={{ width: '100%', maxWidth: 280, height: 30, padding: '2px 10px', border: '1px solid #94a3b8', borderRadius: 3, marginBottom: 10 }}
         />
         {loading ? (
           <TableSkeleton rows={4} cols={6} />

@@ -552,3 +552,22 @@ input[type="checkbox"], input[type="radio"] {
   .chart-legend { gap: 0.4rem 0.75rem; }
   .chart-legend-item { font-size: 0.74rem; }
 }
+
+/* Label-left form rows (tanker registration, milk entry, rate chart upload) */
+.fl-row { display: flex; align-items: center; margin-bottom: 0.75rem; }
+.fl-hint { margin-left: 150px; }
+@media (max-width: 640px) {
+  .fl-row { flex-direction: column; align-items: stretch !important; gap: 0.3rem; }
+  .fl-row > label { width: auto !important; padding-top: 0 !important; }
+  .fl-row > input:not([type="checkbox"]):not([type="radio"]), .fl-row > select, .fl-row > div {
+    width: 100% !important; max-width: 100% !important; box-sizing: border-box;
+  }
+  .fl-hint { margin-left: 0 !important; }
+  .rc-layout { grid-template-columns: minmax(0, 1fr) !important; }
+  .sheet-modal-body { padding: 0.9rem !important; }
+  .dispatch-modal { padding: 14px !important; }
+}
+@media (max-width: 640px) {
+  .dispatch-modal form > div:last-child { flex-wrap: wrap; }
+  .dispatch-modal form > div:last-child button { flex: 1 1 100% !important; }
+}

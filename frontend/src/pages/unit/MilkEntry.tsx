@@ -715,7 +715,7 @@ export default function MilkEntry() {
               </button>
             </div>
 
-            <div style={{ padding: '1.25rem 1.5rem', overflowY: 'auto' }}>
+            <div className="sheet-modal-body" style={{ padding: '1.25rem 1.5rem', overflowY: 'auto' }}>
               {existingForSlot && (
                 <div className="warning-banner" role="alert" style={{ marginBottom: '1rem' }}>
                   <span>
@@ -728,20 +728,20 @@ export default function MilkEntry() {
               )}
 
               <form onSubmit={handleSubmit}>
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
                   <label style={rowLabel}>BMC</label>
                   <span style={{ backgroundColor: '#fef9c3', border: '1px solid #fde047', padding: '2px 8px', borderRadius: 3, fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
                     {unitLabel ?? '—'}
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
                   <label style={rowLabel}>Collection Date <span style={{ color: '#ef4444' }}>*</span></label>
                   <input type="date" required value={date} onChange={e => setDate(e.target.value)} disabled={Boolean(editingId)} style={{ ...smallInput, width: 170 }} />
                   <span style={{ marginLeft: 10, fontSize: '0.8rem', color: '#64748b' }}>({formatDateDDMMYYYY(date)})</span>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
                   <label style={rowLabel}>Shift <span style={{ color: '#ef4444' }}>*</span></label>
                   <select
                     value={shift}
@@ -754,7 +754,7 @@ export default function MilkEntry() {
                   </select>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
                   <label style={rowLabel}>Dispatch Date</label>
                   <input
                     type="date"
@@ -765,7 +765,7 @@ export default function MilkEntry() {
                   />
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
                   <label style={rowLabel}>Temperature(°C)</label>
                   <input
                     type="number"
