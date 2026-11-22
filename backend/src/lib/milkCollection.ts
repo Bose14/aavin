@@ -1,4 +1,5 @@
-import { calculateRateFromChart } from './calculations';
+import { lookupRate, outOfChartMessage } from './rateChart';
+import type { RateChart } from './rateChart';
 
 export interface CollectionLineInput {
   society_id: string | number;
@@ -18,22 +19,12 @@ export interface CollectionLine {
   amount: number;
 }
 
-export interface CollectionRange {
-  fat_min: number;
-  fat_max: number;
-  snf_min: number;
-  snf_max: number;
-  rate_base: number;
-  rate_fat_coeff: number;
-  rate_snf_coeff: number;
-}
-
 const MAX_LINES = 300;
 
-/** Validates society lines and works out each line's chart rate and amount. */
+/** Validates society lines and prices each one from the rate chart (rate × litres = amount). */
 export function prepareCollectionLines(
   input: unknown,
-  settings: CollectionRange,
+  chart: Pick<RateChart, 'milk_type' | 'fat_values' | 'snf_values' | 'rates'>,
 ): { lines: CollectionLine[] } | { error: string } {
   if (!Array.isArray(input) || input.length === 0) return { error: 'Enter litres for at least one society' };
   if (input.length > MAX_LINES) return { error: `Too many societies (max ${MAX_LINES})` };
@@ -52,14 +43,11 @@ export function prepareCollectionLines(
     seen.add(societyId);
     if (!Number.isFinite(litres) || litres <= 0 || litres > 100000) return { error: 'Litres must be greater than 0' };
     if (!Number.isInteger(cans) || cans < 0 || cans > 10000) return { error: 'Cans must be a whole number' };
-    if (!Number.isFinite(fat) || fat < settings.fat_min || fat > settings.fat_max) {
-      return { error: `Fat % must be between ${settings.fat_min.toFixed(2)} and ${settings.fat_max.toFixed(2)}` };
-    }
-    if (!Number.isFinite(snf) || snf < settings.snf_min || snf > settings.snf_max) {
-      return { error: `SNF % must be between ${settings.snf_min.toFixed(2)} and ${settings.snf_max.toFixed(2)}` };
-    }
+    if (!Number.isFinite(fat) || fat <= 0 || fat > 30) return { error: 'Enter a valid Fat %' };
+    if (!Number.isFinite(snf) || snf <= 0 || snf > 30) return { error: 'Enter a valid SNF %' };
 
-    const rate = calculateRateFromChart(fat, snf, settings);
+    const rate = lookupRate(chart, fat, snf);
+    if (rate == null) return { error: outOfChartMessage(chart, fat, snf) };
     lines.push({
       society_id: societyId,
       cans,

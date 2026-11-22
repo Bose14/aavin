@@ -10,6 +10,7 @@ import analyticsRouter from './routes/analytics';
 import exportRouter from './routes/export';
 import usersRouter from './routes/users';
 import settingsRouter from './routes/settings';
+import ratesRouter from './routes/rates';
 import teamsRouter from './routes/teams';
 import { clearAuthCache } from './middleware/auth';
 
@@ -118,6 +119,7 @@ app.use('/export', exportRouter);
 app.use('/users', usersRouter);
 app.use('/teams', teamsRouter);
 app.use('/settings', settingsRouter);
+app.use('/rates', ratesRouter);
 
 app.listen(PORT, () => {
   console.log(`Aavin backend running on port ${PORT}`);

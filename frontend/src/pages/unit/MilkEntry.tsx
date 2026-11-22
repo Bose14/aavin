@@ -5,9 +5,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from '../../context/LanguageContext';
-import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
+import { chartRange, lookupRate, milkTypeLabel } from '../../lib/rateChart';
+import type { RateChartGrid } from '../../lib/rateChart';
 import {
-  calcRateFromChart,
   formatDateDDMMYYYY,
   formatFatSnf,
   formatINR,
@@ -69,28 +69,34 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const fmt = (n: number, d = 2) => n.toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
 
 
-type Settings = ReturnType<typeof useDairyUnitSettings>['settings'];
+/** The rate chart for the BMC's milk on the entry date: undefined while loading, null when none is set. */
+type ChartState = RateChartGrid | null | undefined;
 
 /** Validates one society entry and works out LR, rate, amount, Lt Fat and Lt SNF. */
-function evaluateRow(r: RowInput, settings: Settings) {
+function evaluateRow(r: RowInput, chart: ChartState) {
   const litres = num(r.litres);
   const fat = num(r.fat);
   const snf = num(r.snf);
   const cans = r.cans.trim() === '' ? 0 : Number(r.cans);
   const touched = r.cans.trim() !== '' || r.litres.trim() !== '' || r.fat.trim() !== '' || r.snf.trim() !== '';
   let problem = '';
+  let rate = 0;
   if (touched) {
     if (!(litres > 0)) problem = 'Enter litres';
     else if (!Number.isFinite(fat)) problem = 'Enter fat %';
     else if (!Number.isFinite(snf)) problem = 'Enter SNF %';
-    else if (fat < settings.fat_min || fat > settings.fat_max) {
-      problem = `Fat must be ${formatFatSnf(settings.fat_min)}–${formatFatSnf(settings.fat_max)}`;
-    } else if (snf < settings.snf_min || snf > settings.snf_max) {
-      problem = `SNF must be ${formatFatSnf(settings.snf_min)}–${formatFatSnf(settings.snf_max)}`;
-    } else if (!Number.isInteger(cans) || cans < 0) problem = 'Cans must be a whole number';
+    else if (chart === undefined) problem = 'Loading rate chart…';
+    else if (chart === null) problem = 'No rate chart for this date. Ask the admin to add one.';
+    else {
+      const found = lookupRate(chart, fat, snf);
+      if (found == null) {
+        const g = chartRange(chart);
+        problem = `No rate for this Fat/SNF. Chart covers Fat ${formatFatSnf(g.fatMin)}–${formatFatSnf(g.fatMax)}, SNF ${formatFatSnf(g.snfMin)}–${formatFatSnf(g.snfMax)}`;
+      } else rate = found;
+    }
+    if (!problem && (!Number.isInteger(cans) || cans < 0)) problem = 'Cans must be a whole number';
   }
   const ok = touched && !problem;
-  const rate = ok ? calcRateFromChart(fat, snf, settings) : 0;
   return {
     touched,
     ok,
@@ -103,7 +109,7 @@ function evaluateRow(r: RowInput, settings: Settings) {
     ltSnf: ok ? Math.round(litres * snf * 10) / 1000 : 0,
     // Lactometer reading implied by fat and SNF: SNF = LR/4 + 0.2 x Fat + 0.36
     lr: ok ? Math.round(4 * (snf - 0.2 * fat - 0.36) * 10) / 10 : 0,
-    rate,
+    rate: ok ? rate : 0,
     amount: ok ? round2(litres * rate) : 0,
   };
 }
@@ -113,7 +119,7 @@ export default function MilkEntry() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { settings } = useDairyUnitSettings();
+  const bmcId = profile?.bmc_id ?? null;
 
   const [date, setDate] = useState(() => getLocalTodayIso());
   const [shift, setShift] = useState<'AM' | 'PM'>(() => (new Date().getHours() < 12 ? 'AM' : 'PM'));
@@ -121,6 +127,8 @@ export default function MilkEntry() {
   const [dispatchTouched, setDispatchTouched] = useState(false);
   const [temperature, setTemperature] = useState('');
 
+  const [chart, setChart] = useState<ChartState>(undefined);
+  const [milkType, setMilkType] = useState<string>('COW');
   const [societies, setSocieties] = useState<Society[]>([]);
   const [societiesLoading, setSocietiesLoading] = useState(true);
   const [rows, setRows] = useState<Record<string, RowInput>>({});
@@ -171,6 +179,17 @@ export default function MilkEntry() {
     window.addEventListener('aavin-offline-queue-changed', refresh);
     return () => window.removeEventListener('aavin-offline-queue-changed', refresh);
   }, []);
+
+  // The rate chart that prices this BMC's milk on the entry date
+  useEffect(() => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    let cancelled = false;
+    setChart(undefined);
+    api.get<{ milk_type: string; chart: (RateChartGrid & { id: string }) | null }>('/rates/chart', { params: { date, bmc_id: bmcId ?? undefined } })
+      .then(res => { if (!cancelled) { setMilkType(res.data.milk_type); setChart(res.data.chart); } })
+      .catch(() => { if (!cancelled) setChart(null); });
+    return () => { cancelled = true; };
+  }, [date, bmcId]);
 
   // The BMC's societies, in the order they are collected
   useEffect(() => {
@@ -259,8 +278,8 @@ export default function MilkEntry() {
   const computed = useMemo(() => {
     const byId = new Map(societies.map(s => [s.id, s]));
     const shown = addedIds.map(id => byId.get(id)).filter((s): s is Society => Boolean(s));
-    return shown.map(s => ({ society: s, ...evaluateRow(rows[s.id] ?? EMPTY_ROW, settings) }));
-  }, [societies, addedIds, rows, settings]);
+    return shown.map(s => ({ society: s, ...evaluateRow(rows[s.id] ?? EMPTY_ROW, chart) }));
+  }, [societies, addedIds, rows, chart]);
 
   const totals = useMemo(() => {
     const ok = computed.filter(c => c.ok);
@@ -280,7 +299,7 @@ export default function MilkEntry() {
   }, [computed]);
 
   const problemRows = computed.filter(c => c.problem);
-  const draftEval = useMemo(() => evaluateRow(draft, settings), [draft, settings]);
+  const draftEval = useMemo(() => evaluateRow(draft, chart), [draft, chart]);
   const draftPending = Boolean(draftSociety) || draftEval.touched;
   const tempNum = temperature.trim() === '' ? null : Number(temperature);
   const isFormValid =
@@ -763,7 +782,8 @@ export default function MilkEntry() {
                   <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#334155', marginBottom: '0.75rem' }}>
                     Society Wise Collection
                     <span style={{ fontWeight: 400, fontSize: '0.8rem', color: '#64748b', marginLeft: 10 }}>
-                      Fat {formatFatSnf(settings.fat_min)}–{formatFatSnf(settings.fat_max)}, SNF {formatFatSnf(settings.snf_min)}–{formatFatSnf(settings.snf_max)}
+                      {milkTypeLabel(milkType)} milk
+                      {chart ? (() => { const g = chartRange(chart); return ` · Fat ${formatFatSnf(g.fatMin)}–${formatFatSnf(g.fatMax)}, SNF ${formatFatSnf(g.snfMin)}–${formatFatSnf(g.snfMax)}`; })() : chart === null ? ' · no rate chart for this date' : ''}
                     </span>
                   </div>
 
