@@ -18,6 +18,7 @@ interface TankerRow {
   total_capacity: number;
   driver_name: string | null;
   driver_phone: string | null;
+  route_name: string | null;
   route_bmc_ids: string[];
   route: { id: string; name: string }[];
 }
@@ -65,7 +66,7 @@ export default function AdminTankers() {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((r) =>
-      [r.vehicle_number, r.contractor_name, r.driver_name ?? '', ...r.route.map((b) => b.name)].join(' ').toLowerCase().includes(q),
+      [r.vehicle_number, r.contractor_name, r.driver_name ?? '', r.route_name ?? '', ...r.route.map((b) => b.name)].join(' ').toLowerCase().includes(q),
     );
   }, [rows, search]);
 
@@ -90,6 +91,7 @@ export default function AdminTankers() {
         back_cell_capacity: editing.back_cell_capacity,
         driver_name: editing.driver_name ?? '',
         driver_phone: editing.driver_phone ?? '',
+        route_name: editing.route_name ?? '',
         route_bmc_ids: editing.route_bmc_ids,
       }
     : null;
@@ -133,7 +135,7 @@ export default function AdminTankers() {
                   <th style={th}>Contractor</th>
                   <th style={th}>Capacity (L)</th>
                   <th style={th}>Driver</th>
-                  <th style={th}>Route (BMCs)</th>
+                  <th style={th}>Route</th>
                   <th style={th}></th>
                 </tr>
               </thead>
@@ -158,11 +160,10 @@ export default function AdminTankers() {
                       {r.driver_phone && <div style={{ fontSize: '0.76rem', color: '#64748b' }}>{r.driver_phone}</div>}
                     </td>
                     <td style={td}>
-                      {r.route.length === 0 ? (
-                        <span style={{ color: '#b45309' }}>Not set (open to all BMCs)</span>
-                      ) : (
-                        r.route.map((b) => b.name).join(' → ')
-                      )}
+                      <div style={{ fontWeight: 700 }}>{r.route_name || <span style={{ color: '#b45309', fontWeight: 400 }}>Name not set</span>}</div>
+                      <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
+                        {r.route.length === 0 ? 'No BMCs set (open to all BMCs)' : r.route.map((b) => b.name).join(' → ')}
+                      </div>
                     </td>
                     <td style={td}>
                       <button

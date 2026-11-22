@@ -286,6 +286,7 @@ router.post('/registration', requireRole('admin'), async (req, res) => {
       supplier_name,
       driver_name,
       driver_phone,
+      route_name,
       route_bmc_ids,
     } = req.body;
 
@@ -295,6 +296,10 @@ router.post('/registration', requireRole('admin'), async (req, res) => {
     }
     if (!driver_name || !String(driver_name).trim()) {
       res.status(400).json({ error: 'Driver name is required' });
+      return;
+    }
+    if (!route_name || !String(route_name).trim()) {
+      res.status(400).json({ error: 'Route name is required' });
       return;
     }
 
@@ -310,6 +315,7 @@ router.post('/registration', requireRole('admin'), async (req, res) => {
       supplier_name,
       driver_name,
       driver_phone,
+      route_name,
       route_bmc_ids: Array.isArray(route_bmc_ids) ? route_bmc_ids : undefined,
     });
 
