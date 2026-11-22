@@ -14,6 +14,7 @@ export interface RegisteredTankerData {
   supplier_name: string;
   driver_name?: string;
   driver_phone?: string;
+  route_name?: string;
   route_bmc_ids?: string[];
 }
 
@@ -38,6 +39,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
   const [contractorName, setContractorName] = useState(initial?.contractor_name ?? '');
   const [driverName, setDriverName] = useState(initial?.driver_name ?? '');
   const [driverPhone, setDriverPhone] = useState(initial?.driver_phone ?? '');
+  const [routeName, setRouteName] = useState(initial?.route_name ?? '');
   const [routeIds, setRouteIds] = useState<string[]>(initial?.route_bmc_ids ?? []);
   const [bmcs, setBmcs] = useState<BmcOption[]>([]);
   const [bmcsLoading, setBmcsLoading] = useState(false);
@@ -100,6 +102,10 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
       setError('Driver Name is required');
       return;
     }
+    if (!routeName.trim()) {
+      setError('Route Name is required');
+      return;
+    }
     if (routeIds.length === 0) {
       setError('Select at least one BMC for the tanker route');
       return;
@@ -122,6 +128,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
         supplier_name: supplierName.trim(),
         driver_name: driverName.trim(),
         driver_phone: driverPhone.trim() || undefined,
+        route_name: routeName.trim(),
         route_bmc_ids: routeIds,
       };
 
@@ -135,6 +142,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
       setSupplierName('');
       setDriverName('');
       setDriverPhone('');
+      setRouteName('');
       setRouteIds([]);
       if (!embedded && onClose) {
         setTimeout(() => onClose(), 1200);
@@ -401,10 +409,25 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
             />
           </div>
 
-          {/* 10. Route */}
+          {/* 10. Route name (shown in reports) */}
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>
+              10. Route Name <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <input
+              type="text"
+              value={routeName}
+              onChange={(e) => setRouteName(e.target.value)}
+              placeholder="e.g. Rasipuram Route 1"
+              required
+              style={{ width: 250, height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3 }}
+            />
+          </div>
+
+          {/* 11. Route BMCs */}
           <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
             <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem', paddingTop: '4px' }}>
-              10. Route (BMCs) <span style={{ color: '#ef4444' }}>*</span>
+              11. Route (BMCs) <span style={{ color: '#ef4444' }}>*</span>
               <div style={{ fontWeight: 400, fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>
                 BMCs this tanker collects from, then goes to your dairy unit.
               </div>

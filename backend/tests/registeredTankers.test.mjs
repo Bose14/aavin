@@ -20,6 +20,7 @@ const input = {
   supplier_name: 'Test BMC',
   driver_name: 'Ravi',
   driver_phone: '9876543210',
+  route_name: 'Rasipuram Route 1',
   route_bmc_ids: [3, 4],
 };
 
@@ -61,6 +62,8 @@ test('a registered tanker is saved to the tankers table with its cells', async (
   assert.equal(rows[0].total_capacity_litres, 11000);
   assert.equal(rows[0].dairy_unit_id, '6');
   assert.equal(rows[0].driver_name, 'Ravi');
+  assert.equal(rows[0].route_name, 'Rasipuram Route 1');
+  assert.equal(saved.route_name, 'Rasipuram Route 1');
   assert.deepEqual(rows[0].route_bmc_ids, ['3', '4']);
   assert.deepEqual(saved.route.map((r) => r.name), ['Alpha BMC', 'Beta BMC']);
 });

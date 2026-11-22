@@ -104,6 +104,8 @@ export interface TankerRecord {
   is_active: boolean;
   driver_name: string | null;
   driver_phone: string | null;
+  /** Route name shown in reports (e.g. "Rasipuram Route 1") */
+  route_name: string | null;
   /** BMCs this tanker collects from; empty = any BMC of the dairy unit (older tankers) */
   route_bmc_ids: string[];
   route: { id: string; name: string }[];
@@ -148,6 +150,7 @@ export function shapeTanker(row: Record<string, any>): TankerRecord {
     is_active: row.is_active !== false,
     driver_name: row.driver_name ?? null,
     driver_phone: row.driver_phone ?? null,
+    route_name: row.route_name ?? null,
     route_bmc_ids: Array.isArray(row.route_bmc_ids) ? row.route_bmc_ids.map(String) : [],
     route: [],
     cells,
@@ -198,6 +201,7 @@ export interface TankerRegistrationInput {
   back_cell_capacity?: number | string | null;
   driver_name?: string | null;
   driver_phone?: string | null;
+  route_name?: string | null;
   /** BMC ids the tanker collects from; required when registering a new tanker */
   route_bmc_ids?: (string | number)[] | null;
 }
@@ -232,6 +236,7 @@ export async function saveTanker(dairyUnitId: string, input: TankerRegistrationI
     total_capacity_litres: total,
     driver_name: input.driver_name?.trim() || null,
     driver_phone: input.driver_phone?.trim() || null,
+    route_name: input.route_name?.trim() || null,
   };
   const route = input.route_bmc_ids ? await validateRoute(dairyUnitId, input.route_bmc_ids) : null;
   if (!existing && (!route || route.length === 0)) throw new Error('Select at least one BMC for the tanker route');
