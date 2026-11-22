@@ -204,3 +204,22 @@ test('client response drops repeated copies but keeps what the screens read', as
   // the in-process version used by exports and analytics is untouched
   assert.ok(Array.isArray(full.stages) && full.journey.compartments);
 });
+
+test('shapeTanker carries driver and route', () => {
+  const t = store.shapeTanker({ ...tankerRow, driver_name: 'Ravi', driver_phone: '99', route_bmc_ids: [3, 4] });
+  assert.equal(t.driver_name, 'Ravi');
+  assert.equal(t.driver_phone, '99');
+  assert.deepEqual(t.route_bmc_ids, ['3', '4']);
+  assert.deepEqual(store.shapeTanker(tankerRow).route_bmc_ids, []);
+});
+
+test('weightedQuality weights the newest milk that is still available', () => {
+  const entries = [
+    { quantity_litres: 600, rejection_qty: 0, fat_pct: 4.0, snf_pct: 8.0 },
+    { quantity_litres: 1000, rejection_qty: 0, fat_pct: 5.0, snf_pct: 9.0 },
+  ];
+  // 800 L left = 600 newest + 200 from the older entry
+  assert.deepEqual(store.weightedQuality(entries, 800), { fat: 4.25, snf: 8.25 });
+  assert.deepEqual(store.weightedQuality(entries, 0), { fat: null, snf: null });
+  assert.deepEqual(store.weightedQuality([], 100), { fat: null, snf: null });
+});

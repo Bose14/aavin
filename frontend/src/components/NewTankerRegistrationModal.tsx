@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import api from '../lib/api';
 
 export interface RegisteredTankerData {
@@ -12,34 +12,75 @@ export interface RegisteredTankerData {
   middle_cell_capacity?: number;
   back_cell_capacity?: number;
   supplier_name: string;
+  driver_name?: string;
+  driver_phone?: string;
+  route_bmc_ids?: string[];
+}
+
+interface BmcOption {
+  id: string;
+  name: string;
+  bmc_code: string;
+  is_active?: boolean;
 }
 
 interface Props {
+  /** Existing tanker to edit (registering the same vehicle number updates it) */
+  initial?: Partial<RegisteredTankerData> | null;
   isOpen?: boolean;
   onClose?: () => void;
   onSuccess?: (tanker: RegisteredTankerData) => void;
   embedded?: boolean;
 }
 
-export default function NewTankerRegistrationModal({ isOpen = true, onClose, onSuccess, embedded = false }: Props) {
-  const [vehicleNumber, setVehicleNumber] = useState('');
-  const [contractorName, setContractorName] = useState('');
+export default function NewTankerRegistrationModal({ isOpen = true, onClose, onSuccess, embedded = false, initial = null }: Props) {
+  const [vehicleNumber, setVehicleNumber] = useState(initial?.vehicle_number ?? '');
+  const [contractorName, setContractorName] = useState(initial?.contractor_name ?? '');
+  const [driverName, setDriverName] = useState(initial?.driver_name ?? '');
+  const [driverPhone, setDriverPhone] = useState(initial?.driver_phone ?? '');
+  const [routeIds, setRouteIds] = useState<string[]>(initial?.route_bmc_ids ?? []);
+  const [bmcs, setBmcs] = useState<BmcOption[]>([]);
+  const [bmcsLoading, setBmcsLoading] = useState(false);
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
   const [vehicleType, setVehicleType] = useState<'Registered' | 'Unregistered'>('Registered');
-  const [numberOfCells, setNumberOfCells] = useState<1 | 2 | 3>(2);
-  const [frontCellCapacity, setFrontCellCapacity] = useState('6500');
-  const [middleCellCapacity, setMiddleCellCapacity] = useState('4500');
-  const [backCellCapacity, setBackCellCapacity] = useState('5500');
-  const [supplierName, setSupplierName] = useState('');
+  const [numberOfCells, setNumberOfCells] = useState<1 | 2 | 3>(initial?.number_of_cells ?? 2);
+  const [frontCellCapacity, setFrontCellCapacity] = useState(String(initial?.front_cell_capacity ?? '6500'));
+  const [middleCellCapacity, setMiddleCellCapacity] = useState(String(initial?.middle_cell_capacity || '4500'));
+  const [backCellCapacity, setBackCellCapacity] = useState(String(initial?.back_cell_capacity || '5500'));
+  const [supplierName, setSupplierName] = useState(initial?.supplier_name ?? '');
+  const [bmcSearch, setBmcSearch] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  useEffect(() => {
+    if (!isOpen && !embedded) return;
+    let cancelled = false;
+    setBmcsLoading(true);
+    api
+      .get<BmcOption[]>('/bmcs')
+      .then((r) => {
+        if (!cancelled) setBmcs((r.data || []).filter((b) => b.is_active !== false));
+      })
+      .catch(() => {
+        if (!cancelled) setError('Could not load the BMC list');
+      })
+      .finally(() => {
+        if (!cancelled) setBmcsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, embedded]);
+
   if (!embedded && !isOpen) return null;
+
+  const toggleRoute = (id: string) =>
+    setRouteIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +94,14 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
     }
     if (!supplierName.trim()) {
       setError('Supplier Name is required');
+      return;
+    }
+    if (!driverName.trim()) {
+      setError('Driver Name is required');
+      return;
+    }
+    if (routeIds.length === 0) {
+      setError('Select at least one BMC for the tanker route');
       return;
     }
 
@@ -71,6 +120,9 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
         middle_cell_capacity: numberOfCells === 3 ? (Number(middleCellCapacity) || 0) : 0,
         back_cell_capacity: numberOfCells >= 2 ? (Number(backCellCapacity) || 0) : 0,
         supplier_name: supplierName.trim(),
+        driver_name: driverName.trim(),
+        driver_phone: driverPhone.trim() || undefined,
+        route_bmc_ids: routeIds,
       };
 
       const res = await api.post('/tanker/registration', payload);
@@ -81,6 +133,9 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
       setVehicleNumber('');
       setContractorName('');
       setSupplierName('');
+      setDriverName('');
+      setDriverPhone('');
+      setRouteIds([]);
       if (!embedded && onClose) {
         setTimeout(() => onClose(), 1200);
       }
@@ -298,7 +353,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
           </div>
 
           {/* 7. Supplier Name */}
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
             <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>
               7. Supplier Name <span style={{ color: '#ef4444' }}>*</span>
             </label>
@@ -316,6 +371,66 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
                 borderRadius: 3,
               }}
             />
+          </div>
+
+          {/* 8. Driver */}
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>
+              8. Driver Name <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <input
+              type="text"
+              value={driverName}
+              onChange={(e) => setDriverName(e.target.value)}
+              placeholder="e.g. R. Murugan"
+              required
+              style={{ width: 250, height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3 }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>
+              9. Driver Mobile
+            </label>
+            <input
+              type="tel"
+              value={driverPhone}
+              onChange={(e) => setDriverPhone(e.target.value)}
+              placeholder="9876543210"
+              style={{ width: 160, height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3 }}
+            />
+          </div>
+
+          {/* 10. Route */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+            <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem', paddingTop: '4px' }}>
+              10. Route (BMCs) <span style={{ color: '#ef4444' }}>*</span>
+              <div style={{ fontWeight: 400, fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>
+                BMCs this tanker collects from, then goes to your dairy unit.
+              </div>
+            </label>
+            <div style={{ flex: 1 }}>
+              <input
+                type="text"
+                value={bmcSearch}
+                onChange={(e) => setBmcSearch(e.target.value)}
+                placeholder="Search BMC…"
+                style={{ width: '100%', height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3, marginBottom: 6 }}
+              />
+              <div style={{ maxHeight: 170, overflowY: 'auto', border: '1px solid #cbd5e1', borderRadius: 3, padding: '4px 8px' }}>
+                {bmcsLoading && <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Loading BMCs…</div>}
+                {bmcs
+                  .filter((b) => `${b.name} ${b.bmc_code}`.toLowerCase().includes(bmcSearch.trim().toLowerCase()))
+                  .map((b) => (
+                    <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0', fontSize: '0.84rem', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={routeIds.includes(String(b.id))} onChange={() => toggleRoute(String(b.id))} />
+                      <span>{b.name}</span>
+                      <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>{b.bmc_code}</span>
+                    </label>
+                  ))}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#475569', marginTop: 4 }}>{routeIds.length} selected</div>
+            </div>
           </div>
 
           {/* Action button */}
@@ -380,7 +495,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
         padding: '1rem',
       }}
     >
-      <div style={{ width: '100%', maxWidth: 580, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)' }}>
+      <div style={{ width: '100%', maxWidth: 640, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)' }}>
         {formContent}
       </div>
     </div>

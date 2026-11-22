@@ -251,7 +251,7 @@ router.get('/stock', async (req, res) => {
 // GET /tanker/registered — tankers of this dairy unit with live capacity and availability
 router.get('/registered', async (req, res) => {
   try {
-    res.json(await listTankerAvailability(req.profile.dairy_unit_id));
+    res.json(await listTankerAvailability(req.profile.dairy_unit_id, undefined, req.profile.role === 'bmc' ? req.profile.bmc_id : null));
   } catch (err) {
     sendError(res, err);
   }
@@ -272,7 +272,7 @@ router.get('/registered/:vehicleNumber', async (req, res) => {
 });
 
 // POST /tanker/registration — register a tanker (or update the details of an existing one)
-router.post('/registration', requireRole('admin', 'bmc', 'gate'), async (req, res) => {
+router.post('/registration', requireRole('admin'), async (req, res) => {
   try {
     const {
       vehicle_number,
@@ -284,10 +284,17 @@ router.post('/registration', requireRole('admin', 'bmc', 'gate'), async (req, re
       middle_cell_capacity,
       back_cell_capacity,
       supplier_name,
+      driver_name,
+      driver_phone,
+      route_bmc_ids,
     } = req.body;
 
     if (!vehicle_number || !contractor_name || !supplier_name) {
       res.status(400).json({ error: 'Vehicle number, contractor name, and supplier name are required' });
+      return;
+    }
+    if (!driver_name || !String(driver_name).trim()) {
+      res.status(400).json({ error: 'Driver name is required' });
       return;
     }
 
@@ -301,6 +308,9 @@ router.post('/registration', requireRole('admin', 'bmc', 'gate'), async (req, re
       middle_cell_capacity,
       back_cell_capacity,
       supplier_name,
+      driver_name,
+      driver_phone,
+      route_bmc_ids: Array.isArray(route_bmc_ids) ? route_bmc_ids : undefined,
     });
 
     res.status(201).json(saved);
@@ -579,7 +589,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', requireRole('admin', 'bmc'), async (req, res) => {
   try {
     const body = req.body as Record<string, any>;
-    const { date, tanker_number, driver_name, seal_number, dispatch_time, destination: _destination } = body;
+    const { date, tanker_number, seal_number, dispatch_time, destination: _destination } = body;
     void _destination;
     const compartments: any[] = Array.isArray(body.compartments) ? body.compartments : [];
 
@@ -608,17 +618,6 @@ router.post('/', requireRole('admin', 'bmc'), async (req, res) => {
     if (!tanker) {
       res.status(404).json({ error: `Tanker ${String(tanker_number).toUpperCase()} is not registered for this dairy unit` });
       return;
-    }
-
-    // Warn (do not block) when the dispatch is more than the BMC's stock: milk is lost in handling
-    let stockWarning: string | null = null;
-    try {
-      const stock = await computeStock(dairyUnitId, bmcId);
-      if (Number(computedQty) > stock.available_stock_qty) {
-        stockWarning = `Dispatched quantity (${Number(computedQty).toFixed(1)} L) exceeds available stock (${stock.available_stock_qty.toFixed(1)} L).`;
-      }
-    } catch {
-      // non-fatal
     }
 
     const cellKeys = tanker.cells.map((c) => c.cell_key);
@@ -655,8 +654,9 @@ router.post('/', requireRole('admin', 'bmc'), async (req, res) => {
       bmcId: String(bmcId),
       dcNumber: dcNo.toUpperCase(),
       outletSealNo: seal_number ? String(seal_number).trim().toUpperCase() : null,
-      driverName: driver_name ? String(driver_name).trim() : null,
-      driverPhone: body.driver_phone ? String(body.driver_phone).trim() : null,
+      // the driver comes from the tanker's registration
+      driverName: tanker.driver_name,
+      driverPhone: tanker.driver_phone,
       dispatchTimeText: dispatch_time ? String(dispatch_time) : null,
       tripDate: String(date).slice(0, 10),
       userId: req.profile.id,
@@ -675,7 +675,7 @@ router.post('/', requireRole('admin', 'bmc'), async (req, res) => {
         tanker_number: tanker.vehicle_number,
         quantity_dispatched: +Number(computedQty).toFixed(2),
         dc_number: dcNo,
-        driver_name: driver_name || null,
+        driver_name: tanker.driver_name,
         seal_number: seal_number || null,
       },
       actor_id: req.user.id,
@@ -684,10 +684,7 @@ router.post('/', requireRole('admin', 'bmc'), async (req, res) => {
 
     const settings = await getZoneSettings(dairyUnitId);
     const found = await fetchTrip(dairyUnitId, tripId);
-    res.status(201).json({
-      ...slimTankerForClient(enrichTankerRow(found!.row, found!.stages, settings)),
-      stock_warning: stockWarning,
-    });
+    res.status(201).json(slimTankerForClient(enrichTankerRow(found!.row, found!.stages, settings)));
   } catch (err) {
     sendError(res, err);
   }
