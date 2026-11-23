@@ -16,7 +16,6 @@ import {
   ErrorBanner,
   TableSkeleton,
 } from '../../components/UiPrimitives';
-import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
 
 export default function UnitRecords() {
   const { profile } = useAuth();
@@ -35,8 +34,6 @@ export default function UnitRecords() {
     () => (searchParams.get('status') as any) || 'all',
   );
 
-  const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);
@@ -460,8 +457,7 @@ export default function UnitRecords() {
           style={{ fontSize: '0.75rem', height: '28px', padding: '0 10px', width: 'auto' }}
           onClick={(e) => {
             e.stopPropagation();
-            setSelectedTrip(r);
-            setDrawerOpen(true);
+            navigate(`/bmc/records/${r.id}`);
           }}
         >
           View Dossier
@@ -695,14 +691,6 @@ export default function UnitRecords() {
         </div>
       )}
 
-      {/* Tanker Dossier Drawer */}
-      <TankerDetailDrawer
-        isOpen={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        trip={selectedTrip}
-        onTripUpdated={fetchRecords}
-        isAdmin={false}
-      />
     </div>
   );
 }

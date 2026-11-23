@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
 import {
   formatDateDDMMYYYY,
@@ -86,6 +87,7 @@ function ackRange(preset: Exclude<DatePreset, 'custom'>): { from: string; to: st
 }
 
 export default function AdminTankerRecords() {
+  const navigate = useNavigate();
   // Records and stats data
   const [records, setRecords] = useState<any[]>([]);
   const [stats, setStats] = useState<StatsResponse | null>(null);
@@ -333,8 +335,7 @@ export default function AdminTankerRecords() {
   };
 
   const handleOpenDrawer = (trip: any) => {
-    setSelectedTrip(trip);
-    setDrawerOpen(true);
+    navigate(`/admin/tanker/${trip.id}`);
   };
 
   const handleCloseDrawer = () => {
