@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { triggerBlobDownload } from '../../lib/format';
+import { api } from '../../lib/api';
 
 function todayISO(): string {
   const d = new Date();
@@ -17,13 +17,21 @@ export default function AdminReports() {
 
   const invalid = !from || !to || from > to;
 
+  // Opens the PDF in a new tab (the viewer has its own download button)
   const download = async () => {
     setBusy(true);
     setError('');
+    // Open the tab right away so the browser does not block it as a pop-up
+    const tab = window.open('', '_blank');
     try {
-      await triggerBlobDownload('/export/recon-report', { from, to }, `Quantity_Quality_Reconciliation_${from}_to_${to}.pdf`);
+      const res = await api.get('/export/recon-report', { params: { from, to }, responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      if (tab) tab.location.href = url;
+      else window.location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
     } catch {
-      setError('Could not download the report. Please try again.');
+      tab?.close();
+      setError('Could not open the report. Please try again.');
     } finally {
       setBusy(false);
     }
