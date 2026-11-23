@@ -651,12 +651,20 @@ router.get('/:id/dispatch-ack', async (req, res) => {
     const { data: tankerRow } = tripRow?.tanker_id
       ? await supabase.from('tankers').select('route_name, driver_name').eq('id', tripRow.tanker_id).maybeSingle()
       : { data: null };
+    const stageData = (key: string) => (found.stages.find((st) => st.stage_name === key)?.stage_data ?? {}) as Record<string, any>;
+    const qc = stageData('qc_completed');
+    const unloaded = stageData('unloaded');
+    const receivedQuality = Array.isArray(qc.received_quality) && qc.received_quality.length ? qc.received_quality : unloaded.received_quality;
     res.json({
       trip_id: tripId,
+      gross_weight_kg: found.row.gross_weight_kg ?? null,
+      tare_weight_kg: found.row.tare_weight_kg ?? null,
+      net_weight_kg: found.row.net_weight_kg ?? null,
+      silo: unloaded.silo_or_bay ?? unloaded.unloaded_to_silo ?? null,
       route_name: tankerRow?.route_name ?? null,
       driver_name: tankerRow?.driver_name ?? null,
       acknowledged: (acks ?? []).length > 0,
-      rows: buildDispatchAckRows(loadings ?? [], acks ?? [], bmcs),
+      rows: buildDispatchAckRows(loadings ?? [], acks ?? [], bmcs, receivedQuality),
     });
   } catch (err) {
     sendError(res, err);

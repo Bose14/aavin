@@ -39,6 +39,8 @@ export interface DispatchAckRow {
   dc_number: string;
   cells: string[];
   milk_type: string | null;
+  /** MBRT recorded at QC for the cell(s) this BMC's milk was loaded into */
+  mbrt: string | null;
   dispatched: MilkFigures;
   acknowledged: MilkFigures | null;
   difference: { litres: number; fat_pct: number; snf_pct: number; kg: number; fat_kg: number; snf_kg: number } | null;
@@ -60,10 +62,24 @@ export function figures(litres: number, fat: number, snf: number): MilkFigures {
   };
 }
 
+/** MBRT values of the given cells from the QC form's received_quality list. */
+export function mbrtForCells(receivedQuality: unknown, cells: string[]): string | null {
+  if (!Array.isArray(receivedQuality)) return null;
+  const wanted = new Set(cells.map((c) => c.toUpperCase()));
+  const vals = new Set<string>();
+  for (const q of receivedQuality as Array<Record<string, unknown>>) {
+    const cell = String(q.cell ?? '').toUpperCase();
+    const mbrt = String(q.mbrt ?? '').trim();
+    if (wanted.has(cell) && mbrt) vals.add(mbrt);
+  }
+  return vals.size ? [...vals].join(', ') : null;
+}
+
 export function buildDispatchAckRows(
   loadings: LoadingInput[],
   acks: AckInput[],
   bmcs: Map<string, { name: string; code: string | null }>,
+  receivedQuality?: unknown,
 ): DispatchAckRow[] {
   const groups = new Map<string, { bmc_id: string; dc: string; litres: number; fatL: number; snfL: number; cells: Set<string>; milk: string | null }>();
   for (const l of loadings) {
@@ -90,6 +106,7 @@ export function buildDispatchAckRows(
       dc_number: g.dc,
       cells: [...g.cells].sort(),
       milk_type: g.milk,
+      mbrt: mbrtForCells(receivedQuality, [...g.cells]),
       dispatched,
       acknowledged,
       difference: acknowledged

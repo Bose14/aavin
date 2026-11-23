@@ -39,3 +39,15 @@ test('no acknowledgement yet, and several cells merge into one row', () => {
   assert.equal(rows[0].acknowledged, null);
   assert.equal(rows[0].difference, null);
 });
+
+test('MBRT is read from the QC received quality of the BMC cells', () => {
+  const q = [{ cell: 'FC', mbrt: '01:50' }, { cell: 'BC', mbrt: '01:10' }, { cell: 'MC', mbrt: '' }];
+  const rows = buildDispatchAckRows(
+    [{ bmc_id: 1, dc_number: 'D', cell_key: 'BC', quantity_litres: 100, fat_pct: 4, snf_pct: 8, milk_type: 'RCM' }],
+    [],
+    new Map(),
+    q,
+  );
+  assert.equal(rows[0].mbrt, '01:10');
+  assert.equal(buildDispatchAckRows([{ bmc_id: 1, dc_number: 'D', cell_key: 'MC', quantity_litres: 1, fat_pct: 4, snf_pct: 8 }], [], new Map(), q)[0].mbrt, null);
+});
