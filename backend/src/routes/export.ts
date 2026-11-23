@@ -322,7 +322,7 @@ router.get('/milk-ack', requireRole('admin'), async (req, res) => {
     const rows = buildMilkAckRows((data ?? []) as unknown as AckViewRow[], formatDateDDMMYYYY);
     const wb = XLSX.book_new();
     const { data: unit } = await supabase.from('dairy_units').select('name').eq('id', dairyUnitId).maybeSingle();
-    const ws = { rows, columns: [...ACK_COLUMNS] as string[], title: ackTitle(unit?.name, from, to) };
+    const ws = { rows, columns: [...ACK_COLUMNS] as string[], title: ackTitle(unit?.name, from, to), highlightRow: (r: Record<string, unknown>) => r['NAME OF THE BMC/CC'] === 'TOTAL' };
     XLSX.book_append_sheet(wb, ws, 'Milk ACK');
 
     const baseName = `Milk_ACK_${buildRangeTag(from, to)}`;
