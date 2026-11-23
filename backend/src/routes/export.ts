@@ -301,6 +301,14 @@ router.get('/milk-ack', requireRole('admin'), async (req, res) => {
     res.status(400).json({ error: 'from and to must be yyyy-mm-dd' });
     return;
   }
+  if (!from || !to) {
+    res.status(400).json({ error: 'Select a From and To date for the report' });
+    return;
+  }
+  if (from > to) {
+    res.status(400).json({ error: 'From date must be on or before To date' });
+    return;
+  }
   const dairyUnitId = req.profile.dairy_unit_id;
 
   try {
