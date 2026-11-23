@@ -18,6 +18,9 @@ import {
   isMissingSchemaError,
 } from '../lib/settingsStore';
 import { buildDailyPdfReport } from '../utils/pdfReport';
+import { buildReconciliation } from '../lib/reconReport';
+import type { ReconTripInput } from '../lib/reconReport';
+import { buildReconPdf } from '../lib/reconPdf';
 
 const router = Router();
 router.use(authMiddleware);
@@ -336,6 +339,87 @@ router.get('/milk-ack', requireRole('admin'), async (req, res) => {
       res.setHeader('Content-Disposition', `attachment; filename="${baseName}.xlsx"`);
       res.send(buf);
     }
+  } catch (err) {
+    console.error('[api]', req.method, req.originalUrl, (err as Error).message);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /export/recon-report?from=&to= — Quantity And Quality Reconciliation Report (PDF)
+router.get('/recon-report', requireRole('admin'), async (req, res) => {
+  const { from, to } = req.query as Record<string, string | undefined>;
+  const dateOk = (v?: string) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  if (!dateOk(from) || !dateOk(to)) {
+    res.status(400).json({ error: 'Select a From and To date for the report' });
+    return;
+  }
+  if (from! > to!) {
+    res.status(400).json({ error: 'From date must be on or before To date' });
+    return;
+  }
+  const dairyUnitId = req.profile.dairy_unit_id;
+  try {
+    await ensureAcknowledgements(dairyUnitId, from, to);
+    const { data: trips, error: tErr } = await supabase
+      .from('tanker_trips')
+      .select('id, trip_date, tanker_id')
+      .eq('dairy_unit_id', dairyUnitId)
+      .neq('status', 'cancelled')
+      .gte('trip_date', from!)
+      .lte('trip_date', to!)
+      .order('trip_date')
+      .order('id')
+      .limit(2000);
+    if (tErr) throw new Error(tErr.message);
+    const ids = (trips ?? []).map((t) => String(t.id));
+    const tankerIds = [...new Set((trips ?? []).map((t) => String(t.tanker_id)))];
+
+    const empty = { data: [] as any[], error: null };
+    const [loadRes, ackRes, stageRes, tankerRes, unitRes] = await Promise.all([
+      ids.length ? supabase.from('trip_loadings').select('id, trip_id, bmc_id, dc_number, cell_key, quantity_litres, fat_pct, snf_pct, dispatch_at').in('trip_id', ids) : empty,
+      ids.length ? supabase.from('trip_acknowledgements').select('trip_id, bmc_id, dc_number, ack_litres, ack_fat_pct, ack_snf_pct').in('trip_id', ids) : empty,
+      ids.length ? supabase.from('trip_stages').select('trip_id, data').eq('stage_key', 'qc_completed').eq('status', 'done').in('trip_id', ids) : empty,
+      tankerIds.length ? supabase.from('tankers').select('id, vehicle_number').in('id', tankerIds) : empty,
+      supabase.from('dairy_units').select('name, report_title, report_address').eq('id', dairyUnitId).maybeSingle(),
+    ]);
+    for (const r of [loadRes, ackRes, stageRes, tankerRes]) if (r.error) throw new Error(r.error.message);
+
+    const bmcIds = [...new Set((loadRes.data ?? []).map((l: any) => String(l.bmc_id)))];
+    const { data: bmcRows, error: bErr } = bmcIds.length ? await supabase.from('bmcs').select('id, name').in('id', bmcIds) : { data: [] as any[], error: null };
+    if (bErr) throw new Error(bErr.message);
+    const bmcNames = new Map((bmcRows ?? []).map((b: any) => [String(b.id), String(b.name).toUpperCase()]));
+    const vehicles = new Map((tankerRes.data ?? []).map((k: any) => [String(k.id), String(k.vehicle_number)]));
+
+    const by = <T extends { trip_id: any }>(rows: T[]) => {
+      const m = new Map<string, T[]>();
+      for (const r of rows) m.set(String(r.trip_id), [...(m.get(String(r.trip_id)) ?? []), r]);
+      return m;
+    };
+    const loadings = by((loadRes.data ?? []) as any[]);
+    const acks = by((ackRes.data ?? []) as any[]);
+    const qc = new Map((stageRes.data ?? []).map((s: any) => [String(s.trip_id), (s.data as any)?.received_quality]));
+
+    const inputs: ReconTripInput[] = (trips ?? []).map((t) => ({
+      trip_id: String(t.id),
+      trip_date: String(t.trip_date),
+      vehicle_number: vehicles.get(String(t.tanker_id)) ?? '',
+      loadings: loadings.get(String(t.id)) ?? [],
+      acks: acks.get(String(t.id)) ?? [],
+      received_quality: qc.get(String(t.id)),
+    }));
+
+    const unit = unitRes.data as { name?: string; report_title?: string | null; report_address?: string | null } | null;
+    const title = unit?.report_title?.trim() || `${String(unit?.name ?? '').toUpperCase()} DISTRICT COOPERATIVE MILK PRODUCERS' UNION LTD.`;
+    const pdf = await buildReconPdf({
+      title,
+      address: unit?.report_address?.trim() || null,
+      from: formatDateDDMMYYYY(from!).replace(/-/g, '/'),
+      to: formatDateDDMMYYYY(to!).replace(/-/g, '/'),
+      tankers: buildReconciliation(inputs, bmcNames),
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Quantity_Quality_Reconciliation_${from}_to_${to}.pdf"`);
+    res.send(pdf);
   } catch (err) {
     console.error('[api]', req.method, req.originalUrl, (err as Error).message);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
