@@ -60,16 +60,20 @@ const ALL_COLUMNS = [
   { id: 'transit_loss', label: 'Transit Loss' },
 ];
 
-type DatePreset = 'today' | 'yesterday' | 'last_week' | 'last_month' | 'custom';
+type DatePreset = 'today' | 'yesterday' | 'this_week' | 'last_week' | 'last_month' | 'custom';
 const ymd = (d: Date) => d.toLocaleDateString('en-CA'); // local yyyy-mm-dd
 
-// Date ranges for the quick report filters (local time). Last week = previous Mon–Sun; last month = previous calendar month.
+// Date ranges for the quick report filters (local time). This week = Monday to today; last week = previous Mon–Sun; last month = previous calendar month.
 function ackRange(preset: Exclude<DatePreset, 'custom'>): { from: string; to: string } {
   const now = new Date();
   const day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const shift = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
   if (preset === 'today') return { from: ymd(day), to: ymd(day) };
   if (preset === 'yesterday') return { from: ymd(shift(day, -1)), to: ymd(shift(day, -1)) };
+  if (preset === 'this_week') {
+    const sinceMonday = (day.getDay() + 6) % 7;
+    return { from: ymd(shift(day, -sinceMonday)), to: ymd(day) };
+  }
   if (preset === 'last_week') {
     const sinceMonday = (day.getDay() + 6) % 7;
     const thisMonday = shift(day, -sinceMonday);
@@ -143,7 +147,7 @@ export default function AdminTankerRecords() {
     try {
       const saved = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS) || '{}');
       if (saved.preset === 'custom' && saved.from && saved.to) return 'custom';
-      if (['yesterday', 'last_week', 'last_month'].includes(saved.preset)) return saved.preset;
+      if (['yesterday', 'this_week', 'last_week', 'last_month'].includes(saved.preset)) return saved.preset;
     } catch {}
     return 'today';
   });
@@ -820,6 +824,7 @@ export default function AdminTankerRecords() {
             >
               <option value="today">Today</option>
               <option value="yesterday">Yesterday</option>
+              <option value="this_week">This Week</option>
               <option value="last_week">Last Week</option>
               <option value="last_month">Last Month</option>
               <option value="custom">Custom…</option>
