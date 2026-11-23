@@ -60,6 +60,26 @@ const ALL_COLUMNS = [
   { id: 'transit_loss', label: 'Transit Loss' },
 ];
 
+const ymd = (d: Date) => d.toLocaleDateString('en-CA'); // local yyyy-mm-dd
+
+// Date ranges for the quick report filters (local time). Last week = previous Mon–Sun; last month = previous calendar month.
+function ackRange(preset: 'today' | 'yesterday' | 'last_week' | 'last_month'): { from: string; to: string } {
+  const now = new Date();
+  const day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const shift = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  if (preset === 'today') return { from: ymd(day), to: ymd(day) };
+  if (preset === 'yesterday') return { from: ymd(shift(day, -1)), to: ymd(shift(day, -1)) };
+  if (preset === 'last_week') {
+    const sinceMonday = (day.getDay() + 6) % 7;
+    const thisMonday = shift(day, -sinceMonday);
+    return { from: ymd(shift(thisMonday, -7)), to: ymd(shift(thisMonday, -1)) };
+  }
+  return {
+    from: ymd(new Date(day.getFullYear(), day.getMonth() - 1, 1)),
+    to: ymd(new Date(day.getFullYear(), day.getMonth(), 0)),
+  };
+}
+
 export default function AdminTankerRecords() {
   // Records and stats data
   const [records, setRecords] = useState<any[]>([]);
@@ -147,9 +167,18 @@ export default function AdminTankerRecords() {
     for (const c of ALL_COLUMNS) initial[c.id] = true;
     return initial;
   });
-  const todayIso = new Date().toLocaleDateString('en-CA'); // local yyyy-mm-dd
-  const [ackFrom, setAckFrom] = useState<string>(todayIso);
-  const [ackTo, setAckTo] = useState<string>(todayIso);
+  type AckPreset = 'today' | 'yesterday' | 'last_week' | 'last_month' | 'custom';
+  const [ackPreset, setAckPreset] = useState<AckPreset>('today');
+  const [ackFrom, setAckFrom] = useState<string>(() => ackRange('today').from);
+  const [ackTo, setAckTo] = useState<string>(() => ackRange('today').to);
+  const pickAckPreset = (preset: AckPreset) => {
+    setAckPreset(preset);
+    if (preset !== 'custom') {
+      const r = ackRange(preset);
+      setAckFrom(r.from);
+      setAckTo(r.to);
+    }
+  };
 
   // Drawer state
   const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
@@ -814,23 +843,42 @@ export default function AdminTankerRecords() {
         {/* Milk ACK Report download */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
           <strong style={{ fontSize: '12px', color: '#334155' }}>Milk ACK Report</strong>
-          <input
-            type="date"
-            value={ackFrom}
-            max={ackTo || undefined}
-            onChange={(e) => setAckFrom(e.target.value)}
-            aria-label="Report from date"
-            style={{ height: '34px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-          />
-          <span style={{ color: '#64748b', fontSize: '12px' }}>to</span>
-          <input
-            type="date"
-            value={ackTo}
-            min={ackFrom || undefined}
-            onChange={(e) => setAckTo(e.target.value)}
-            aria-label="Report to date"
-            style={{ height: '34px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-          />
+          {([['today', 'Today'], ['yesterday', 'Yesterday'], ['last_week', 'Last Week'], ['last_month', 'Last Month'], ['custom', 'Custom']] as [AckPreset, string][]).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => pickAckPreset(key)}
+              className={ackPreset === key ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+              style={{ height: '34px', fontSize: '12px', padding: '0 10px', width: 'auto' }}
+            >
+              {label}
+            </button>
+          ))}
+          {ackPreset === 'custom' ? (
+            <>
+              <input
+                type="date"
+                value={ackFrom}
+                max={ackTo || undefined}
+                onChange={(e) => setAckFrom(e.target.value)}
+                aria-label="Report from date"
+                style={{ height: '34px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+              />
+              <span style={{ color: '#64748b', fontSize: '12px' }}>to</span>
+              <input
+                type="date"
+                value={ackTo}
+                min={ackFrom || undefined}
+                onChange={(e) => setAckTo(e.target.value)}
+                aria-label="Report to date"
+                style={{ height: '34px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+              />
+            </>
+          ) : (
+            <span style={{ color: '#64748b', fontSize: '12px' }}>
+              {ackFrom === ackTo ? formatDateDDMMYYYY(ackFrom) : `${formatDateDDMMYYYY(ackFrom)} – ${formatDateDDMMYYYY(ackTo)}`}
+            </span>
+          )}
           <button
             type="button"
             onClick={handleExportMilkAck}
