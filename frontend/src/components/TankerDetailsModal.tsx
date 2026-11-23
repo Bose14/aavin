@@ -8,11 +8,12 @@ import { TankerDetailDrawer } from './TankerDetailDrawer';
 interface Figures { litres: number; fat_pct: number; snf_pct: number; sp_gr: number; kg: number; fat_kg: number; snf_kg: number }
 interface Diff { litres: number; fat_pct: number; snf_pct: number; kg: number; fat_kg: number; snf_kg: number }
 interface Row {
-  bmc_id: string; bmc_name: string; bmc_code: string | null; dc_number: string; cells: string[]; milk_type: string | null;
+  bmc_id: string; bmc_name: string; bmc_code: string | null; dc_number: string; cells: string[]; milk_type: string | null; mbrt: string | null;
   dispatched: Figures; acknowledged: Figures | null; difference: Diff | null;
 }
-interface DispatchAck { route_name: string | null; driver_name: string | null; acknowledged: boolean; rows: Row[] }
+interface DispatchAck { gross_weight_kg: number | null; tare_weight_kg: number | null; net_weight_kg: number | null; silo: string | null; route_name: string | null; driver_name: string | null; acknowledged: boolean; rows: Row[] }
 
+const MILK_NAME: Record<string, string> = { RCM: 'Raw Cow Milk', SSM: 'Skim Separated Milk' };
 const MILK_CODE: Record<string, string> = { 'Raw Cow Milk': 'RCM', 'Skim Separated Milk': 'SSM' };
 const card: React.CSSProperties = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 12px', marginBottom: 12 };
 const num = (v: number, d = 2) => v.toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -109,6 +110,11 @@ export default function TankerDetailsModal({ tripId, onClose }: { tripId: string
     return { sent: sum((r) => r.dispatched.litres), got: sum((r) => r.acknowledged?.litres) };
   }, [rows]);
 
+  // Header fat/SNF as on the old dashboard: plain average across the BMC rows (received once acknowledged, else dispatched)
+  const avgOf = (pick: (r: Row) => number) => (rows.length ? rows.reduce((s, r) => s + pick(r), 0) / rows.length : null);
+  const avgFat = avgOf((r) => (r.acknowledged ?? r.dispatched).fat_pct);
+  const avgSnf = avgOf((r) => (r.acknowledged ?? r.dispatched).snf_pct);
+
   const badge = detail?.acknowledged
     ? { text: 'Acknowledged', bg: '#dcfce7', fg: '#166534' }
     : trip?.journey?.tripStatusLabel
@@ -126,7 +132,7 @@ export default function TankerDetailsModal({ tripId, onClose }: { tripId: string
         onClick={onClose}
         style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 900, padding: '1rem', overflowY: 'auto' }}
       >
-        <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 820, margin: 'auto', backgroundColor: '#f8fafc', borderRadius: 8, overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)' }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 1100, margin: 'auto', backgroundColor: '#f8fafc', borderRadius: 8, overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)' }}>
           <div style={{ backgroundColor: '#52525b', color: '#ffffff', padding: '0.5rem 1rem', fontSize: '0.88rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>Tanker details{trip ? ` · ${trip.tanker_number}` : ''}</span>
             <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', color: '#ffffff', fontSize: '1.1rem', cursor: 'pointer' }}>✕</button>
@@ -149,12 +155,20 @@ export default function TankerDetailsModal({ tripId, onClose }: { tripId: string
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginTop: 14, padding: 14, background: '#f8fafc', borderRadius: 8 }}>
-              <Fact label="DC no." value={rows.length === 1 ? rows[0].dc_number : trip.dc_number} />
+              <Fact label="Product name" value={`${MILK_NAME[milkCode] ?? milkCode} [${milkCode}]`} />
+              <Fact label="CC/BMC" value={rows.map((r) => `${r.bmc_name}${r.bmc_code ? ` [${r.bmc_code}]` : ''}`).join(', ')} />
+              <Fact label="DC no." value={[...new Set(rows.map((r) => r.dc_number))].join(', ') || trip.dc_number} />
+              <Fact label="Dispatch quantity (kg)" value={rows.length ? num(rows.reduce((s, r) => s + r.dispatched.kg, 0), 1) : null} />
+              <Fact label="Gross quantity (kg)" value={detail?.gross_weight_kg != null ? num(Number(detail.gross_weight_kg), 0) : null} />
+              <Fact label="Tare quantity (kg)" value={detail?.tare_weight_kg != null ? num(Number(detail.tare_weight_kg), 0) : null} />
+              <Fact label="Net quantity (kg)" value={detail?.net_weight_kg != null ? num(Number(detail.net_weight_kg), 0) : null} />
+              <Fact label="Silo" value={detail?.silo} />
+              <Fact label="Fat %" value={avgFat != null ? num(avgFat, 2) : null} />
+              <Fact label="SNF %" value={avgSnf != null ? num(avgSnf, 3) : null} />
               <Fact label="Route" value={detail?.route_name} />
-              <Fact label="Milk type" value={milkCode} />
               <Fact label="Driver" value={detail?.driver_name || trip.driver_name} />
               <Fact label="Dispatched" value={`${formatDateDDMMYYYY(trip.date)}${trip.dispatch_time ? `, ${trip.dispatch_time}` : ''}`} />
-              <Fact label="Destination" value={trip.destination} />
+              <Fact label="Union / destination" value={trip.destination} />
             </div>
           </div>
 
@@ -179,6 +193,46 @@ export default function TankerDetailsModal({ tripId, onClose }: { tripId: string
             {steps.find((s) => s.status === 'rejected')?.rejectionReason && (
               <div style={{ marginTop: 10, fontSize: 13, color: '#b91c1c' }}>Reason: {steps.find((s) => s.status === 'rejected').rejectionReason}</div>
             )}
+          </div>
+
+          <div style={card}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Send and received, by BMC</h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900, fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: '#f1f5f9', color: '#475569' }}>
+                    {['Union name', 'CC-name', 'Cell', 'Send fat', 'Send SNF', 'Send qty (kg)', 'Send qty (L)', 'Recd fat', 'Recd SNF', 'Recd qty (kg)', 'Recd qty (L)', 'Recd MBRT', 'Recd Sp.Gr.'].map((h, i) => (
+                      <th key={h} style={{ padding: '8px 8px', textAlign: i < 3 ? 'left' : 'right', fontWeight: 600, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const a = r.acknowledged;
+                    const cellStyle: React.CSSProperties = { padding: '8px 8px', textAlign: 'right', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' };
+                    const left: React.CSSProperties = { ...cellStyle, textAlign: 'left', whiteSpace: 'normal' };
+                    const dash = <span style={{ color: '#94a3b8' }}>—</span>;
+                    return (
+                      <tr key={`${r.bmc_id}|${r.dc_number}`}>
+                        <td style={left}>{trip.destination || '—'}</td>
+                        <td style={left}>{r.bmc_name}{r.bmc_code ? ` [${r.bmc_code}]` : ''}</td>
+                        <td style={left}>{r.cells.join(', ')}</td>
+                        <td style={cellStyle}>{num(r.dispatched.fat_pct, 2)}</td>
+                        <td style={cellStyle}>{num(r.dispatched.snf_pct, 2)}</td>
+                        <td style={cellStyle}>{num(r.dispatched.kg, 2)}</td>
+                        <td style={cellStyle}>{num(r.dispatched.litres, 2)}</td>
+                        <td style={cellStyle}>{a ? num(a.fat_pct, 2) : dash}</td>
+                        <td style={cellStyle}>{a ? num(a.snf_pct, 2) : dash}</td>
+                        <td style={cellStyle}>{a ? num(a.kg, 2) : dash}</td>
+                        <td style={cellStyle}>{a ? num(a.litres, 2) : dash}</td>
+                        <td style={cellStyle}>{r.mbrt || dash}</td>
+                        <td style={cellStyle}>{a ? num(a.sp_gr, 4) : dash}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div style={card}>
