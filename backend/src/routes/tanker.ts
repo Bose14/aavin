@@ -39,6 +39,7 @@ import type { LegacyTripRow } from '../lib/tripStore';
 import { supabase } from '../supabase';
 import { computeActiveUsersPerTeam } from '../lib/teamCounts';
 import { syncTripAcknowledgements, litresFromNetWeight } from '../lib/ack';
+import { buildDispatchAckRows } from '../lib/tripDetails';
 
 const router = Router();
 router.use(authMiddleware);
@@ -613,6 +614,49 @@ router.get('/:id', async (req, res) => {
     res.json({
       ...slimTankerForClient(enrichTankerRow(found.row, found.stages, settings)),
       audit_logs: auditLogs,
+    });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// GET /tanker/:id/dispatch-ack — dispatched vs acknowledged milk per BMC for one trip.
+// A BMC only gets its own row; admins get every BMC on the tanker.
+router.get('/:id/dispatch-ack', async (req, res) => {
+  const dairyUnitId = req.profile.dairy_unit_id;
+  try {
+    const isBmc = req.profile.role === 'bmc';
+    const found = await fetchTrip(dairyUnitId, String(req.params.id), isBmc ? req.profile.bmc_id : null);
+    if (!found) {
+      res.status(404).json({ error: 'Tanker dispatch record not found' });
+      return;
+    }
+    const tripId = String(found.row.id);
+    let lq = supabase.from('trip_loadings').select('bmc_id, dc_number, cell_key, quantity_litres, fat_pct, snf_pct, milk_type').eq('trip_id', tripId);
+    let aq = supabase.from('trip_acknowledgements').select('bmc_id, dc_number, ack_litres, ack_fat_pct, ack_snf_pct').eq('trip_id', tripId);
+    if (isBmc) {
+      lq = lq.eq('bmc_id', req.profile.bmc_id!);
+      aq = aq.eq('bmc_id', req.profile.bmc_id!);
+    }
+    const [{ data: loadings, error: lErr }, { data: acks, error: aErr }] = await Promise.all([lq, aq]);
+    if (lErr) throw new Error(lErr.message);
+    if (aErr) throw new Error(aErr.message);
+    const ids = [...new Set((loadings ?? []).map((l) => String(l.bmc_id)))];
+    const { data: bmcRows, error: bErr } = ids.length
+      ? await supabase.from('bmcs').select('id, name, bmc_code').in('id', ids)
+      : { data: [], error: null };
+    if (bErr) throw new Error(bErr.message);
+    const bmcs = new Map((bmcRows ?? []).map((b) => [String(b.id), { name: String(b.name), code: b.bmc_code ?? null }]));
+    const { data: tripRow } = await supabase.from('tanker_trips').select('tanker_id').eq('id', tripId).maybeSingle();
+    const { data: tankerRow } = tripRow?.tanker_id
+      ? await supabase.from('tankers').select('route_name, driver_name').eq('id', tripRow.tanker_id).maybeSingle()
+      : { data: null };
+    res.json({
+      trip_id: tripId,
+      route_name: tankerRow?.route_name ?? null,
+      driver_name: tankerRow?.driver_name ?? null,
+      acknowledged: (acks ?? []).length > 0,
+      rows: buildDispatchAckRows(loadings ?? [], acks ?? [], bmcs),
     });
   } catch (err) {
     sendError(res, err);
