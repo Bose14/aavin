@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from '../lib/format';
-import { ErrorBanner } from '../components/UiPrimitives';
-import { TankerDetailDrawer } from '../components/TankerDetailDrawer';
+import { ErrorBanner } from './UiPrimitives';
+import { TankerDetailDrawer } from './TankerDetailDrawer';
 
 interface Figures { litres: number; fat_pct: number; snf_pct: number; sp_gr: number; kg: number; fat_kg: number; snf_kg: number }
 interface Diff { litres: number; fat_pct: number; snf_pct: number; kg: number; fat_kg: number; snf_kg: number }
@@ -15,7 +14,7 @@ interface Row {
 interface DispatchAck { route_name: string | null; driver_name: string | null; acknowledged: boolean; rows: Row[] }
 
 const MILK_CODE: Record<string, string> = { 'Raw Cow Milk': 'RCM', 'Skim Separated Milk': 'SSM' };
-const card: React.CSSProperties = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 20px', marginBottom: 16 };
+const card: React.CSSProperties = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 12px', marginBottom: 12 };
 const num = (v: number, d = 2) => v.toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
 const signed = (v: number, d = 2) => (v > 0 ? '+' : '') + num(v, d);
 const diffColour = (v: number) => (v < 0 ? '#b91c1c' : v > 0 ? '#15803d' : '#475569');
@@ -63,20 +62,19 @@ function Comparison({ row }: { row: Row }) {
   );
 }
 
-export default function TankerDetails() {
-  const { id } = useParams();
-  const navigate = useNavigate();
+export default function TankerDetailsModal({ tripId, onClose }: { tripId: string | null; onClose: () => void }) {
+  const id = tripId;
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
-  const backTo = isAdmin ? '/admin/tanker' : '/bmc/records';
 
   const [trip, setTrip] = useState<any | null>(null);
   const [detail, setDetail] = useState<DispatchAck | null>(null);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const load = async () => {
+    if (!id) return;
     try {
       setError('');
       const [t, d] = await Promise.all([api.get(`/tanker/${id}`), api.get<DispatchAck>(`/tanker/${id}/dispatch-ack`)]);
@@ -88,7 +86,20 @@ export default function TankerDetails() {
       setLoading(false);
     }
   };
-  useEffect(() => { void load(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!id) return;
+    setLoading(true);
+    setTrip(null);
+    setDetail(null);
+    void load();
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!id) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !drawerOpen) onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [id, drawerOpen, onClose]);
 
   const steps: any[] = useMemo(() => trip?.journey?.timelineSteps ?? [], [trip]);
   const rows = detail?.rows ?? [];
@@ -104,13 +115,24 @@ export default function TankerDetails() {
       ? { text: trip.journey.tripStatusLabel as string, bg: '#fef3c7', fg: '#92400e' }
       : { text: 'On the way', bg: '#fef3c7', fg: '#92400e' };
 
-  if (loading) return <div style={{ padding: 24 }}>Loading tanker…</div>;
+  if (!id) return null;
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
-      <button type="button" onClick={() => navigate(backTo)} className="btn btn-secondary btn-sm" style={{ width: 'auto', marginBottom: 12 }}>
-        ← {isAdmin ? 'Tanker records' : 'My records'}
-      </button>
+    <>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Tanker details"
+        onClick={onClose}
+        style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 900, padding: '1rem', overflowY: 'auto' }}
+      >
+        <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 820, margin: 'auto', backgroundColor: '#f8fafc', borderRadius: 8, overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)' }}>
+          <div style={{ backgroundColor: '#52525b', color: '#ffffff', padding: '0.5rem 1rem', fontSize: '0.88rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Tanker details{trip ? ` · ${trip.tanker_number}` : ''}</span>
+            <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', color: '#ffffff', fontSize: '1.1rem', cursor: 'pointer' }}>✕</button>
+          </div>
+          <div style={{ padding: "0.6rem" }}>
+            {loading && <div style={{ padding: 16 }}>Loading tanker…</div>}
       {error && <ErrorBanner message={error} />}
       {trip && (
         <>
@@ -186,7 +208,10 @@ export default function TankerDetails() {
           </div>
         </>
       )}
+          </div>
+        </div>
+      </div>
       {isAdmin && <TankerDetailDrawer isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} trip={trip} onTripUpdated={() => void load()} isAdmin />}
-    </div>
+    </>
   );
 }

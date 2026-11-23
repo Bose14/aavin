@@ -12,7 +12,6 @@ import AdminBmcs from './pages/admin/AdminBmcs';
 import AdminTeams from './pages/admin/AdminTeams';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminMilkRecords from './pages/admin/AdminMilkRecords';
-import TankerDetails from './pages/TankerDetails';
 import AdminTankerRecords from './pages/admin/AdminTankerRecords';
 import AdminTankers from './pages/admin/AdminTankers';
 import AdminRateChart from './pages/admin/AdminRateChart';
@@ -48,7 +47,6 @@ export default function App() {
             {/* Admin portal */}
             <Route path="/admin" element={<Navigate to="/admin/tanker" replace />} />
             <Route path="/admin/tanker" element={<ProtectedRoute role="admin"><Layout><AdminTankerRecords /></Layout></ProtectedRoute>} />
-            <Route path="/admin/tanker/:id" element={<ProtectedRoute role="admin"><Layout><TankerDetails /></Layout></ProtectedRoute>} />
             <Route path="/admin/tankers" element={<ProtectedRoute role="admin"><Layout><AdminTankers /></Layout></ProtectedRoute>} />
             <Route path="/admin/rates" element={<ProtectedRoute role="admin"><Layout><AdminRateChart /></Layout></ProtectedRoute>} />
             <Route path="/admin/bmcs" element={<ProtectedRoute role="admin"><Layout><AdminBmcs /></Layout></ProtectedRoute>} />
@@ -63,7 +61,6 @@ export default function App() {
             <Route path="/bmc/tanker" element={<ProtectedRoute role="bmc"><Layout><TankerDispatch /></Layout></ProtectedRoute>} />
             <Route path="/bmc/analytics" element={<ProtectedRoute role="bmc"><Layout><UnitDashboard /></Layout></ProtectedRoute>} />
             <Route path="/bmc/milk-entry" element={<ProtectedRoute role="bmc"><Layout><MilkEntry /></Layout></ProtectedRoute>} />
-            <Route path="/bmc/records/:id" element={<ProtectedRoute role="bmc"><Layout><TankerDetails /></Layout></ProtectedRoute>} />
             <Route path="/bmc/records" element={<ProtectedRoute role="bmc"><Layout><UnitRecords /></Layout></ProtectedRoute>} />
 
             {/* Plant Team Portals */}

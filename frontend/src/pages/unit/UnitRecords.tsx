@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import TankerDetailsModal from '../../components/TankerDetailsModal';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
@@ -18,6 +19,7 @@ import {
 } from '../../components/UiPrimitives';
 
 export default function UnitRecords() {
+  const [detailTripId, setDetailTripId] = useState<string | null>(null);
   const { profile } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -457,7 +459,7 @@ export default function UnitRecords() {
           style={{ fontSize: '0.75rem', height: '28px', padding: '0 10px', width: 'auto' }}
           onClick={(e) => {
             e.stopPropagation();
-            navigate(`/bmc/records/${r.id}`);
+            setDetailTripId(String(r.id));
           }}
         >
           View Dossier
@@ -691,6 +693,7 @@ export default function UnitRecords() {
         </div>
       )}
 
+      <TankerDetailsModal tripId={detailTripId} onClose={() => setDetailTripId(null)} />
     </div>
   );
 }
