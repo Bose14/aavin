@@ -3,7 +3,6 @@ import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from '../lib/format';
 import { ErrorBanner } from './UiPrimitives';
-import { TankerDetailDrawer } from './TankerDetailDrawer';
 
 interface Figures { litres: number; fat_pct: number; snf_pct: number; sp_gr: number; kg: number; fat_kg: number; snf_kg: number }
 interface Diff { litres: number; fat_pct: number; snf_pct: number; kg: number; fat_kg: number; snf_kg: number }
@@ -72,7 +71,6 @@ export default function TankerDetailsModal({ tripId, onClose }: { tripId: string
   const [detail, setDetail] = useState<DispatchAck | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const load = async () => {
     if (!id) return;
@@ -97,10 +95,10 @@ export default function TankerDetailsModal({ tripId, onClose }: { tripId: string
 
   useEffect(() => {
     if (!id) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !drawerOpen) onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [id, drawerOpen, onClose]);
+  }, [id, onClose]);
 
   const steps: any[] = useMemo(() => trip?.journey?.timelineSteps ?? [], [trip]);
   const rows = detail?.rows ?? [];
@@ -147,11 +145,6 @@ export default function TankerDetailsModal({ tripId, onClose }: { tripId: string
               <h2 style={{ margin: 0, fontSize: 20 }}>Tanker {trip.tanker_number}</h2>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 999, background: badge.bg, color: badge.fg }}>{badge.text}</span>
-                {isAdmin && (
-                  <button type="button" className="btn btn-secondary btn-sm" style={{ width: 'auto' }} onClick={() => setDrawerOpen(true)}>
-                    Full journey &amp; corrections
-                  </button>
-                )}
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginTop: 14, padding: 14, background: '#f8fafc', borderRadius: 8 }}>
@@ -265,7 +258,6 @@ export default function TankerDetailsModal({ tripId, onClose }: { tripId: string
           </div>
         </div>
       </div>
-      {isAdmin && <TankerDetailDrawer isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} trip={trip} onTripUpdated={() => void load()} isAdmin />}
     </>
   );
 }
