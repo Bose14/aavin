@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit';
-import type { ReconTanker, ReconLine } from './reconReport';
+import type { ReconTanker } from './reconReport';
 
 export interface ReconPdfInput {
   title: string;
@@ -9,163 +9,176 @@ export interface ReconPdfInput {
   tankers: ReconTanker[];
 }
 
-// A4 landscape
-const PAGE_W = 842;
+/**
+ * Plain Courier grid report, laid out to match the union's own "Quantity And Quality
+ * Reconciliation Report": 1080 x 595 pt landscape, 21 pt rows, black 1 pt grid lines.
+ */
+const PAGE_W = 1080;
 const PAGE_H = 595;
-const M = 24;
-const RH = 18;
-const BOTTOM = PAGE_H - 28;
+const ROW = 21;
+const BOTTOM = 572;
 
-const COLS = [
-  { label: 'Cell', w: 44, a: 'center' },
-  { label: 'BMC', w: 280, a: 'left' },
-  { label: 'DC No', w: 80, a: 'center' },
-  { label: 'Litres', w: 62, a: 'right' },
-  { label: 'Fat %', w: 50, a: 'right' },
-  { label: 'SNF %', w: 50, a: 'right' },
-  { label: 'Litres', w: 62, a: 'right' },
-  { label: 'Fat %', w: 50, a: 'right' },
-  { label: 'SNF %', w: 50, a: 'right' },
-  { label: 'Diff (L)', w: 66, a: 'right' },
-] as const;
+// Column edges taken from the union's report
+const X = [7.2, 60.5, 284.3, 342.9, 406.8, 444.1, 481.4, 545.3, 582.6, 619.9, 657.2, 721.2, 934.3, 998.2, 1035.5, 1072.8];
+type Align = 'center' | 'right';
+// index into X for [left, right], alignment
+const C = {
+  cell: [0, 1, 'center'],
+  name: [1, 2, 'center'],
+  dc: [2, 3, 'center'],
+  sl: [3, 4, 'right'],
+  sf: [4, 5, 'right'],
+  ss: [5, 6, 'right'],
+  ul: [6, 7, 'right'],
+  uf: [7, 8, 'right'],
+  us: [8, 9, 'right'],
+  ut: [9, 10, 'right'],
+  um: [10, 11, 'right'],
+  loc: [11, 12, 'center'],
+  bl: [12, 13, 'right'],
+  bf: [13, 14, 'right'],
+  bs: [14, 15, 'right'],
+} as const;
+type Key = keyof typeof C;
+const UNION_FROM = 6; // X index where the merged Ack at Union block starts
+const UNION_TO = 11;
 
-const DARK = '#3f3f46';
-const GREY = '#f4f4f5';
-const GREEN = '#d9f99d';
-const BLUE = '#e0f2fe';
-const LINE = '#d4d4d8';
+const f2 = (v: number) => v.toFixed(2);
+const f1 = (v: number) => v.toFixed(1);
 
 export function buildReconPdf(input: ReconPdfInput): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: [PAGE_W, PAGE_H], margin: 0, autoFirstPage: false, bufferPages: true });
+    const doc = new PDFDocument({ size: [PAGE_W, PAGE_H], margin: 0, autoFirstPage: false });
     const chunks: Buffer[] = [];
     doc.on('data', (c: Buffer) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const xs: number[] = [];
-    let x = M;
-    for (const c of COLS) {
-      xs.push(x);
-      x += c.w;
-    }
-    const W = x - M;
-    let y = 0;
+    const line = (x1: number, y1: number, x2: number, y2: number) => doc.moveTo(x1, y1).lineTo(x2, y2).stroke();
+    const hseg = (i: number, j: number, y: number) => line(X[i], y, X[j], y);
 
-    const txt = (s: string, cx: number, cy: number, w: number, align: string, font = 'Helvetica', size = 8.5, color = '#18181b') => {
-      doc.font(font).fontSize(size).fillColor(color).text(s, cx + 4, cy, { width: w - 8, align: align as any, lineBreak: false, ellipsis: true });
+    const put = (s: string, k: Key, y: number, bold = false, size = 11) => {
+      const [a, b, align] = C[k] as readonly [number, number, Align];
+      const w = X[b] - X[a];
+      doc.font(bold ? 'Courier-Bold' : 'Courier').fontSize(size);
+      doc.text(s, X[a], y, { width: align === 'right' ? w - 0.5 : w, align, lineBreak: false });
     };
-    const fill = (cy: number, h: number, color: string) => doc.rect(M, cy, W, h).fill(color);
-    const hline = (cy: number, color = LINE) => doc.lineWidth(0.5).strokeColor(color).moveTo(M, cy).lineTo(M + W, cy).stroke();
+    const center = (s: string, cx: number, y: number, size: number) => {
+      doc.font('Courier-Bold').fontSize(size).text(s, cx - 400, y, { width: 800, align: 'center', lineBreak: false });
+    };
 
+    let y = 0;
     const pageHeader = () => {
       doc.addPage();
-      doc.font('Helvetica-Bold').fontSize(14).fillColor('#18181b').text(input.title, 0, 18, { width: PAGE_W, align: 'center' });
-      let ty = 36;
+      doc.lineWidth(1).strokeColor('#000').fillColor('#000');
+      center(input.title, PAGE_W / 2, 9.7, 14);
+      const ty = 27.2;
       if (input.address) {
-        doc.font('Helvetica').fontSize(8.5).fillColor('#52525b').text(input.address, 0, ty, { width: PAGE_W, align: 'center' });
-        ty += 12;
+        center(input.address, PAGE_W / 2, ty, 10);
       }
-      doc.font('Helvetica-Bold').fontSize(11.5).fillColor('#18181b').text('Quantity And Quality Reconciliation Report', 0, ty + 2, { width: PAGE_W, align: 'center' });
-      doc.font('Helvetica').fontSize(9.5).fillColor('#52525b').text(`Period: ${input.from} to ${input.to}`, 0, ty + 18, { width: PAGE_W, align: 'center' });
-      y = ty + 40;
-      // column headings
-      const g = (a: number, b: number) => xs[b] + COLS[b].w - xs[a];
-      fill(y, 34, DARK);
-      txt('', xs[0], y, 1, 'left');
-      txt('Sent by BMC', xs[3], y + 4, g(3, 5), 'center', 'Helvetica-Bold', 9, '#fff');
-      txt('Acknowledged to BMC', xs[6], y + 4, g(6, 8), 'center', 'Helvetica-Bold', 9, '#fff');
-      COLS.forEach((c, i) => txt(c.label, xs[i], y + 20, c.w, c.a, 'Helvetica-Bold', 8.5, '#fff'));
-      doc.lineWidth(0.5).strokeColor('#a1a1aa');
-      doc.moveTo(xs[3], y + 17).lineTo(xs[9], y + 17).stroke();
-      y += 34;
-    };
+      center('Quantity And Quality Reconciliation Report', PAGE_W / 2, 38.5, 14);
+      center(`From Date : ${input.from} To Date : ${input.to}`, PAGE_W / 2, 54.9, 12);
 
-    const need = (h: number) => {
-      if (y + h > BOTTOM) pageHeader();
+      // group heading row
+      const g0 = 81.2;
+      const g1 = 100.4;
+      const g2 = 130.2;
+      hseg(0, 15, g0);
+      line(X[0], g0, X[0], g2);
+      line(X[15], g0, X[15], g2);
+      line(X[6], g0, X[6], g1);
+      line(X[11], g0, X[11], g1);
+      center('Send Details', (X[2] + X[6]) / 2, g0 + 3, 12);
+      center('Ack at Union', (X[6] + X[11]) / 2, g0 + 3, 12);
+      center('Ack to BMC', (X[11] + X[15]) / 2, g0 + 3, 12);
+      // column heading row
+      hseg(0, 15, g1);
+      hseg(0, 15, g2);
+      X.forEach((x) => line(x, g1, x, g2));
+      doc.font('Courier-Bold').fontSize(12);
+      const head = (s: string, k: Key, yy = g1 + 3) => {
+        const [l, r] = C[k] as readonly [number, number, Align];
+        doc.font('Courier-Bold').fontSize(12).text(s, X[l], yy, { width: X[r] - X[l], align: 'center', lineBreak: false });
+      };
+      head('Cell', 'cell');
+      head('Type', 'cell', g1 + 17.4);
+      head('DC Num', 'dc');
+      head('Ltrs', 'sl');
+      head('FAT', 'sf');
+      head('SNF', 'ss');
+      head('Ltrs', 'ul');
+      head('FAT', 'uf');
+      head('SNF', 'us');
+      head('Temp', 'ut');
+      head('MBRT', 'um');
+      head('Locations', 'loc');
+      head('Ltrs', 'bl');
+      head('FAT', 'bf');
+      head('SNF', 'bs');
+      // The sample centres "Ltrs/FAT/SNF/Temp/MBRT" headings in their cells
+      y = g2;
     };
 
     pageHeader();
     if (input.tankers.length === 0) {
-      doc.font('Helvetica').fontSize(11).fillColor('#52525b').text('No tanker records in this date range.', 0, y + 24, { width: PAGE_W, align: 'center' });
+      doc.font('Courier-Bold').fontSize(12).text('No tanker records in this date range.', 0, y + 30, { width: PAGE_W, align: 'center' });
     }
-
-    const fmt = (v: number, d = 2) => v.toFixed(d);
-    const dmy = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/');
 
     for (const t of input.tankers) {
-      need(RH * 5);
-      y += 8;
-      // tanker band
-      fill(y, RH + 2, '#52525b');
-      txt(`Vehicle ${t.vehicle_number}`, xs[0], y + 5, 300, 'left', 'Helvetica-Bold', 10, '#fff');
-      txt(`Date ${dmy(t.trip_date)}   |   DC ${t.dc_number}`, xs[3] - 60, y + 5, 400, 'right', 'Helvetica', 9, '#fff');
-      y += RH + 2;
+      // keep a tanker heading together with at least its first two rows
+      if (y + ROW * 3 > BOTTOM) pageHeader();
 
-      // first-line index of each BMC+DC and its total sent
-      const sent = new Map<string, number>();
-      for (const l of t.lines) sent.set(`${l.bmc_name}|${l.dc_number}`, (sent.get(`${l.bmc_name}|${l.dc_number}`) ?? 0) + l.litres);
+      // Tanker heading row: only outer left/right edges plus a line below
+      line(X[0], y, X[0], y + ROW);
+      line(X[15], y, X[15], y + ROW);
+      hseg(0, 15, y + ROW);
+      put(`vehicle No:${t.vehicle_number}`.replace('vehicle', 'Vehicle'), 'name', y + 3, true, 12);
+      doc.font('Courier-Bold').fontSize(10).text(`DC Num :${t.dc_number}`, 462.7 - 100, y + 2.6, { width: 200, align: 'center', lineBreak: false });
+      y += ROW;
 
-      let totSent = 0;
-      let totAck = 0;
-      let hasAck = false;
-      t.lines.forEach((l: ReconLine, i: number) => {
-        need(RH);
-        if (i % 2 === 1) fill(y, RH, GREY);
-        const ty = y + 5;
-        txt(l.cell, xs[0], ty, COLS[0].w, 'center', 'Helvetica-Bold');
-        txt(l.bmc_name, xs[1], ty, COLS[1].w, 'left');
-        txt(l.dc_number, xs[2], ty, COLS[2].w, 'center');
-        txt(String(l.litres), xs[3], ty, COLS[3].w, 'right');
-        txt(fmt(l.fat), xs[4], ty, COLS[4].w, 'right');
-        txt(fmt(l.snf), xs[5], ty, COLS[5].w, 'right');
-        totSent += l.litres;
-        if (l.to_bmc) {
-          const tot = sent.get(`${l.bmc_name}|${l.dc_number}`) ?? 0;
-          const diff = l.to_bmc.litres - tot;
-          hasAck = true;
-          totAck += l.to_bmc.litres;
-          txt(String(l.to_bmc.litres), xs[6], ty, COLS[6].w, 'right');
-          txt(fmt(l.to_bmc.fat), xs[7], ty, COLS[7].w, 'right');
-          txt(fmt(l.to_bmc.snf), xs[8], ty, COLS[8].w, 'right');
-          txt(String(diff), xs[9], ty, COLS[9].w, 'right', 'Helvetica', 8.5, diff < 0 ? '#b91c1c' : '#18181b');
+      const n = t.lines.length;
+      // last row index of each cell (the merged Ack at Union block closes there)
+      const lastOfCell = new Map<string, number>();
+      t.lines.forEach((l, i) => lastOfCell.set(l.cell, i));
+
+      for (let i = 0; i < n; i++) {
+        if (y + ROW > BOTTOM) {
+          pageHeader();
         }
-        hline(y + RH);
-        y += RH;
-      });
-
-      // total row
-      need(RH + 2);
-      fill(y, RH + 2, GREEN);
-      txt('TOTAL', xs[0], y + 6, COLS[0].w + COLS[1].w, 'left', 'Helvetica-Bold', 9);
-      txt(String(totSent), xs[3], y + 6, COLS[3].w, 'right', 'Helvetica-Bold', 9);
-      if (hasAck) {
-        txt(String(totAck), xs[6], y + 6, COLS[6].w, 'right', 'Helvetica-Bold', 9);
-        const d = totAck - totSent;
-        txt(String(d), xs[9], y + 6, COLS[9].w, 'right', 'Helvetica-Bold', 9, d < 0 ? '#b91c1c' : '#18181b');
-      }
-      y += RH + 2;
-
-      // received at union (QC) per cell
-      const cells = t.lines.filter((l) => l.union);
-      if (cells.length) {
-        const parts = cells.map((l) => {
-          const u = l.union!;
-          return `${l.cell}: ${u.litres} L  Fat ${fmt(u.fat)}  SNF ${fmt(u.snf)}${u.temp != null ? `  Temp ${u.temp}°C` : ''}${u.mbrt ? `  MBRT ${u.mbrt} Hrs` : ''}`;
+        const l = t.lines[i];
+        const closesCell = lastOfCell.get(l.cell) === i;
+        // Vertical lines and the row's bottom line
+        X.forEach((x) => {
+          if (x === X[0] || x === X[15] || x <= X[6] || x >= X[11] || [X[7], X[8], X[9], X[10]].includes(x) || x === X[6] || x === X[11]) line(x, y, x, y + ROW);
         });
-        need(RH);
-        fill(y, RH, BLUE);
-        txt('Received at union (QC)', xs[0], y + 5, 150, 'left', 'Helvetica-Bold', 8);
-        doc.font('Helvetica').fontSize(8).fillColor('#18181b').text(parts.join('     |     '), xs[0] + 150, y + 5, { width: W - 154, lineBreak: false, ellipsis: true });
-        y += RH;
-      }
-    }
+        hseg(0, UNION_FROM, y + ROW);
+        hseg(UNION_TO, 15, y + ROW);
+        if (closesCell) hseg(UNION_FROM, UNION_TO, y + ROW);
 
-    // page numbers
-    const range = doc.bufferedPageRange();
-    for (let i = 0; i < range.count; i++) {
-      doc.switchToPage(range.start + i);
-      doc.font('Helvetica').fontSize(8).fillColor('#71717a').text(`Page ${i + 1} of ${range.count}`, 0, PAGE_H - 18, { width: PAGE_W - M, align: 'right', lineBreak: false });
+        const ty = y + 2.7;
+        put(l.cell, 'cell', ty);
+        put(l.bmc_name, 'name', ty);
+        put(l.dc_number, 'dc', ty);
+        put(String(l.litres), 'sl', ty);
+        put(f1(l.fat), 'sf', ty);
+        put(f1(l.snf), 'ss', ty);
+        if (l.union) {
+          const u = l.union;
+          const uy = y + 2.3;
+          put(String(u.litres), 'ul', uy, true);
+          put(f2(u.fat), 'uf', uy, true);
+          put(f2(u.snf), 'us', uy, true);
+          if (u.temp != null) put(String(u.temp), 'ut', uy, true);
+          if (u.mbrt) put(`${u.mbrt}Hrs`, 'um', uy, true);
+        }
+        put(l.bmc_name, 'loc', ty);
+        if (l.to_bmc) {
+          put(String(l.to_bmc.litres), 'bl', ty);
+          put(f2(l.to_bmc.fat), 'bf', ty);
+          put(f2(l.to_bmc.snf), 'bs', ty);
+        }
+        y += ROW;
+      }
     }
     doc.end();
   });
