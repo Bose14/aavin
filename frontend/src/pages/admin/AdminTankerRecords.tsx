@@ -60,10 +60,11 @@ const ALL_COLUMNS = [
   { id: 'transit_loss', label: 'Transit Loss' },
 ];
 
+type DatePreset = 'today' | 'yesterday' | 'last_week' | 'last_month' | 'custom';
 const ymd = (d: Date) => d.toLocaleDateString('en-CA'); // local yyyy-mm-dd
 
 // Date ranges for the quick report filters (local time). Last week = previous Mon–Sun; last month = previous calendar month.
-function ackRange(preset: 'today' | 'yesterday' | 'last_week' | 'last_month'): { from: string; to: string } {
+function ackRange(preset: Exclude<DatePreset, 'custom'>): { from: string; to: string } {
   const now = new Date();
   const day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const shift = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
@@ -137,23 +138,22 @@ export default function AdminTankerRecords() {
     }
   });
 
-  const [fromDate, setFromDate] = useState<string>(() => {
+  // One date filter drives both the table and the Milk ACK report. Default is today; only a custom range is remembered.
+  const [datePreset, setDatePreset] = useState<DatePreset>(() => {
     try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS);
-      return saved ? JSON.parse(saved).from || '' : '';
-    } catch {
-      return '';
-    }
+      const saved = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS) || '{}');
+      if (saved.preset === 'custom' && saved.from && saved.to) return 'custom';
+      if (['yesterday', 'last_week', 'last_month'].includes(saved.preset)) return saved.preset;
+    } catch {}
+    return 'today';
   });
-
-  const [toDate, setToDate] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS);
-      return saved ? JSON.parse(saved).to || '' : '';
-    } catch {
-      return '';
-    }
+  const [customFrom, setCustomFrom] = useState<string>(() => {
+    try { return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS) || '{}').from || ymd(new Date()); } catch { return ymd(new Date()); }
   });
+  const [customTo, setCustomTo] = useState<string>(() => {
+    try { return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS) || '{}').to || ymd(new Date()); } catch { return ymd(new Date()); }
+  });
+  const { from: fromDate, to: toDate } = datePreset === 'custom' ? { from: customFrom, to: customTo } : ackRange(datePreset);
 
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -167,19 +167,6 @@ export default function AdminTankerRecords() {
     for (const c of ALL_COLUMNS) initial[c.id] = true;
     return initial;
   });
-  type AckPreset = 'today' | 'yesterday' | 'last_week' | 'last_month' | 'custom';
-  const [ackPreset, setAckPreset] = useState<AckPreset>('today');
-  const [ackFrom, setAckFrom] = useState<string>(() => ackRange('today').from);
-  const [ackTo, setAckTo] = useState<string>(() => ackRange('today').to);
-  const pickAckPreset = (preset: AckPreset) => {
-    setAckPreset(preset);
-    if (preset !== 'custom') {
-      const r = ackRange(preset);
-      setAckFrom(r.from);
-      setAckTo(r.to);
-    }
-  };
-
   // Drawer state
   const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -192,8 +179,9 @@ export default function AdminTankerRecords() {
       unitId: selectedUnitId,
       waitingTeam: waitingTeamFilter,
       delayedOnly,
-      from: fromDate,
-      to: toDate,
+      preset: datePreset,
+      from: customFrom,
+      to: customTo,
     };
     try {
       localStorage.setItem(LOCAL_STORAGE_KEY_FILTERS, JSON.stringify(filters));
@@ -354,8 +342,8 @@ export default function AdminTankerRecords() {
 
   // Milk ACK report for the chosen date range only
   const handleExportMilkAck = () => {
-    if (!ackFrom || !ackTo || ackFrom > ackTo) return;
-    void triggerBlobDownload('/export/milk-ack', { from: ackFrom, to: ackTo, format: 'xlsx' }, `Milk_ACK_${ackFrom}_to_${ackTo}.xlsx`);
+    if (!fromDate || !toDate || fromDate > toDate) return;
+    void triggerBlobDownload('/export/milk-ack', { from: fromDate, to: toDate, format: 'xlsx' }, `Milk_ACK_${fromDate}_to_${toDate}.xlsx`);
   };
 
   // Table Columns Definition
@@ -822,72 +810,59 @@ export default function AdminTankerRecords() {
             </span>
           </label>
 
-          {/* Date Range */}
+          {/* Date filter */}
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', height: '36px' }}>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
+            <select
+              value={datePreset}
+              onChange={(e) => setDatePreset(e.target.value as DatePreset)}
+              aria-label="Date filter"
               style={{ height: '36px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-            />
-            <span style={{ color: '#64748b', fontSize: '12px' }}>to</span>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              style={{ height: '36px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-            />
+            >
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="last_week">Last Week</option>
+              <option value="last_month">Last Month</option>
+              <option value="custom">Custom…</option>
+            </select>
+            {datePreset === 'custom' ? (
+              <>
+                <input
+                  type="date"
+                  value={customFrom}
+                  max={customTo || undefined}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  aria-label="From date"
+                  style={{ height: '36px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+                />
+                <span style={{ color: '#64748b', fontSize: '12px' }}>to</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  min={customFrom || undefined}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  aria-label="To date"
+                  style={{ height: '36px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+                />
+              </>
+            ) : (
+              <span style={{ color: '#64748b', fontSize: '12px' }}>
+                {fromDate === toDate ? formatDateDDMMYYYY(fromDate) : `${formatDateDDMMYYYY(fromDate)} – ${formatDateDDMMYYYY(toDate)}`}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Milk ACK Report download */}
+        {/* Milk ACK Report download (uses the date filter above) */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
-          <strong style={{ fontSize: '12px', color: '#334155' }}>Milk ACK Report</strong>
-          {([['today', 'Today'], ['yesterday', 'Yesterday'], ['last_week', 'Last Week'], ['last_month', 'Last Month'], ['custom', 'Custom']] as [AckPreset, string][]).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => pickAckPreset(key)}
-              className={ackPreset === key ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
-              style={{ height: '34px', fontSize: '12px', padding: '0 10px', width: 'auto' }}
-            >
-              {label}
-            </button>
-          ))}
-          {ackPreset === 'custom' ? (
-            <>
-              <input
-                type="date"
-                value={ackFrom}
-                max={ackTo || undefined}
-                onChange={(e) => setAckFrom(e.target.value)}
-                aria-label="Report from date"
-                style={{ height: '34px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-              />
-              <span style={{ color: '#64748b', fontSize: '12px' }}>to</span>
-              <input
-                type="date"
-                value={ackTo}
-                min={ackFrom || undefined}
-                onChange={(e) => setAckTo(e.target.value)}
-                aria-label="Report to date"
-                style={{ height: '34px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-              />
-            </>
-          ) : (
-            <span style={{ color: '#64748b', fontSize: '12px' }}>
-              {ackFrom === ackTo ? formatDateDDMMYYYY(ackFrom) : `${formatDateDDMMYYYY(ackFrom)} – ${formatDateDDMMYYYY(ackTo)}`}
-            </span>
-          )}
           <button
             type="button"
             onClick={handleExportMilkAck}
-            disabled={!ackFrom || !ackTo || ackFrom > ackTo}
+            disabled={!fromDate || !toDate || fromDate > toDate}
             className="btn btn-primary btn-sm"
             style={{ height: '34px', fontSize: '12px', padding: '0 12px', fontWeight: 700, width: 'auto' }}
             title="Download the Milk ACK report for the selected dates"
           >
-            🥛 Download (.xlsx)
+            🥛 Milk ACK Report (.xlsx)
           </button>
         </div>
       </div>
