@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api } from '../../lib/api';
+import api from '../../lib/api';
 
 function todayISO(): string {
   const d = new Date();
@@ -26,8 +26,24 @@ export default function AdminReports() {
     try {
       const res = await api.get('/export/recon-report', { params: { from, to }, responseType: 'blob' });
       const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-      if (tab) tab.location.href = url;
-      else window.location.href = url;
+      const name = `Quantity_Quality_Reconciliation_${from}_to_${to}.pdf`;
+      if (tab) {
+        // A small viewer page: the PDF is shown inline and Download is optional
+        tab.document.open();
+        tab.document.write(
+          `<!doctype html><html><head><meta charset="utf-8"><title>Reconciliation Report ${from} to ${to}</title>` +
+            `<style>html,body{margin:0;height:100%;font-family:sans-serif}` +
+            `.bar{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:#52525b;color:#fff;box-sizing:border-box}` +
+            `.bar a{background:#65a30d;color:#fff;text-decoration:none;padding:7px 16px;border-radius:4px;font-weight:700;font-size:13px}` +
+            `iframe{border:0;width:100%;height:calc(100% - 44px)}</style></head><body>` +
+            `<div class="bar"><span>Quantity And Quality Reconciliation Report &nbsp; ${from} to ${to}</span>` +
+            `<a href="${url}" download="${name}">Download PDF</a></div>` +
+            `<iframe src="${url}"></iframe></body></html>`,
+        );
+        tab.document.close();
+      } else {
+        window.location.href = url;
+      }
       setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
     } catch {
       tab?.close();
