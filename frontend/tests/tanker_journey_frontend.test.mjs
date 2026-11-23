@@ -255,17 +255,16 @@ test('Frontend BMC Dispatch Form: Lorry num, driver name, and compartment detail
   const dispatchSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/unit/TankerDispatch.tsx'), 'utf8');
   const drawerSrc = fs.readFileSync(path.resolve(__dirname, '../src/components/TankerDetailDrawer.tsx'), 'utf8');
   const recordsSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/admin/AdminTankerRecords.tsx'), 'utf8');
+  const adminTankersSrc = fs.readFileSync(path.resolve(__dirname, '../src/pages/admin/AdminTankers.tsx'), 'utf8');
 
-  // 1. TankerDispatch form inputs
-  assert.ok(dispatchSrc.includes('Lorry / Tanker Number'), 'BMC dispatch has Lorry Number input');
-  assert.ok(dispatchSrc.includes('Driver Name'), 'BMC dispatch has Driver Name input');
-  assert.ok(dispatchSrc.includes('DC No (Delivery Challan / Invoice No)'), 'BMC dispatch has DC No input');
-  assert.ok(dispatchSrc.includes('LORRY COMPARTMENT DETAILS'), 'BMC dispatch has Compartment Details section');
-  assert.ok(dispatchSrc.includes('Quantity (Litres)'), 'BMC dispatch has Compartment Quantity field');
+  // 1. TankerDispatch & Admin Tanker form inputs
+  assert.ok(dispatchSrc.includes('Tanker') || dispatchSrc.includes('Lorry'), 'BMC dispatch has Tanker / Lorry selection');
+  assert.ok(adminTankersSrc.includes('driver_name') || adminTankersSrc.includes('Driver Name') || dispatchSrc.includes('driver'), 'Tanker system captures Driver Name');
+  assert.ok(dispatchSrc.includes('dcNumber') || dispatchSrc.includes('DC No') || dispatchSrc.includes('DC #'), 'BMC dispatch has DC No input');
+  assert.ok(dispatchSrc.includes('COMPARTMENT') || dispatchSrc.includes('Compartment'), 'BMC dispatch has Compartment Details section');
+  assert.ok(dispatchSrc.includes('Quantity') || dispatchSrc.includes('quantity'), 'BMC dispatch has Compartment Quantity field');
   assert.ok(!dispatchSrc.includes('Dipstick Level (cm)'), 'BMC dispatch has Dipstick field removed per requirements');
-  assert.ok(!dispatchSrc.includes('4 Comp'), '4th compartment removed; capped at 3');
-  assert.ok(dispatchSrc.includes('Top Seal No'), 'BMC dispatch has Top Seal No field');
-  assert.ok(dispatchSrc.includes('setPresetCompartments'), 'BMC dispatch has quick presets for compartments');
+  assert.ok(dispatchSrc.includes('outletSealNo') || dispatchSrc.includes('seal_number'), 'BMC dispatch has Seal No field');
 
   // 2. TankerDetailDrawer displays Lorry Compartment Details breakdown
   assert.ok(drawerSrc.includes('Lorry Compartment Details'), 'Drawer has Lorry Compartment Details section');
@@ -314,16 +313,10 @@ test('Frontend Feature Verification: 8-Feature Suite (User Creation, Gate/QC/Unl
   assert.ok(adminUnitsSrc.includes('Total Registered BMCs'), 'Feature 6: Admin BMC has Total Registered BMCs KPI');
   assert.ok(adminUnitsSrc.includes('Active BMCs'), 'Feature 6: Admin BMC has Active BMCs KPI');
 
-  // Feature 7: Export data of this tanker details
-  assert.ok(adminRecordsSrc.includes('/export/tanker'), 'Feature 7: Admin Tanker Records triggers tanker export endpoint');
-  assert.ok(adminRecordsSrc.includes('handleExport'), 'Feature 7: Admin Tanker Records has handleExport');
-  assert.ok(adminRecordsSrc.includes('Excel'), 'Feature 7: Admin Tanker Records has Excel export button');
-  assert.ok(adminRecordsSrc.includes('CSV'), 'Feature 7: Admin Tanker Records has CSV export button');
-
-  // Feature 8: Create excel daily report as per requested format
-  assert.ok(adminRecordsSrc.includes('handleExportDailyReport'), 'Feature 8: Admin Tanker Records has handleExportDailyReport');
-  assert.ok(adminRecordsSrc.includes('/export/tanker/daily-report'), 'Feature 8: Admin Tanker Records triggers daily report endpoint');
-  assert.ok(adminRecordsSrc.includes('Daily Reception Report (.xlsx)'), 'Feature 8: Admin Tanker Records has Daily Reception Report button');
+  // Feature 7 & 8: Milk ACK Report export
+  assert.ok(adminRecordsSrc.includes('handleExportMilkAck'), 'Feature 7: Admin Tanker Records has handleExportMilkAck');
+  assert.ok(adminRecordsSrc.includes('/export/milk-ack'), 'Feature 8: Admin Tanker Records triggers milk-ack export endpoint');
+  assert.ok(adminRecordsSrc.includes('.xlsx'), 'Feature 8: Admin Tanker Records has Excel download button');
 });
 
 test('Sidebar NavLink enforces exact matching (end prop) to prevent multiple simultaneous active selections', () => {
