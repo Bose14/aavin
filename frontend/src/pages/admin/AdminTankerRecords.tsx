@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import TankerDetailsModal from '../../components/TankerDetailsModal';
 import api from '../../lib/api';
 import {
   formatDateDDMMYYYY,
@@ -87,7 +87,7 @@ function ackRange(preset: Exclude<DatePreset, 'custom'>): { from: string; to: st
 }
 
 export default function AdminTankerRecords() {
-  const navigate = useNavigate();
+  const [detailTripId, setDetailTripId] = useState<string | null>(null);
   // Records and stats data
   const [records, setRecords] = useState<any[]>([]);
   const [stats, setStats] = useState<StatsResponse | null>(null);
@@ -335,7 +335,7 @@ export default function AdminTankerRecords() {
   };
 
   const handleOpenDrawer = (trip: any) => {
-    navigate(`/admin/tanker/${trip.id}`);
+    setDetailTripId(String(trip.id));
   };
 
   const handleCloseDrawer = () => {
@@ -913,6 +913,7 @@ export default function AdminTankerRecords() {
         onTripUpdated={() => void fetchData()}
         isAdmin={true}
       />
+      <TankerDetailsModal tripId={detailTripId} onClose={() => setDetailTripId(null)} />
     </div>
   );
 }
