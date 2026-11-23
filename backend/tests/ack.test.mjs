@@ -5,7 +5,7 @@ process.env.SUPABASE_URL ??= 'https://example.supabase.co';
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'sb_secret_dummy';
 
 const { allocateAcknowledgements, cellQualityFromQc } = await import('../dist/lib/ack.js');
-const { buildMilkAckRows, ACK_COLUMNS } = await import('../dist/lib/milkAckReport.js');
+const { buildMilkAckRows, ackTitle, ACK_COLUMNS } = await import('../dist/lib/milkAckReport.js');
 
 const q = { fat: 4.2, snf: 8.4 };
 
@@ -84,4 +84,10 @@ test('statement: one row per BMC then a TOTAL row per tanker, in the statement c
   assert.equal(rows[2]['Net Loss Snf'], -2.2);
   assert.equal(rows[4]['NAME OF THE BMC/CC'], 'TOTAL');
   assert.equal(rows[3]['NAME OF THE BMC/CC'], 'C');
+});
+
+test('ackTitle: month, single day and period headings', () => {
+  assert.equal(ackTitle('Namakkal Dairy', '2026-09-01', '2026-09-30'), 'NAMAKKAL UNION-MILK DISPOSAL AND ACKNOWLEDGEMENT- STATEMENT FOR THE MONTH OF SEP-2026');
+  assert.match(ackTitle('Namakkal Dairy', '2026-11-23', '2026-11-23'), /FOR THE DATE 23-11-2026$/);
+  assert.match(ackTitle('Namakkal Dairy', '2026-11-01', '2026-11-23'), /FOR THE PERIOD 01-11-2026 TO 23-11-2026$/);
 });

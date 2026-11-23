@@ -9,6 +9,8 @@ export type Row = Record<string, unknown>;
 export interface Sheet {
   rows: Row[];
   columns: string[];
+  /** Optional heading written as a merged, bold row above the column headers (xlsx only). */
+  title?: string;
 }
 export interface Book {
   sheets: Array<{ name: string; sheet: Sheet }>;
@@ -55,8 +57,17 @@ export async function writeXlsx(wb: Book): Promise<Buffer> {
   const out = new ExcelJS.Workbook();
   for (const { name, sheet } of wb.sheets) {
     const ws = out.addWorksheet(name);
+    let headerRow = 1;
+    if (sheet.title) {
+      ws.addRow([safeText(sheet.title)]);
+      ws.mergeCells(1, 1, 1, Math.max(1, sheet.columns.length));
+      ws.getRow(1).font = { bold: true, size: 14 };
+      ws.getRow(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      ws.getRow(1).height = 24;
+      headerRow = 2;
+    }
     ws.addRow(sheet.columns);
-    ws.getRow(1).font = { bold: true };
+    ws.getRow(headerRow).font = { bold: true };
     for (const r of sheet.rows) ws.addRow(sheet.columns.map((c) => cellValue(r[c])));
     ws.columns.forEach((col, i) => {
       const longest = Math.max(sheet.columns[i]?.length ?? 8, ...sheet.rows.slice(0, 200).map((r) => String(r[sheet.columns[i]] ?? '').length));

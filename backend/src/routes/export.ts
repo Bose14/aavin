@@ -3,7 +3,7 @@ import * as XLSX from '../lib/spreadsheet';
 import { supabase } from '../supabase';
 import { fetchTrip, fetchTrips } from '../lib/tripStore';
 import { ensureAcknowledgements } from '../lib/ack';
-import { buildMilkAckRows, ACK_COLUMNS } from '../lib/milkAckReport';
+import { buildMilkAckRows, ackTitle, ACK_COLUMNS } from '../lib/milkAckReport';
 import type { AckViewRow } from '../lib/milkAckReport';
 import { requireRole } from '../middleware/requireRole';
 import { authMiddleware } from '../middleware/auth';
@@ -321,7 +321,8 @@ router.get('/milk-ack', requireRole('admin'), async (req, res) => {
 
     const rows = buildMilkAckRows((data ?? []) as unknown as AckViewRow[], formatDateDDMMYYYY);
     const wb = XLSX.book_new();
-    const ws = { rows, columns: [...ACK_COLUMNS] as string[] };
+    const { data: unit } = await supabase.from('dairy_units').select('name').eq('id', dairyUnitId).maybeSingle();
+    const ws = { rows, columns: [...ACK_COLUMNS] as string[], title: ackTitle(unit?.name, from, to) };
     XLSX.book_append_sheet(wb, ws, 'Milk ACK');
 
     const baseName = `Milk_ACK_${buildRangeTag(from, to)}`;

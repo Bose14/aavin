@@ -101,3 +101,21 @@ export function buildMilkAckRows(rows: AckViewRow[], formatDate: (iso: string) =
   }
   return out;
 }
+
+const MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+/** Heading of the statement, e.g. "NAMAKKAL UNION-MILK DISPOSAL AND ACKNOWLEDGEMENT- STATEMENT FOR THE MONTH OF SEP-2026". */
+export function ackTitle(unitName: string | null | undefined, from: string, to: string): string {
+  const union = String(unitName ?? '').toUpperCase().replace(/\s+(DAIRY UNIT|DAIRY|UNION)$/, '').trim() || 'DAIRY';
+  const dmy = (iso: string) => iso.split('-').reverse().join('-');
+  const [fy, fm, fd] = from.split('-').map(Number);
+  const [ty, tm] = to.split('-').map(Number);
+  const lastDay = new Date(fy, fm, 0).getDate();
+  const wholeMonth = fy === ty && fm === tm && fd === 1 && to === `${ty}-${String(tm).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  const when = wholeMonth
+    ? `FOR THE MONTH OF ${MON[fm - 1]}-${fy}`
+    : from === to
+      ? `FOR THE DATE ${dmy(from)}`
+      : `FOR THE PERIOD ${dmy(from)} TO ${dmy(to)}`;
+  return `${union} UNION-MILK DISPOSAL AND ACKNOWLEDGEMENT- STATEMENT ${when}`;
+}
