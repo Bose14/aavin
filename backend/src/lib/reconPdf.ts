@@ -15,7 +15,8 @@ export interface ReconPdfInput {
  */
 const PAGE_W = 1080;
 const PAGE_H = 595;
-const ROW = 21;
+const ROW = 27; // sample uses 21; extra room above and below each line
+const PAD = (ROW - 21) / 2;
 const BOTTOM = 572;
 
 // Column edges taken from the union's report
@@ -61,7 +62,7 @@ export function buildReconPdf(input: ReconPdfInput): Promise<Buffer> {
       const [a, b, align] = C[k] as readonly [number, number, Align];
       const w = X[b] - X[a];
       doc.font(bold ? 'Courier-Bold' : 'Courier').fontSize(size);
-      doc.text(s, X[a], y, { width: align === 'right' ? w - 0.5 : w, align, lineBreak: false });
+      doc.text(s, X[a], y, { width: align === 'right' ? w - 6 : w, align, lineBreak: false });
     };
     const center = (s: string, cx: number, y: number, size: number) => {
       doc.font('Courier-Bold').fontSize(size).text(s, cx - 400, y, { width: 800, align: 'center', lineBreak: false });
@@ -132,8 +133,8 @@ export function buildReconPdf(input: ReconPdfInput): Promise<Buffer> {
       line(X[0], y, X[0], y + ROW);
       line(X[15], y, X[15], y + ROW);
       hseg(0, 15, y + ROW);
-      put(`vehicle No:${t.vehicle_number}`.replace('vehicle', 'Vehicle'), 'name', y + 3, true, 12);
-      doc.font('Courier-Bold').fontSize(10).text(`DC Num :${t.dc_number}`, 462.7 - 100, y + 2.6, { width: 200, align: 'center', lineBreak: false });
+      put(`vehicle No:${t.vehicle_number}`.replace('vehicle', 'Vehicle'), 'name', y + 3 + PAD, true, 12);
+      doc.font('Courier-Bold').fontSize(10).text(`DC Num :${t.dc_number}`, 462.7 - 100, y + 2.6 + PAD, { width: 200, align: 'center', lineBreak: false });
       y += ROW;
 
       const n = t.lines.length;
@@ -155,7 +156,7 @@ export function buildReconPdf(input: ReconPdfInput): Promise<Buffer> {
         hseg(UNION_TO, 15, y + ROW);
         if (closesCell) hseg(UNION_FROM, UNION_TO, y + ROW);
 
-        const ty = y + 2.7;
+        const ty = y + 2.7 + PAD;
         put(l.cell, 'cell', ty);
         put(l.bmc_name, 'name', ty);
         put(l.dc_number, 'dc', ty);
@@ -164,7 +165,7 @@ export function buildReconPdf(input: ReconPdfInput): Promise<Buffer> {
         put(f1(l.snf), 'ss', ty);
         if (l.union) {
           const u = l.union;
-          const uy = y + 2.3;
+          const uy = y + 2.3 + PAD;
           put(String(u.litres), 'ul', uy, true);
           put(f2(u.fat), 'uf', uy, true);
           put(f2(u.snf), 'us', uy, true);

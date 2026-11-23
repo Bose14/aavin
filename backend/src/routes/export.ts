@@ -418,7 +418,7 @@ router.get('/recon-report', requireRole('admin'), async (req, res) => {
       tankers: buildReconciliation(inputs, bmcNames),
     });
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="Quantity_Quality_Reconciliation_${from}_to_${to}.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="Quantity_Quality_Reconciliation_${from}_to_${to}.pdf"`);
     res.send(pdf);
   } catch (err) {
     console.error('[api]', req.method, req.originalUrl, (err as Error).message);
