@@ -54,6 +54,8 @@ test('shapeTanker returns the registration form shape', () => {
 test('helpers: milk type, shift, IST timestamp, vehicle normalisation', () => {
   assert.equal(store.milkTypeToCode('Raw Cow Milk'), 'RCM');
   assert.equal(store.milkTypeToLabel('RCM'), 'Raw Cow Milk');
+  assert.equal(store.milkTypeToCode('Skim Separated Milk'), 'SSM');
+  assert.equal(store.milkTypeToLabel('SSM'), 'Skim Separated Milk');
   assert.equal(store.shiftFromTime('09:30 AM'), 'MOR');
   assert.equal(store.shiftFromTime('04:15 PM'), 'EVE');
   assert.equal(store.shiftFromTime('16:15'), null);

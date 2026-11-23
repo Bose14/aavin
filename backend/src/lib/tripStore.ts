@@ -32,12 +32,14 @@ export function normalizeVehicle(value: string | null | undefined): string {
 export function milkTypeToCode(label: string | null | undefined): string {
   const v = String(label ?? '').trim();
   if (!v || /raw\s*cow/i.test(v) || v.toUpperCase() === 'RCM') return 'RCM';
+  if (/skim\s*separated/i.test(v) || v.toUpperCase() === 'SSM') return 'SSM';
   return v;
 }
 
 /** Stored milk type code -> label shown in the forms. */
 export function milkTypeToLabel(code: string | null | undefined): string {
-  return !code || code === 'RCM' ? 'Raw Cow Milk' : code;
+  if (!code || code === 'RCM') return 'Raw Cow Milk';
+  return code === 'SSM' ? 'Skim Separated Milk' : code;
 }
 
 /** "10:30 PM" on a calendar date, as an IST timestamp. Falls back to `now`. */

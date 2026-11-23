@@ -82,6 +82,7 @@ export default function TankerDispatch() {
   const [tankerNumber, setTankerNumber] = useState('');
   const [dcNumber, setDcNumber] = useState('');
   const [outletSealNo, setOutletSealNo] = useState('');
+  const [milkType, setMilkType] = useState<'Raw Cow Milk' | 'Skim Separated Milk'>('Raw Cow Milk');
   const [dispatchTime, setDispatchTime] = useState(() => {
     const d = new Date();
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -261,7 +262,7 @@ export default function TankerDispatch() {
         fat_pct: c.fat_pct ? parseFloat(c.fat_pct) : null,
         snf_pct: c.snf_pct ? parseFloat(c.snf_pct) : null,
         seal_number: c.seal_number.trim() || null,
-        milk_type: c.milk_type || 'Raw Cow Milk',
+        milk_type: milkType,
         temperature: c.temperature ? parseFloat(c.temperature) : null,
       }));
 
@@ -288,6 +289,7 @@ export default function TankerDispatch() {
       setTankerNumber('');
       setSelectedTanker(null);
       setDcNumber('');
+      setMilkType('Raw Cow Milk');
       setOutletSealNo('');
       setCompartments([]);
 
@@ -793,6 +795,20 @@ export default function TankerDispatch() {
                     required
                     style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
                   />
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
+                    Type of Milk *
+                  </label>
+                  <select
+                    value={milkType}
+                    onChange={(e) => setMilkType(e.target.value as 'Raw Cow Milk' | 'Skim Separated Milk')}
+                    style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                  >
+                    <option value="Raw Cow Milk">RCM – Raw Cow Milk</option>
+                    <option value="Skim Separated Milk">SSM – Skim Separated Milk</option>
+                  </select>
                 </div>
 
                 <div className="form-group">
