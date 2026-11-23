@@ -38,7 +38,7 @@ import {
 import type { LegacyTripRow } from '../lib/tripStore';
 import { supabase } from '../supabase';
 import { computeActiveUsersPerTeam } from '../lib/teamCounts';
-import { syncTripAcknowledgements } from '../lib/ack';
+import { syncTripAcknowledgements, litresFromNetWeight } from '../lib/ack';
 
 const router = Router();
 router.use(authMiddleware);
@@ -53,6 +53,34 @@ function sendError(res: import('express').Response, err: unknown) {
 }
 
 /** Keep each BMC's acknowledged litres and fat/SNF in step with the trip; never blocks the plant. */
+/**
+ * Received litres follow the weighbridge: net weight (gross - tare) divided by the specific gravity of the QC
+ * fat/SNF. Runs whenever a weight or the QC quality changes; until both weights are known the dispatched
+ * litres stay as the placeholder. The unloading stage's litres are kept in step so every screen agrees.
+ */
+async function applyWeightBasedLitres(tripId: string): Promise<void> {
+  try {
+    const { data: t } = await supabase
+      .from('tanker_trips')
+      .select('net_weight_kg, received_fat_pct, received_snf_pct')
+      .eq('id', tripId)
+      .maybeSingle();
+    const net = t?.net_weight_kg != null ? Number(t.net_weight_kg) : 0;
+    if (!t || !(net > 0)) return;
+    const litres = litresFromNetWeight(
+      net,
+      t.received_fat_pct != null ? Number(t.received_fat_pct) : null,
+      t.received_snf_pct != null ? Number(t.received_snf_pct) : null,
+    );
+    await updateTrip(tripId, { received_litres: litres });
+    const { data: st } = await supabase.from('trip_stages').select('data').eq('trip_id', tripId).eq('stage_key', 'unloaded').order('id', { ascending: false }).limit(1);
+    const stageData = st?.[0]?.data as Record<string, unknown> | undefined;
+    if (stageData) await updateStageData(tripId, 'unloaded', { data: { ...stageData, unloaded_litres: litres } });
+  } catch (e) {
+    console.error('[ack] could not apply weight-based litres for trip', tripId, (e as Error).message);
+  }
+}
+
 async function refreshAcknowledgements(tripId: string): Promise<void> {
   try {
     await syncTripAcknowledgements(tripId);
@@ -1076,7 +1104,10 @@ async function recordStageHandler(req: import('express').Request, res: import('e
     if (tripPatch[k] === undefined) delete tripPatch[k];
   }
   await updateTrip(id, tripPatch);
-  if (stageKey === 'qc_completed' || stageKey === 'unloaded') await refreshAcknowledgements(id);
+  if (['gross_weight', 'tare_weight', 'qc_completed', 'unloaded'].includes(stageKey)) {
+    await applyWeightBasedLitres(id);
+    await refreshAcknowledgements(id);
+  }
 
   // 8. Audit log
   await writeAuditLog({
@@ -1166,7 +1197,11 @@ router.post('/:id/correct', requireRole('admin'), async (req, res) => {
       tripPatch.received_litres = Number(changes.unloaded_litres);
     }
     await updateTrip(tripId, tripPatch);
-    if (stage_name === 'qc_completed' || stage_name === 'unloaded') await refreshAcknowledgements(tripId);
+    if (['gross_weight', 'tare_weight', 'qc_completed', 'unloaded'].includes(stage_name)) {
+      // A typed correction of the unloaded litres is respected; weights and QC quality re-derive the litres
+      if (!(stage_name === 'unloaded' && changes?.unloaded_litres != null)) await applyWeightBasedLitres(tripId);
+      await refreshAcknowledgements(tripId);
+    }
 
     await writeAuditLog({
       dairy_unit_id: dairyUnitId,
