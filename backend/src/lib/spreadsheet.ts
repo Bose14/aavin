@@ -11,6 +11,8 @@ export interface Sheet {
   columns: string[];
   /** Optional heading written as a merged, bold row above the column headers (xlsx only). */
   title?: string;
+  /** Rows for which this returns true are written bold on a light background (xlsx only). */
+  highlightRow?: (row: Row) => boolean;
 }
 export interface Book {
   sheets: Array<{ name: string; sheet: Sheet }>;
@@ -68,7 +70,17 @@ export async function writeXlsx(wb: Book): Promise<Buffer> {
     }
     ws.addRow(sheet.columns);
     ws.getRow(headerRow).font = { bold: true };
-    for (const r of sheet.rows) ws.addRow(sheet.columns.map((c) => cellValue(r[c])));
+    for (const r of sheet.rows) {
+      const added = ws.addRow(sheet.columns.map((c) => cellValue(r[c])));
+      if (sheet.highlightRow?.(r)) {
+        for (let c = 1; c <= sheet.columns.length; c++) {
+          const cell = added.getCell(c);
+          cell.font = { bold: true };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE699' } };
+          cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' } };
+        }
+      }
+    }
     ws.columns.forEach((col, i) => {
       const longest = Math.max(sheet.columns[i]?.length ?? 8, ...sheet.rows.slice(0, 200).map((r) => String(r[sheet.columns[i]] ?? '').length));
       col.width = Math.min(60, Math.max(10, longest + 2));
