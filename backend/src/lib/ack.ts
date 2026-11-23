@@ -27,6 +27,20 @@ export interface AckResultRow {
   ack_snf_pct: number;
 }
 
+/** Specific gravity of milk from its fat and SNF %, as used in the statement. */
+export function specificGravity(fat: number, snf: number): number {
+  return Math.round((1 + (snf - (fat * 0.2 + 0.36)) / 250) * 10000) / 10000;
+}
+
+/**
+ * Litres received = net milk weight (gross - tare, in kg) divided by the specific gravity of the received
+ * milk (from the QC fat and SNF). Whole litres, as in the statement. Without fat/SNF the plant's density is used.
+ */
+export function litresFromNetWeight(netKg: number, fat: number | null, snf: number | null, fallbackDensity = 1.03): number {
+  const sg = fat != null && snf != null && fat > 0 && snf > 0 ? specificGravity(fat, snf) : fallbackDensity;
+  return Math.round(netKg / sg);
+}
+
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const r4 = (v: number) => Math.round(v * 10000) / 10000;
 
