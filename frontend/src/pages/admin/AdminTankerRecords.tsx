@@ -138,7 +138,7 @@ export default function AdminTankerRecords() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Column visibility
-  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
+  const [visibleColumns] = useState<Record<string, boolean>>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY_COLUMNS);
       if (saved) return JSON.parse(saved);
@@ -147,7 +147,9 @@ export default function AdminTankerRecords() {
     for (const c of ALL_COLUMNS) initial[c.id] = true;
     return initial;
   });
-  const [showColumnChooser, setShowColumnChooser] = useState(false);
+  const todayIso = new Date().toLocaleDateString('en-CA'); // local yyyy-mm-dd
+  const [ackFrom, setAckFrom] = useState<string>(todayIso);
+  const [ackTo, setAckTo] = useState<string>(todayIso);
 
   // Drawer state
   const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
@@ -168,15 +170,6 @@ export default function AdminTankerRecords() {
       localStorage.setItem(LOCAL_STORAGE_KEY_FILTERS, JSON.stringify(filters));
     } catch {}
   }, [activeTab, selectedStageChip, selectedUnitId, waitingTeamFilter, delayedOnly, fromDate, toDate]);
-
-  // Persist columns to localStorage
-  const toggleColumn = (id: string) => {
-    const updated = { ...visibleColumns, [id]: !visibleColumns[id] };
-    setVisibleColumns(updated);
-    try {
-      localStorage.setItem(LOCAL_STORAGE_KEY_COLUMNS, JSON.stringify(updated));
-    } catch {}
-  };
 
   const unitsLoadedRef = useRef(false);
 
@@ -329,42 +322,11 @@ export default function AdminTankerRecords() {
   };
 
   // Export handlers respecting active filters
-  const exportParams = useMemo(() => {
-    const p: Record<string, string> = {};
-    if (activeTab) p.status = activeTab;
-    if (selectedStageChip) p.stage = selectedStageChip;
-    if (selectedUnitId) p.bmc_id = selectedUnitId;
-    if (waitingTeamFilter) p.waiting_team = waitingTeamFilter;
-    if (delayedOnly) p.delayed_only = 'true';
-    if (fromDate) p.from = fromDate;
-    if (toDate) p.to = toDate;
-    if (searchQuery.trim()) p.search = searchQuery.trim();
-    return p;
-  }, [activeTab, selectedStageChip, selectedUnitId, waitingTeamFilter, delayedOnly, fromDate, toDate, searchQuery]);
 
-  const handleExport = (format: 'xlsx' | 'csv') => {
-    const todayDDMM = formatDateDDMMYYYY(new Date().toISOString().slice(0, 10));
-    const tabTitle = activeTab.charAt(0).toUpperCase() + activeTab.slice(1);
-    const filename = `Tanker_Records_${tabTitle}_${todayDDMM}.${format}`;
-    void triggerBlobDownload('/export/tanker', { ...exportParams, format }, filename);
-  };
-
-  const handleExportStageWise = () => {
-    void triggerBlobDownload('/tanker/export/stage-wise', exportParams, `Tanker_Stage_Progression_${Date.now()}.csv`);
-  };
-
-  const handleExportDailyReport = () => {
-    const todayDDMM = formatDateDDMMYYYY(new Date().toISOString().slice(0, 10));
-    void triggerBlobDownload('/export/tanker/daily-report', exportParams, `Aavin_Daily_Tanker_Report_${todayDDMM}.xlsx`);
-  };
-
-  // Milk disposal & acknowledgement statement for the selected From / To dates (one day = daily, a month = monthly)
+  // Milk ACK report for the chosen date range only
   const handleExportMilkAck = () => {
-    const p: Record<string, string> = {};
-    if (fromDate) p.from = fromDate;
-    if (toDate) p.to = toDate;
-    const tag = fromDate || toDate ? `${fromDate || 'start'}_to_${toDate || 'today'}` : 'all';
-    void triggerBlobDownload('/export/milk-ack', { ...p, format: 'xlsx' }, `Milk_ACK_${tag}.xlsx`);
+    if (!ackFrom || !ackTo || ackFrom > ackTo) return;
+    void triggerBlobDownload('/export/milk-ack', { from: ackFrom, to: ackTo, format: 'xlsx' }, `Milk_ACK_${ackFrom}_to_${ackTo}.xlsx`);
   };
 
   // Table Columns Definition
@@ -849,111 +811,38 @@ export default function AdminTankerRecords() {
           </div>
         </div>
 
-        {/* Action Buttons Toolbar Row */}
+        {/* Milk ACK Report download */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
-          <button
-            type="button"
-            onClick={handleExportDailyReport}
-            className="btn btn-primary btn-sm"
-            style={{
-              height: '34px',
-              fontSize: '12px',
-              padding: '0 12px',
-              backgroundColor: '#0284c7',
-              borderColor: '#0369a1',
-              fontWeight: 700,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              width: 'auto',
-            }}
-            title="Download official Aavin IDMS Daily Milk & Tanker Reception Excel Report"
-          >
-            📊 Daily Reception Report (.xlsx)
-          </button>
+          <strong style={{ fontSize: '12px', color: '#334155' }}>Milk ACK Report</strong>
+          <input
+            type="date"
+            value={ackFrom}
+            max={ackTo || undefined}
+            onChange={(e) => setAckFrom(e.target.value)}
+            aria-label="Report from date"
+            style={{ height: '34px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+          />
+          <span style={{ color: '#64748b', fontSize: '12px' }}>to</span>
+          <input
+            type="date"
+            value={ackTo}
+            min={ackFrom || undefined}
+            onChange={(e) => setAckTo(e.target.value)}
+            aria-label="Report to date"
+            style={{ height: '34px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
+          />
           <button
             type="button"
             onClick={handleExportMilkAck}
+            disabled={!ackFrom || !ackTo || ackFrom > ackTo}
             className="btn btn-primary btn-sm"
-            style={{
-              height: '34px',
-              fontSize: '12px',
-              padding: '0 12px',
-              fontWeight: 700,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              width: 'auto',
-            }}
-            title="Milk disposal & acknowledgement statement for the selected From / To dates"
+            style={{ height: '34px', fontSize: '12px', padding: '0 12px', fontWeight: 700, width: 'auto' }}
+            title="Download the Milk ACK report for the selected dates"
           >
-            🥛 Milk ACK Statement (.xlsx)
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowColumnChooser(!showColumnChooser)}
-            className="btn btn-secondary btn-sm"
-            style={{ height: '34px', fontSize: '12px', padding: '0 10px', width: 'auto' }}
-          >
-            ⚙️ Columns
-          </button>
-          <button
-            type="button"
-            onClick={() => handleExport('xlsx')}
-            className="btn btn-secondary btn-sm"
-            style={{ height: '34px', fontSize: '12px', padding: '0 10px', width: 'auto' }}
-          >
-            Excel
-          </button>
-          <button
-            type="button"
-            onClick={() => handleExport('csv')}
-            className="btn btn-secondary btn-sm"
-            style={{ height: '34px', fontSize: '12px', padding: '0 10px', width: 'auto' }}
-          >
-            CSV
-          </button>
-          <button
-            type="button"
-            onClick={handleExportStageWise}
-            className="btn btn-secondary btn-sm"
-            style={{ height: '34px', fontSize: '12px', padding: '0 10px', width: 'auto' }}
-            title="Export complete stage-by-stage timestamps and users"
-          >
-            Stage Report
+            🥛 Download (.xlsx)
           </button>
         </div>
       </div>
-
-      {/* Column Chooser Popover */}
-      {showColumnChooser && (
-        <div
-          className="card"
-          style={{
-            padding: '12px 16px',
-            marginBottom: '16px',
-            backgroundColor: '#f8fafc',
-            border: '1px solid #cbd5e1',
-            borderRadius: '6px',
-          }}
-        >
-          <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '8px', color: '#1e293b' }}>
-            Show / Hide Table Columns:
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-            {ALL_COLUMNS.map((col) => (
-              <label key={col.id} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <input
-                  type="checkbox"
-                  checked={visibleColumns[col.id] ?? true}
-                  onChange={() => toggleColumn(col.id)}
-                />
-                {col.label}
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* 4. MAIN TANKER TABLE */}
       {loading ? (
