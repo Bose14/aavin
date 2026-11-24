@@ -14,7 +14,7 @@ import {
 import { summarizeMilkEntries } from '../../lib/procurement';
 import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
-import { ErrorBanner, InfoTooltip, StatusBadge, TableSkeleton } from '../../components/UiPrimitives';
+import { ErrorBanner, InfoTooltip, StatusBadge } from '../../components/UiPrimitives';
 
 interface Unit {
   id: string;
@@ -395,26 +395,6 @@ export default function AdminMilkRecords() {
           <h1 style={{ margin: 0 }}>Milk Collection Records</h1>
         </div>
         <div className="header-actions">
-          <select value={unitId} onChange={e => setUnitId(e.target.value)} aria-label="Filter by unit">
-            <option value="">All Units</option>
-            {units.map(u => (
-              <option key={u.id} value={u.id}>
-                {u.name} ({u.bmc_code})
-              </option>
-            ))}
-          </select>
-          <select value={shiftFilter} onChange={e => setShiftFilter(e.target.value)} aria-label="Filter by shift">
-            <option value="ALL">All Shifts</option>
-            <option value="AM">AM Only</option>
-            <option value="PM">PM Only</option>
-          </select>
-          <select value={qualityFilter} onChange={e => setQualityFilter(e.target.value)} aria-label="Filter by quality">
-            <option value="all">All Quality</option>
-            <option value="flagged">High Rej / Low Quality</option>
-            <option value="ok">Standard OK</option>
-          </select>
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)} aria-label="From date" />
-          <input type="date" value={to} onChange={e => setTo(e.target.value)} aria-label="To date" />
           <button type="button" onClick={() => void handleDownload('/export/milk', 'csv')} className="btn-secondary">
             {t('exportCsv')}
           </button>
@@ -514,9 +494,7 @@ export default function AdminMilkRecords() {
         </div>
       )}
 
-      {loading ? (
-        <TableSkeleton rows={6} cols={10} />
-      ) : (
+      {(
         <div className="card table-card">
           <div className="table-summary-strip">
             <span>Entries: <strong>{filteredRecords.length}</strong></span>
@@ -533,14 +511,21 @@ export default function AdminMilkRecords() {
           </div>
 
           <DataTable
-            rows={filteredRecords}
+            filters={[
+              { key: 'unit', label: 'BMC', type: 'select', value: unitId, onChange: setUnitId, options: [{ value: '', label: 'All Units' }, ...units.map(u => ({ value: u.id, label: `${u.name} (${u.bmc_code})` }))] },
+              { key: 'shift', label: 'Shift', type: 'select', value: shiftFilter, onChange: setShiftFilter, options: [{ value: 'ALL', label: 'All Shifts' }, { value: 'AM', label: 'AM Only' }, { value: 'PM', label: 'PM Only' }] },
+              { key: 'quality', label: 'Quality', type: 'select', value: qualityFilter, onChange: setQualityFilter, options: [{ value: 'all', label: 'All Quality' }, { value: 'flagged', label: 'High Rej / Low Quality' }, { value: 'ok', label: 'Standard OK' }] },
+              { key: 'from', label: 'From', type: 'date', value: from, onChange: setFrom },
+              { key: 'to', label: 'To', type: 'date', value: to, onChange: setTo },
+            ]}
+            rows={loading ? [] : filteredRecords}
             columns={columns}
             getRowKey={r => r.id}
             getRowClassName={r => {
               const flag = isRowFlagged(r);
               return flag === 'danger' ? 'row-danger' : flag === 'warn' ? 'row-warn' : '';
             }}
-            emptyMessage="No milk records match these filters."
+            emptyMessage={loading ? 'Loading…' : 'No milk records match these filters.'}
             showTotalsRow
           />
         </div>

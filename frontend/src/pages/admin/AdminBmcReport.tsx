@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { getLocalTodayIso } from '../../lib/format';
-import { ErrorBanner, StatusBadge, TableSkeleton } from '../../components/UiPrimitives';
+import { ErrorBanner, StatusBadge } from '../../components/UiPrimitives';
 import { DataTable } from '../../components/DataTable';
-import type { DataColumn } from '../../components/DataTable';
+import type { DataColumn, TableFilter } from '../../components/DataTable';
 
 interface BmcOption { id: string; name: string; kind?: string }
 interface Entry {
@@ -85,6 +85,12 @@ export default function AdminBmcReport() {
     t.litres > 0 ? { fat: (t.ltFat / t.litres) * 100, snf: (t.ltSnf / t.litres) * 100 } : null;
   const netAvg = avg(net);
 
+  const filters: TableFilter[] = [
+    { key: 'union', label: 'Select Union', type: 'select', value: 'unit', onChange: () => {}, disabled: true, options: [{ value: 'unit', label: unitName }] },
+    { key: 'bmc', label: 'Select BMC', type: 'select', value: bmcId, onChange: setBmcId, options: [{ value: '', label: '-- All --' }, ...bmcs.map(b => ({ value: b.id, label: b.name }))] },
+    { key: 'date', label: 'Select Date', type: 'date', value: date, onChange: setDate, max: getLocalTodayIso() },
+  ];
+
   const columns: DataColumn<Row>[] = [
     { key: 'bmc', header: 'BMC', render: r => r.bmc, sortValue: r => r.bmc, footerCell: <strong>Net Total</strong>, pageFooterCell: () => <strong>Page Total</strong> },
     {
@@ -102,38 +108,19 @@ export default function AdminBmcReport() {
     <div className="page">
       <div className="page-header"><h1>Detailed BMC Report</h1></div>
 
-      <div className="bmcr-filters">
-        <label>
-          <span>Select Union</span>
-          <select value="unit" disabled><option value="unit">{unitName}</option></select>
-        </label>
-        <label>
-          <span>Select BMC</span>
-          <select value={bmcId} onChange={e => setBmcId(e.target.value)}>
-            <option value="">-- All --</option>
-            {bmcs.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-        </label>
-        <label>
-          <span>Select Date</span>
-          <input type="date" value={date} max={getLocalTodayIso()} onChange={e => setDate(e.target.value)} />
-        </label>
-      </div>
-
       {error && <ErrorBanner message={error} onRetry={() => void load()} />}
 
-      {loading ? (
-        <TableSkeleton rows={6} cols={7} />
-      ) : (
+      {(
         <DataTable
-          rows={rows}
+          filters={filters}
+          rows={loading ? [] : rows}
           columns={columns}
           getRowKey={r => r.id}
           searchable={false}
           pageSize={100}
           pageSizeOptions={[25, 50, 100]}
           showTotalsRow
-          emptyMessage="No milk entries for this date."
+          emptyMessage={loading ? 'Loading…' : 'No milk entries for this date.'}
         />
       )}
     </div>

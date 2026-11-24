@@ -15,7 +15,6 @@ import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
 import {
   ErrorBanner,
-  TableSkeleton,
 } from '../../components/UiPrimitives';
 
 export default function UnitRecords() {
@@ -590,75 +589,7 @@ export default function UnitRecords() {
         </button>
       </div>
 
-      {/* Filter Toolbar */}
-      <div
-        className="card"
-        style={{
-          padding: '12px 16px',
-          marginBottom: '1rem',
-          backgroundColor: '#ffffff',
-          borderRadius: 8,
-          border: '1px solid #e2e8f0',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 10,
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', flex: 1 }}>
-          <input
-            type="search"
-            placeholder="🔍 Search tanker, DC, driver, destination..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ minWidth: 240, height: 34, padding: '0 12px', fontSize: '0.82rem', borderRadius: 6, border: '1px solid #cbd5e1' }}
-          />
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>From:</span>
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              style={{ height: 34, fontSize: '0.8rem', borderRadius: 6, border: '1px solid #cbd5e1' }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>To:</span>
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              style={{ height: 34, fontSize: '0.8rem', borderRadius: 6, border: '1px solid #cbd5e1' }}
-            />
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            type="button"
-            onClick={() => void handleExport('xlsx')}
-            className="btn btn-secondary btn-sm"
-            style={{ height: 34, fontSize: '0.8rem', padding: '0 12px' }}
-          >
-            Excel
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleExport('csv')}
-            className="btn btn-secondary btn-sm"
-            style={{ height: 34, fontSize: '0.8rem', padding: '0 12px' }}
-          >
-            CSV
-          </button>
-        </div>
-      </div>
-
-      {loading ? (
-        <TableSkeleton rows={6} cols={9} />
-      ) : (
+      {(
         <div className="card table-card" style={{ borderRadius: 10, border: '1px solid #e2e8f0' }}>
           {/* Summary Strip */}
           <div className="table-summary-strip" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, padding: '10px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.82rem' }}>
@@ -678,14 +609,25 @@ export default function UnitRecords() {
           </div>
 
           <DataTable
-            rows={filteredRecords}
+            filters={[
+              { key: 'search', label: 'Search', type: 'text', value: searchQuery, onChange: setSearchQuery, placeholder: 'Tanker, DC, driver, destination…' },
+              { key: 'from', label: 'From', type: 'date', value: from, onChange: setFrom },
+              { key: 'to', label: 'To', type: 'date', value: to, onChange: setTo },
+            ]}
+            filterActions={(
+              <>
+                <button type="button" onClick={() => void handleExport('xlsx')} className="btn btn-secondary btn-sm">Excel</button>
+                <button type="button" onClick={() => void handleExport('csv')} className="btn btn-secondary btn-sm">CSV</button>
+              </>
+            )}
+            rows={loading ? [] : filteredRecords}
             columns={columns}
             getRowKey={(r) => r.id}
             getRowClassName={(r) => {
               const isRej = r.journey?.isQcRejected || r.qc_status === 'rejected';
               return isRej ? 'row-danger' : '';
             }}
-            emptyMessage="No tanker process records found for the selected filter."
+            emptyMessage={loading ? 'Loading…' : 'No tanker process records found for the selected filter.'}
             emptyActionLabel="Dispatch Tanker"
             onEmptyAction={() => navigate('/bmc/tanker')}
             showTotalsRow

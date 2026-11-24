@@ -15,7 +15,29 @@ export interface DataColumn<T> {
   pageFooterCell?: (pageRows: ReadonlyArray<T>) => ReactNode;
 }
 
+export interface TableFilter {
+  key: string;
+  label: string;
+  type: 'select' | 'date' | 'text';
+  value: string;
+  onChange: (value: string) => void;
+  /** select: the choices (the first one is usually the "All" option). */
+  options?: ReadonlyArray<{ value: string; label: string }>;
+  placeholder?: string;
+  min?: string;
+  max?: string;
+  disabled?: boolean;
+  hidden?: boolean;
+}
+
 export interface DataTableProps<T> {
+  /** Filter bar shown above the table, in the common style. Values live in the page (controlled). */
+  filters?: ReadonlyArray<TableFilter>;
+  /** Extra controls on the right of the filter bar (export buttons, etc.). */
+  filterActions?: ReactNode;
+  /** When given, a "Clear filters" button appears once any filter differs from its default. */
+  onClearFilters?: () => void;
+  filtersActive?: boolean;
   rows: ReadonlyArray<T>;
   columns: ReadonlyArray<DataColumn<T>>;
   getRowKey: (row: T) => string;
@@ -33,6 +55,10 @@ export interface DataTableProps<T> {
 }
 
 export function DataTable<T>({
+  filters,
+  filterActions,
+  onClearFilters,
+  filtersActive = false,
   rows,
   columns,
   getRowKey,
@@ -104,6 +130,28 @@ export function DataTable<T>({
 
   return (
     <div className="data-table-wrapper">
+      {((filters && filters.some(f => !f.hidden)) || filterActions) && (
+        <div className="dt-filters">
+          {(filters ?? []).filter(f => !f.hidden).map(f => (
+            <label key={f.key} className="dt-filter">
+              <span>{f.label}</span>
+              {f.type === 'select' ? (
+                <select value={f.value} disabled={f.disabled} onChange={e => { f.onChange(e.target.value); setPage(1); }}>
+                  {(f.options ?? []).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              ) : f.type === 'date' ? (
+                <input type="date" value={f.value} min={f.min} max={f.max} disabled={f.disabled} onChange={e => { f.onChange(e.target.value); setPage(1); }} />
+              ) : (
+                <input type="search" value={f.value} placeholder={f.placeholder} disabled={f.disabled} onChange={e => { f.onChange(e.target.value); setPage(1); }} />
+              )}
+            </label>
+          ))}
+          {onClearFilters && filtersActive && (
+            <button type="button" className="btn-secondary btn-sm" onClick={() => { onClearFilters(); setPage(1); }}>✕ Clear filters</button>
+          )}
+          {filterActions && <div className="dt-filter-actions">{filterActions}</div>}
+        </div>
+      )}
       {searchable && (
         <div className="table-toolbar">
           <input
