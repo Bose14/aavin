@@ -155,7 +155,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
   const [gatePassIssuingOfficer, setGatePassIssuingOfficer] = useState('');
   const [gatePassReceivedBy, setGatePassReceivedBy] = useState('');
   const [gatePassSecurity, setGatePassSecurity] = useState('Security Incharge');
-  const [exportingPdf, setExportingPdf] = useState(false);
+  const [printingPass, setPrintingPass] = useState(false);
 
   // Quality Control Form States (Matching authentic Aavin IDMS QC photo)
   const [qcVehicleNo, setQcVehicleNo] = useState('');
@@ -686,24 +686,37 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     }
   };
 
-  const handleExportGatePassPdf = async (tankerId: string, vehicleNo?: string) => {
-    setExportingPdf(true);
+  const handlePrintGatePass = async (tankerId: string, vehicleNo?: string) => {
+    setPrintingPass(true);
     setError('');
+    const printWindow = window.open('', '_blank');
     try {
       const res = await api.get(`/export/gate-pass/${tankerId}`, { responseType: 'blob' });
       const blob = new Blob([res.data], { type: 'application/pdf' });
       const fileUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = fileUrl;
-      link.download = `Gate_Pass_${(vehicleNo || 'tanker').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(fileUrl), 5000);
+      if (printWindow) {
+        printWindow.location.replace(fileUrl);
+        printWindow.onload = () => {
+          try {
+            printWindow.print();
+          } catch {
+            // Handled by browser PDF viewer controls
+          }
+        };
+      } else {
+        const link = document.createElement('a');
+        link.href = fileUrl;
+        link.download = `Gate_Pass_${(vehicleNo || 'tanker').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+      setTimeout(() => URL.revokeObjectURL(fileUrl), 5 * 60 * 1000);
     } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Failed to export Gate Pass PDF');
+      printWindow?.close();
+      setError(err.response?.data?.error || err.message || 'Failed to print Gate Pass');
     } finally {
-      setExportingPdf(false);
+      setPrintingPass(false);
     }
   };
 
@@ -954,7 +967,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
         <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #bbf7d0', borderLeft: '4px solid #16a34a', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>Gate Passes Issued</div>
           <div style={{ fontSize: '24px', fontWeight: 800, color: '#14532d', marginTop: '2px' }}>{issuedGatePasses.length}</div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>Stored with PDF export</div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Stored & ready to print</div>
         </div>
 
         <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #475569', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
@@ -1297,7 +1310,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                     📄 Issued Gate Passes Register ({filteredIssuedGatePasses.length})
                   </h4>
                   <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-                    Official Gate Pass vouchers stored for tankers. Click "Export PDF" to generate the yellow receipt voucher.
+                    Official Gate Pass vouchers stored for tankers. Click "Print" to print the yellow receipt voucher.
                   </p>
                 </div>
               </div>
@@ -1396,8 +1409,8 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                               <div style={{ display: 'inline-flex', gap: '6px' }}>
                                 <button
                                   type="button"
-                                  onClick={() => handleExportGatePassPdf(t.id, t.tanker_number)}
-                                  disabled={exportingPdf}
+                                  onClick={() => handlePrintGatePass(t.id, t.tanker_number)}
+                                  disabled={printingPass}
                                   className="btn btn-sm"
                                   style={{
                                     backgroundColor: '#fef08a',
@@ -1407,14 +1420,14 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                                     padding: '3px 10px',
                                     borderRadius: 4,
                                     fontSize: '12px',
-                                    cursor: exportingPdf ? 'not-allowed' : 'pointer',
+                                    cursor: printingPass ? 'not-allowed' : 'pointer',
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     gap: '4px',
                                   }}
-                                  title="Export authentic yellow receipt PDF"
+                                  title="Print authentic yellow receipt voucher"
                                 >
-                                  📄 Export PDF
+                                  🖨️ Print
                                 </button>
                                 <button
                                   type="button"
@@ -3297,8 +3310,8 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                     {(gatePassTanker?.id || activeTanker?.id) && (
                       <button
                         type="button"
-                        onClick={() => handleExportGatePassPdf(gatePassTanker?.id || activeTanker.id, gatePassVehicleNo)}
-                        disabled={exportingPdf}
+                        onClick={() => handlePrintGatePass(gatePassTanker?.id || activeTanker.id, gatePassVehicleNo)}
+                        disabled={printingPass}
                         style={{
                           backgroundColor: '#fde047',
                           color: '#713f12',
@@ -3307,14 +3320,15 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                           padding: '6px 14px',
                           fontWeight: 700,
                           fontSize: '0.85rem',
-                          cursor: exportingPdf ? 'not-allowed' : 'pointer',
+                          cursor: printingPass ? 'not-allowed' : 'pointer',
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '6px',
                         }}
+                        title="Print authentic yellow receipt voucher"
                       >
-                        <span>📄 Export PDF</span>
-                        {exportingPdf && <span style={{ fontSize: '11px' }}>(Generating...)</span>}
+                        <span>🖨️ Print</span>
+                        {printingPass && <span style={{ fontSize: '11px' }}>(Opening...)</span>}
                       </button>
                     )}
                   </div>
