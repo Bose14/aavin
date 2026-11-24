@@ -238,15 +238,17 @@ function ReconciliationReport() {
 
 const TABS = [
   { id: 'ack', label: 'Milk ACK Report' },
-  { id: 'recon', label: 'Quantity & Quality Reconciliation' },
+  { id: 'recon', label: 'Reconciliation Report' },
 ] as const;
 
 export default function AdminReports() {
   const [tab, setTab] = useState<(typeof TABS)[number]['id']>('ack');
   return (
-    <div>
-      <div className="rp-head">
-        <h1 style={{ margin: 0 }}>Milk Bill Union Reports</h1>
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <h1>Milk Bill Union Reports</h1>
+        </div>
       </div>
       <div className="rp-tabs" role="tablist">
         {TABS.map((t) => (
