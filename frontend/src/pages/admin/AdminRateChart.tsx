@@ -181,7 +181,7 @@ export default function AdminRateChart() {
     ? [
         { key: 'fat', header: 'FAT \\ SNF', sortValue: (r) => r.f, render: (r) => <strong>{r.f.toFixed(1)}</strong> },
         ...detail.snf_values.map((sv, j) => ({
-          key: `snf-${sv}`, header: sv.toFixed(1), align: 'right' as const,
+          key: `snf-${sv}`, header: sv.toFixed(1), align: 'center' as const,
           render: (r: { f: number; i: number }) => detail.rates[r.i][j].toFixed(2),
         })),
       ]
@@ -224,16 +224,17 @@ export default function AdminRateChart() {
           No {milkTypeLabel(tab).toLowerCase()} rate chart yet. BMCs set to {milkTypeLabel(tab).toLowerCase()} milk cannot save entries until one is added.
         </div>
       ) : (
-        <div className="rc-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 280px) 1fr', gap: '1.25rem', alignItems: 'start' }}>
-          <div className="card card-body" style={{ marginBottom: 0 }}>
+        <div className="rc-layout">
+          <div className="card card-body rc-versions">
             <div style={{ fontSize: '0.74rem', textTransform: 'uppercase', color: '#475569', fontWeight: 700, marginBottom: 8 }}>Versions</div>
+            <div className="rc-version-list">
             {ofType.map((v) => (
               <button
                 key={v.id}
                 type="button"
                 onClick={() => setSelectedId(v.id)}
                 style={{
-                  display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', marginBottom: 8, borderRadius: 6, cursor: 'pointer',
+                  display: 'block', flex: '0 0 auto', minWidth: 210, textAlign: 'left', padding: '10px 12px', borderRadius: 6, cursor: 'pointer',
                   border: `1px solid ${v.id === selectedId ? '#0284c7' : '#e2e8f0'}`, background: v.id === selectedId ? '#f0f9ff' : '#fff',
                 }}
               >
@@ -245,6 +246,7 @@ export default function AdminRateChart() {
                 <div style={{ fontSize: '0.74rem', color: '#64748b' }}>{v.name || 'Rate chart'} · {v.cells} rates</div>
               </button>
             ))}
+            </div>
           </div>
 
           <div style={{ minWidth: 0 }}>

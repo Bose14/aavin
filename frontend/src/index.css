@@ -680,3 +680,10 @@ input[type="checkbox"], input[type="radio"] {
 .dt-filters--single .dt-filter select { max-width: 150px; }
 .dt-filters--single .dt-filter-actions { flex: 0 0 auto; margin-left: auto; flex-wrap: nowrap; white-space: nowrap; }
 @media (max-width: 720px) { .dt-filters--single .dt-filter { width: auto; } .dt-filters--single .dt-filter-actions { width: auto; } }
+
+/* Rate Chart: versions strip on top, grid full width below */
+.rc-layout { display: block; }
+.rc-version-list { display: flex; gap: 0.75rem; overflow-x: auto; padding-bottom: 2px; }
+.rc-layout .data-table th:first-child, .rc-layout .data-table td:first-child { position: sticky; left: 0; background: #f8fafc; z-index: 3; }
+.rc-layout .data-table thead th:first-child { z-index: 6; }
+.rc-layout .data-table th, .rc-layout .data-table td { min-width: 72px; }
