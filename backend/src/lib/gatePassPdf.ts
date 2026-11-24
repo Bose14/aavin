@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import PDFDocument from 'pdfkit';
 
 export interface GatePassPdfInput {
@@ -45,26 +47,46 @@ export function buildGatePassPdf(input: GatePassPdfInput): Promise<Buffer> {
     const borderH = PAGE_H - 2 * margin;
     doc.lineWidth(1.2).strokeColor('#1e293b').rect(margin, margin, borderW, borderH).stroke();
 
-    // 3. Aavin Logo Badge (top left)
-    const logoX = margin + 12;
-    const logoY = margin + 10;
-    doc.roundedRect(logoX, logoY, 52, 24, 6).fillAndStroke('#0072bc', '#005a96');
-    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(13).text('aavin', logoX + 6, logoY + 5);
+    // 3. Aavin Logo (top left)
+    const logoX = margin + 10;
+    const logoY = margin + 8;
+    const candidates = [
+      path.resolve(__dirname, '../assets/aavin-logo.png'),
+      path.resolve(__dirname, '../../src/assets/aavin-logo.png'),
+      path.resolve(__dirname, '../../assets/aavin-logo.png'),
+      path.resolve(process.cwd(), 'src/assets/aavin-logo.png'),
+      path.resolve(process.cwd(), 'backend/src/assets/aavin-logo.png'),
+      path.resolve(process.cwd(), 'assets/aavin-logo.png'),
+    ];
+    const logoPath = candidates.find((p) => {
+      try {
+        return fs.existsSync(p);
+      } catch {
+        return false;
+      }
+    });
+
+    if (logoPath) {
+      doc.image(logoPath, logoX, logoY, { width: 62, height: 34 });
+    } else {
+      doc.roundedRect(logoX, logoY, 52, 24, 6).fillAndStroke('#0072bc', '#005a96');
+      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(13).text('aavin', logoX + 6, logoY + 5);
+    }
 
     // 4. Header Titles (center)
     const unionName = input.union_name || "Namakkal District Co-operative Milk Producers' Union Limited,";
     const subName = input.union_sub_name || 'NAMAKKAL MILK UNION';
 
-    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(11).text(unionName, margin + 65, margin + 8, {
-      width: PAGE_W - 2 * margin - 195,
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(11).text(unionName, margin + 75, margin + 8, {
+      width: PAGE_W - 2 * margin - 205,
       align: 'center',
     });
-    doc.fontSize(10.5).text(subName, margin + 65, margin + 22, {
-      width: PAGE_W - 2 * margin - 195,
+    doc.fontSize(10.5).text(subName, margin + 75, margin + 22, {
+      width: PAGE_W - 2 * margin - 205,
       align: 'center',
     });
-    doc.fontSize(13).text('GATE PASS', margin + 65, margin + 36, {
-      width: PAGE_W - 2 * margin - 195,
+    doc.fontSize(13).text('GATE PASS', margin + 75, margin + 36, {
+      width: PAGE_W - 2 * margin - 205,
       align: 'center',
       underline: true,
     });

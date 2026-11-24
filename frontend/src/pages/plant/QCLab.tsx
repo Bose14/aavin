@@ -5,6 +5,7 @@ import { ErrorBanner } from '../../components/UiPrimitives';
 import { useTranslation } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { parseDispatchTime } from './GateOperations';
+import aavinLogo from '../../assets/aavin-logo.png';
 
 export interface QcDispatchQuality {
   cell: string; // 'FC' | 'BC' | 'MC'
@@ -2903,20 +2904,17 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1.5px solid #ca8a04', paddingBottom: '0.75rem', marginBottom: '0.75rem', gap: '8px' }}>
                   {/* Left: Aavin Logo */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <div
+                    <img
+                      src={aavinLogo}
+                      alt="AAVIN"
                       style={{
-                        backgroundColor: '#0072bc',
-                        color: '#ffffff',
-                        fontWeight: 900,
-                        fontSize: '18px',
-                        padding: '4px 14px',
-                        borderRadius: '6px',
-                        letterSpacing: '-0.5px',
-                        display: 'inline-block',
+                        height: '44px',
+                        width: 'auto',
+                        objectFit: 'contain',
+                        borderRadius: '4px',
+                        display: 'block',
                       }}
-                    >
-                      aavin
-                    </div>
+                    />
                   </div>
 
                   {/* Center: Union Title & Gate Pass heading */}
