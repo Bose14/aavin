@@ -14,6 +14,7 @@ import { TankerTimeline } from '../../components/TankerTimeline';
 import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
 import { StagePipeline } from '../../components/StagePipeline';
 import { STAGE_COLORS } from '../../lib/tankerJourney';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 interface Unit {
   id: string;
@@ -645,19 +646,15 @@ export default function AdminTankerRecords() {
   }, [visibleColumns]);
 
   return (
-    <div className="page" style={{ maxWidth: '100%' }}>
+    <Page>
       {/* Page Title & Auto-refresh header */}
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h1 style={{ margin: 0 }}>Tanker Journey &amp; Plant Operations</h1>
-        </div>
+      <PageHeader title={<>Tanker Journey &amp; Plant Operations</>}>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ fontSize: '12px', color: '#64748b' }}>
             Last updated: <strong>{lastUpdated.toLocaleTimeString()}</strong>
           </span>
-        </div>
-      </div>
+        </div></PageHeader>
 
       {error && <ErrorBanner message={error} onRetry={() => void fetchData()} />}
 
@@ -920,6 +917,6 @@ export default function AdminTankerRecords() {
         isAdmin={true}
       />
       <TankerDetailsModal tripId={detailTripId} onClose={() => setDetailTripId(null)} />
-    </div>
+    </Page>
   );
 }

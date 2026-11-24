@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import api from '../../lib/api';
 import { formatDateDDMMYYYY, triggerBlobDownload } from '../../lib/format';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 type Preset = 'today' | 'yesterday' | 'this_week' | 'last_week' | 'this_month' | 'last_month' | 'custom';
 const ymd = (d: Date) => d.toLocaleDateString('en-CA'); // local yyyy-mm-dd
@@ -244,12 +245,8 @@ const TABS = [
 export default function AdminReports() {
   const [tab, setTab] = useState<(typeof TABS)[number]['id']>('ack');
   return (
-    <div className="page">
-      <div className="page-header">
-        <div>
-          <h1>Milk Bill Union Reports</h1>
-        </div>
-      </div>
+    <Page>
+      <PageHeader title={<>Milk Bill Union Reports</>} />
       <div className="rp-tabs" role="tablist">
         {TABS.map((t) => (
           <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={`rp-tab${tab === t.id ? ' active' : ''}`} onClick={() => setTab(t.id)}>
@@ -260,6 +257,6 @@ export default function AdminReports() {
       {/* Both stay mounted so each report keeps its own date range while you switch tabs */}
       <div style={{ display: tab === 'ack' ? 'block' : 'none' }}><MilkAckReport /></div>
       <div style={{ display: tab === 'recon' ? 'block' : 'none' }}><ReconciliationReport /></div>
-    </div>
+    </Page>
   );
 }

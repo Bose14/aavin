@@ -6,6 +6,7 @@ import { formatDateDDMMYYYY, getLocalTodayIso } from '../../lib/format';
 import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
 import { ConfirmDialog, ErrorBanner, StatusBadge, TableSkeleton } from '../../components/UiPrimitives';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 interface Unit {
   id: string;
@@ -218,11 +219,8 @@ export default function AdminBmcs() {
   ];
 
   return (
-    <div className="page">
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h1 style={{ margin: 0 }}>BMC Administration Dashboard</h1>
-        </div>
+    <Page>
+      <PageHeader title={<>BMC Administration Dashboard</>}>
         <button
           type="button"
           className="btn btn-primary"
@@ -235,8 +233,7 @@ export default function AdminBmcs() {
           style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', width: 'auto', height: '38px', padding: '0 1rem' }}
         >
           <span>+ Add New BMC</span>
-        </button>
-      </div>
+        </button></PageHeader>
 
       {error && <ErrorBanner message={error} onRetry={fetchUnits} />}
 
@@ -634,6 +631,6 @@ export default function AdminBmcs() {
         onConfirm={() => void handleConfirmToggle()}
         onCancel={() => setToggleTarget(null)}
       />
-    </div>
+    </Page>
   );
 }

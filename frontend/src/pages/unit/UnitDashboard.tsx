@@ -23,6 +23,7 @@ import {
   MilkVolumeChart,
   TransitLossTrendChart,
 } from '../../components/ProcessCharts';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 // ==========================================
 // BMC Process Analytics Interfaces
@@ -247,15 +248,11 @@ export default function UnitDashboard() {
   ];
 
   return (
-    <div className="page">
+    <Page>
       {/* Top Header */}
-      <div className="page-header" style={{ marginBottom: '1.25rem', paddingBottom: '0.5rem' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+      <PageHeader title={<>{unitHeading} Process Analytics</>} subtitle={<><div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
             <span style={{ fontSize: '1.4rem' }}>🥛</span>
-            <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>
-              {unitHeading} Process Analytics
-            </h1>
+            
           </div>
           {rangeFrom && rangeTo && (
             <div style={{ margin: '2px 0 0 0', fontSize: '0.86rem', color: '#64748b' }}>
@@ -263,8 +260,7 @@ export default function UnitDashboard() {
                 {formatDateDDMMYYYY(rangeFrom)} to {formatDateDDMMYYYY(rangeTo)}
               </strong>
             </div>
-          )}
-        </div>
+          )}</>}>
 
         {/* Period Selector Tabs */}
         <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -315,8 +311,7 @@ export default function UnitDashboard() {
           >
             <span>+</span> Dispatch Tanker
           </button>
-        </div>
-      </div>
+        </div></PageHeader>
 
       {error && <ErrorBanner message={error} onRetry={fetchData} />}
 
@@ -831,6 +826,6 @@ export default function UnitDashboard() {
         onTripUpdated={fetchData}
         isAdmin={false}
       />
-    </div>
+    </Page>
   );
 }

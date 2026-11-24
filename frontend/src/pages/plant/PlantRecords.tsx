@@ -5,6 +5,7 @@ import { useTranslation } from '../../context/LanguageContext';
 import { TankerTimeline } from '../../components/TankerTimeline';
 import { ErrorBanner } from '../../components/UiPrimitives';
 import { formatDateDDMMYYYY, formatLitres, formatFatSnf } from '../../lib/format';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 export default function PlantRecords() {
   const { profile } = useAuth();
@@ -61,14 +62,8 @@ export default function PlantRecords() {
   }, [tankers, search]);
 
   return (
-    <div className="page" style={{ padding: '1.5rem', maxWidth: 1400, margin: '0 auto' }}>
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>
-            {teamTitle}
-          </h1>
-        </div>
-      </div>
+    <Page>
+      <PageHeader title={teamTitle} />
 
       {error && <ErrorBanner message={error} onRetry={fetchRecords} />}
 
@@ -247,6 +242,6 @@ export default function PlantRecords() {
           </div>
         )}
       </div>
-    </div>
+    </Page>
   );
 }

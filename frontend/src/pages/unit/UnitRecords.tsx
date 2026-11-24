@@ -16,6 +16,7 @@ import type { DataColumn } from '../../components/DataTable';
 import {
   ErrorBanner,
 } from '../../components/UiPrimitives';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 export default function UnitRecords() {
   const [detailTripId, setDetailTripId] = useState<string | null>(null);
@@ -468,15 +469,10 @@ export default function UnitRecords() {
   ];
 
   return (
-    <div className="page">
+    <Page>
       {/* Top Header */}
-      <div className="page-header" style={{ marginBottom: '1.25rem', paddingBottom: '0.5rem' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>
-            {profile?.bmcs ? `${profile.bmcs.name} · ${profile.bmcs.bmc_code} — ` : ''}
-            My Tanker Process Records
-          </h1>
-        </div>
+      <PageHeader title={<>{profile?.bmcs ? `${profile.bmcs.name} · ${profile.bmcs.bmc_code} — ` : ''}
+            My Tanker Process Records</>}>
 
         {/* Action button */}
         <div className="header-actions">
@@ -488,8 +484,7 @@ export default function UnitRecords() {
           >
             <span>+</span> Dispatch Tanker
           </button>
-        </div>
-      </div>
+        </div></PageHeader>
 
       {error && <ErrorBanner message={error} onRetry={fetchRecords} />}
 
@@ -636,6 +631,6 @@ export default function UnitRecords() {
       )}
 
       <TankerDetailsModal tripId={detailTripId} onClose={() => setDetailTripId(null)} />
-    </div>
+    </Page>
   );
 }

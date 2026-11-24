@@ -3,6 +3,7 @@ import api from '../../lib/api';
 import { formatLitres } from '../../lib/format';
 import { ErrorBanner } from '../../components/UiPrimitives';
 import { useAuth } from '../../context/AuthContext';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 export interface UnloadReceivedQuality {
   cell: string; // 'FC' | 'BC'
@@ -371,15 +372,9 @@ export default function UnloadingBay() {
   const filteredUnloadWaiters = unloadEligibleTankers.filter(matchesSearch);
 
   return (
-    <div className="page" style={{ maxWidth: '1180px', margin: '0 auto', padding: '1.25rem' }}>
+    <Page>
       {/* 1. Header */}
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
-            Milk Unloading Bay &amp; Silo Intake
-          </h1>
-        </div>
-      </div>
+      <PageHeader title={<>Milk Unloading Bay &amp; Silo Intake</>} />
 
       {error && <ErrorBanner message={error} onRetry={fetchTankers} />}
       {successMsg && (
@@ -1207,6 +1202,6 @@ export default function UnloadingBay() {
           </div>
         </div>
       )}
-    </div>
+    </Page>
   );
 }

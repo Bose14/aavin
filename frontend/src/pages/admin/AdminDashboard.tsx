@@ -22,6 +22,7 @@ import {
   MilkVolumeChart,
   TransitLossTrendChart,
 } from '../../components/ProcessCharts';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 // ==========================================
 // Process Analytics Interfaces
@@ -444,22 +445,17 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <div className="page">
+    <Page>
       {/* Top Header */}
-      <div className="page-header" style={{ marginBottom: '1.25rem', paddingBottom: '0.5rem' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+      <PageHeader title={<>{profile?.dairy_units?.name ?? 'Dairy Plant'} Process Analytics</>} subtitle={<><div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
             <span style={{ fontSize: '1.4rem' }}>🏭</span>
-            <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>
-              {profile?.dairy_units?.name ?? 'Dairy Plant'} Process Analytics
-            </h1>
+            
           </div>
           {rangeFrom && rangeTo && (
             <div style={{ margin: '4px 0 0 0', fontSize: '0.86rem', color: '#64748b' }}>
               <strong style={{ color: '#0369a1' }}>{formatDateDDMMYYYY(rangeFrom)} to {formatDateDDMMYYYY(rangeTo)}</strong>
             </div>
-          )}
-        </div>
+          )}</>}>
 
         <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <div className="period-tabs" style={{ background: '#f1f5f9', padding: '3px', borderRadius: 8, display: 'flex', gap: '2px' }}>
@@ -500,8 +496,7 @@ export default function AdminDashboard() {
               </button>
             </div>
           )}
-        </div>
-      </div>
+        </div></PageHeader>
 
       {error && <ErrorBanner message={error} onRetry={fetchData} />}
 
@@ -1008,6 +1003,6 @@ export default function AdminDashboard() {
           </div>
         </>
       ) : null}
-    </div>
+    </Page>
   );
 }

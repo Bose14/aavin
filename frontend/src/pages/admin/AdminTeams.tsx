@@ -5,6 +5,7 @@ import { ErrorBanner, StatusBadge, ConfirmDialog } from '../../components/UiPrim
 import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
 import { normalizeIndianPhone } from '../../lib/format';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 type TeamCode = 'ADMIN' | 'GATE' | 'QC' | 'UNLOADING' | 'BMC';
 
@@ -621,24 +622,9 @@ export default function AdminTeams() {
   ];
 
   return (
-    <div className="page" style={{ padding: '1.5rem', maxWidth: 1400, margin: '0 auto' }}>
+    <Page>
       {/* 1. PAGE HEADER WITH TOP "ADD USER" BUTTON */}
-      <div
-        className="page-header"
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          flexWrap: 'wrap',
-          gap: '1rem',
-          marginBottom: '1.5rem',
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
-            {lang === 'ta' ? 'குழுக்கள் & பயனர்கள்' : 'Teams & Users'}
-          </h1>
-        </div>
+      <PageHeader title={lang === 'ta' ? 'குழுக்கள் & பயனர்கள்' : 'Teams & Users'}>
 
         <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {/* Prominent "Add User" button */}
@@ -661,8 +647,7 @@ export default function AdminTeams() {
           >
             ➕ {lang === 'ta' ? 'பயனர் சேர் (Add User)' : 'Add User'}
           </button>
-        </div>
-      </div>
+        </div></PageHeader>
 
       {error && <ErrorBanner message={error} onRetry={fetchAllUsers} />}
 
@@ -1189,6 +1174,6 @@ export default function AdminTeams() {
       />
 
 
-    </div>
+    </Page>
   );
 }

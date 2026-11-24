@@ -16,6 +16,7 @@ import type { DataColumn } from '../../components/DataTable';
 import { ConfirmDialog, ErrorBanner, StatusBadge, TableSkeleton } from '../../components/UiPrimitives';
 import { TankerTimeline } from '../../components/TankerTimeline';
 import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 interface CompartmentFormItem {
   compartment_no: number;
@@ -467,13 +468,8 @@ export default function TankerDispatch() {
   ];
 
   return (
-    <div className="page" style={{ maxWidth: '1100px', margin: '0 auto', padding: '16px' }}>
-      <div className="page-header" style={{ marginBottom: '16px' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>
-            {lang === 'ta' ? 'பால் டேங்கர் லாரி அனுப்புதல் (BMC Outward)' : 'Tanker Milk Dispatch (BMC Outward)'}
-          </h1>
-        </div>
+    <Page>
+      <PageHeader title={lang === 'ta' ? 'பால் டேங்கர் லாரி அனுப்புதல் (BMC Outward)' : 'Tanker Milk Dispatch (BMC Outward)'}>
         <div className="header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
             type="button"
@@ -507,8 +503,7 @@ export default function TankerDispatch() {
           >
             {t('exportXlsx')}
           </button>
-        </div>
-      </div>
+        </div></PageHeader>
 
       {/* BMC Stock Summary Banner */}
       {stock && (
@@ -1136,6 +1131,6 @@ export default function TankerDispatch() {
         isAdmin={false}
       />
       <TankerDetailsModal tripId={detailTripId} onClose={() => setDetailTripId(null)} />
-    </div>
+    </Page>
   );
 }

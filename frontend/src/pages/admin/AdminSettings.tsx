@@ -5,6 +5,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from '../../context/LanguageContext';
 import { ErrorBanner, StatusBadge } from '../../components/UiPrimitives';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 export default function AdminSettings() {
   const { user, profile, refreshProfile, signOut } = useAuth();
@@ -102,15 +103,9 @@ export default function AdminSettings() {
   };
 
   return (
-    <div className="page" style={{ maxWidth: '880px', margin: '0 auto' }}>
+    <Page width="narrow">
       {/* Page Header */}
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '1.6rem', color: '#0f172a' }}>
-            {lang === 'ta' ? 'அமைப்புகள் (Settings)' : 'Settings'}
-          </h1>
-        </div>
-      </div>
+      <PageHeader title={lang === 'ta' ? 'அமைப்புகள் (Settings)' : 'Settings'} />
 
       {/* 1. PASSWORD & SECURITY */}
       <div
@@ -526,6 +521,6 @@ export default function AdminSettings() {
           </button>
         </div>
       </div>
-    </div>
+    </Page>
   );
 }
