@@ -686,34 +686,370 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     }
   };
 
-  const handlePrintGatePass = async (tankerId: string, vehicleNo?: string) => {
+  const printGatePassVoucher = (passData: any) => {
+    const existing = document.getElementById('gate-pass-print-frame');
+    if (existing) existing.remove();
+
+    const iframe = document.createElement('iframe');
+    iframe.id = 'gate-pass-print-frame';
+    iframe.setAttribute('style', 'position:fixed;visibility:hidden;height:0;width:0;left:-9999px;border:none;');
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return;
+
+    const serialDigits = (String(passData.gate_pass_no || '000001').replace(/\D/g, '') || '1')
+      .padStart(6, '0')
+      .slice(-6)
+      .split('');
+
+    const depts = ['Stores', 'CC', 'TPT', 'ADM', 'Lab', 'P&I'];
+    const selectedDept = passData.issued_by || 'Lab';
+    const deptsHtml = depts
+      .map((d) => (d.toLowerCase() === selectedDept.toLowerCase() ? `<u style="font-weight:900;border-bottom:2px solid #000;padding-bottom:1px;">${d}</u>` : d))
+      .join(' / ');
+
+    doc.open();
+    doc.write(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Gate Pass № ${passData.gate_pass_no || '000001'}</title>
+  <style>
+    @page {
+      size: A5 landscape;
+      margin: 6mm;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    body {
+      margin: 0;
+      padding: 6px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #ffffff;
+      color: #0f172a;
+    }
+    .voucher {
+      max-width: 195mm;
+      margin: 0 auto;
+      background: #fef9c3 !important;
+      border: 2px solid #ca8a04;
+      border-radius: 6px;
+      padding: 12px 18px 10px 18px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #ca8a04;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+    }
+    .logo {
+      height: 48px;
+      width: auto;
+      object-fit: contain;
+    }
+    .title-block {
+      text-align: center;
+      flex: 1;
+      padding: 0 10px;
+    }
+    .title-main {
+      font-size: 13px;
+      font-weight: 800;
+      color: #0f172a;
+      line-height: 1.2;
+    }
+    .title-sub {
+      font-size: 12px;
+      font-weight: 800;
+      color: #1e293b;
+      margin-top: 2px;
+    }
+    .title-gatepass {
+      font-size: 16px;
+      font-weight: 900;
+      text-decoration: underline;
+      letter-spacing: 1px;
+      color: #0f172a;
+      margin-top: 3px;
+    }
+    .serial-container {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .serial-no {
+      font-size: 16px;
+      font-weight: 900;
+      color: #991b1b !important;
+      margin-right: 2px;
+    }
+    .digit-box {
+      display: inline-block;
+      width: 18px;
+      height: 24px;
+      line-height: 22px;
+      border: 1.5px solid #991b1b;
+      background: #ffffff !important;
+      color: #991b1b !important;
+      font-family: monospace;
+      font-size: 13px;
+      font-weight: 900;
+      text-align: center;
+      border-radius: 2px;
+    }
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #0f172a;
+    }
+    .meta-val {
+      border-bottom: 1.5px dashed #b45309;
+      padding: 0 4px;
+    }
+    .voucher-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1.5px solid #0f172a;
+      margin-bottom: 10px;
+      font-size: 12px;
+    }
+    .voucher-table th {
+      background: #fef08a !important;
+      border: 1.5px solid #0f172a;
+      padding: 5px 6px;
+      font-weight: 800;
+      text-align: center;
+      color: #0f172a;
+    }
+    .voucher-table td {
+      border: 1.5px solid #0f172a;
+      background: #ffffff !important;
+      padding: 6px 8px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .fields-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+    .fields-list > div {
+      display: flex;
+      align-items: center;
+    }
+    .label {
+      width: 140px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .val-blue {
+      font-weight: 800;
+      color: #1e3a8a !important;
+    }
+    .val-amber {
+      font-weight: 800;
+      color: #b45309 !important;
+    }
+    .signatures {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      border-top: 1.5px dashed #b45309;
+      padding-top: 8px;
+      font-size: 11px;
+    }
+    .sig-title {
+      font-weight: 800;
+      color: #0f172a;
+      margin-bottom: 18px;
+    }
+    .sig-name {
+      color: #1e3a8a;
+      font-weight: 700;
+      border-top: 1px dotted #94a3b8;
+      padding-top: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div class="voucher">
+    <div class="header">
+      <img src="${aavinLogo}" class="logo" alt="Aavin" />
+      <div class="title-block">
+        <div class="title-main">Namakkal District Co-operative Milk Producers' Union Limited,</div>
+        <div class="title-sub">NAMAKKAL MILK UNION</div>
+        <div class="title-gatepass">GATE PASS</div>
+      </div>
+      <div class="serial-container">
+        <span class="serial-no">№</span>
+        ${serialDigits.map((d) => `<span class="digit-box">${d}</span>`).join('')}
+      </div>
+    </div>
+
+    <div class="meta-row">
+      <div>Time: <span class="meta-val">${passData.time || '—'}</span></div>
+      <div>Date: <span class="meta-val">${passData.date || '—'}</span></div>
+    </div>
+
+    <table class="voucher-table">
+      <thead>
+        <tr>
+          <th style="width: 10%;">Sl. No.</th>
+          <th style="width: 40%;">Item</th>
+          <th style="width: 12%;">Qty.</th>
+          <th style="width: 22%;">Purpose</th>
+          <th style="width: 16%;">Whether returnable</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="text-align: center;">${passData.sl_no || '1)'}</td>
+          <td>${passData.item || 'EMPTY TANKER'}</td>
+          <td style="text-align: center;">${passData.quantity || '1'}</td>
+          <td>${passData.purpose || 'TO BMC'}</td>
+          <td style="text-align: center;">${passData.whether_returnable || 'Returnable'}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="fields-list">
+      <div>
+        <span class="label">To whom issued :</span>
+        <span class="val-blue">${passData.to_whom_issued || '—'}</span>
+      </div>
+      <div>
+        <span class="label">Issued by :</span>
+        <span>(${deptsHtml})</span>
+      </div>
+      <div>
+        <span class="label">Vehicle No. if any :</span>
+        <span class="val-amber">${passData.vehicle_no || '—'}</span>
+      </div>
+    </div>
+
+    <div class="signatures">
+      <div>
+        <div class="sig-title">Issuing Officer.</div>
+        <div class="sig-name">${passData.issuing_officer || 'P. Nathiya (Lab Incharge)'}</div>
+      </div>
+      <div>
+        <div class="sig-title">Received.</div>
+        <div class="sig-name">${passData.received_by || passData.to_whom_issued || 'Driver'}</div>
+      </div>
+      <div>
+        <div class="sig-title">Security.</div>
+        <div class="sig-name">${passData.security_officer || 'Security Staff'}</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`);
+    doc.close();
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (err) {
+        console.warn('[GatePass] iframe print failed, falling back to window.print:', err);
+        window.print();
+      } finally {
+        setTimeout(() => {
+          iframe.remove();
+        }, 2000);
+      }
+    }, 200);
+  };
+
+  const handlePrintGatePass = async (tankerId?: string, _vehicleNo?: string) => {
     setPrintingPass(true);
     setError('');
-    const printWindow = window.open('', '_blank');
     try {
-      const res = await api.get(`/export/gate-pass/${tankerId}`, { responseType: 'blob' });
-      const blob = new Blob([res.data], { type: 'application/pdf' });
-      const fileUrl = URL.createObjectURL(blob);
-      if (printWindow) {
-        printWindow.location.replace(fileUrl);
-        printWindow.onload = () => {
-          try {
-            printWindow.print();
-          } catch {
-            // Handled by browser PDF viewer controls
-          }
+      let passData: any = null;
+
+      // When called from the open modal, print current modal inputs
+      if (showGatePassModal && (!tankerId || tankerId === gatePassTanker?.id || tankerId === activeTanker?.id)) {
+        passData = {
+          gate_pass_no: gatePassNo,
+          date: gatePassDate,
+          time: gatePassTime,
+          sl_no: gatePassSlNo,
+          item: gatePassItem,
+          quantity: gatePassQty,
+          purpose: gatePassPurpose,
+          whether_returnable: gatePassReturnable,
+          to_whom_issued: gatePassToWhom,
+          issued_by: gatePassIssuedBy,
+          vehicle_no: gatePassVehicleNo,
+          issuing_officer: gatePassIssuingOfficer,
+          received_by: gatePassReceivedBy,
+          security_officer: gatePassSecurity,
         };
-      } else {
-        const link = document.createElement('a');
-        link.href = fileUrl;
-        link.download = `Gate_Pass_${(vehicleNo || 'tanker').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+      } else if (tankerId) {
+        // Find tanker from tankers state
+        const t = tankers.find((item) => String(item.id) === String(tankerId));
+        const gp = t?.gate_pass || t?.stage_data?.gate_pass || (t?.stage_data?.cip_completed as any)?.gate_pass;
+        if (gp && gp.gate_pass_no) {
+          passData = {
+            gate_pass_no: gp.gate_pass_no || gp.gate_pass_number || '000001',
+            date: gp.date || t?.date || new Date().toISOString().slice(0, 10),
+            time: gp.time || '—',
+            sl_no: gp.sl_no || '1)',
+            item: gp.item || 'EMPTY TANKER',
+            quantity: gp.quantity || '1',
+            purpose: gp.purpose || (t?.bmcs?.name ? `TO ${t.bmcs.name.toUpperCase()}` : 'TO BMC'),
+            whether_returnable: gp.whether_returnable || 'Returnable',
+            to_whom_issued: gp.to_whom_issued || t?.driver_name || '—',
+            issued_by: gp.issued_by || 'Lab',
+            vehicle_no: gp.vehicle_no || t?.tanker_number || '',
+            issuing_officer: gp.issuing_officer || 'P. Nathiya (Lab Incharge)',
+            received_by: gp.received_by || gp.to_whom_issued || t?.driver_name || 'Driver',
+            security_officer: gp.security_officer || 'Security Staff',
+          };
+        } else {
+          // Fetch from /tanker/:id/gate-pass (with /export/gate-pass/:id available as API reference)
+          const res = await api.get<{ gate_pass: any }>(`/tanker/${tankerId}/gate-pass`);
+          const fetchedGp = res.data?.gate_pass;
+          if (fetchedGp) {
+            passData = fetchedGp;
+          } else {
+            passData = {
+              gate_pass_no: t?.gate_pass_no || '000001',
+              date: t?.date || new Date().toISOString().slice(0, 10),
+              time: '—',
+              sl_no: '1)',
+              item: 'EMPTY TANKER',
+              quantity: '1',
+              purpose: t?.bmcs?.name ? `TO ${t.bmcs.name.toUpperCase()}` : 'TO BMC',
+              whether_returnable: 'Returnable',
+              to_whom_issued: t?.driver_name || '—',
+              issued_by: 'Lab',
+              vehicle_no: t?.tanker_number || '',
+              issuing_officer: 'P. Nathiya (Lab Incharge)',
+              received_by: t?.driver_name || 'Driver',
+              security_officer: 'Security Staff',
+            };
+          }
+        }
       }
-      setTimeout(() => URL.revokeObjectURL(fileUrl), 5 * 60 * 1000);
+
+      if (!passData) {
+        throw new Error('No Gate Pass details found to print');
+      }
+
+      // Directly launch printing interface
+      printGatePassVoucher(passData);
     } catch (err: any) {
-      printWindow?.close();
       setError(err.response?.data?.error || err.message || 'Failed to print Gate Pass');
     } finally {
       setPrintingPass(false);
