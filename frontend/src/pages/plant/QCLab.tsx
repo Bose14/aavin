@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
 import { formatLitres, getLocalTodayIso } from '../../lib/format';
 import { ErrorBanner } from '../../components/UiPrimitives';
@@ -105,7 +104,6 @@ export interface QCLabProps {
 }
 
 export default function QCLab({ activeView = 'qc' }: QCLabProps) {
-  const navigate = useNavigate();
   const { lang } = useTranslation();
   const [tankers, setTankers] = useState<any[]>([]);
   const [, setLoading] = useState(true);
@@ -895,117 +893,6 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
               : (lang === 'ta' ? 'தரக்கட்டுப்பாட்டு ஆய்வகம் (QC Laboratory)' : 'QC Laboratory Milk Inspection')}
           </h1>
         </div>
-      </div>
-
-      {/* QC Sub-Navigation Tabs */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '1.25rem', borderBottom: '2px solid #e2e8f0', paddingBottom: '4px' }}>
-        <button
-          type="button"
-          onClick={() => {
-            setQcSubTab('qc');
-            navigate('/qc');
-          }}
-          style={{
-            padding: '8px 18px',
-            fontSize: '0.88rem',
-            fontWeight: 700,
-            borderRadius: '6px 6px 0 0',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            backgroundColor: qcSubTab === 'qc' ? '#65a30d' : '#f1f5f9',
-            color: qcSubTab === 'qc' ? '#ffffff' : '#475569',
-            boxShadow: qcSubTab === 'qc' ? '0 2px 4px rgba(101, 163, 13, 0.25)' : 'none',
-          }}
-        >
-          <span>🔬 Quality Control</span>
-          <span
-            style={{
-              fontSize: '0.72rem',
-              padding: '1px 7px',
-              borderRadius: '999px',
-              backgroundColor: qcSubTab === 'qc' ? '#4d7c0f' : '#e2e8f0',
-              color: qcSubTab === 'qc' ? '#ffffff' : '#64748b',
-              fontWeight: 800,
-            }}
-          >
-            {waitingQcCount}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setQcSubTab('cip');
-            navigate('/qc/cip');
-          }}
-          style={{
-            padding: '8px 18px',
-            fontSize: '0.88rem',
-            fontWeight: 700,
-            borderRadius: '6px 6px 0 0',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            backgroundColor: qcSubTab === 'cip' ? '#0284c7' : '#f1f5f9',
-            color: qcSubTab === 'cip' ? '#ffffff' : '#475569',
-            boxShadow: qcSubTab === 'cip' ? '0 2px 4px rgba(2, 132, 199, 0.25)' : 'none',
-          }}
-        >
-          <span>🧼 CIP Sanitization</span>
-          <span
-            style={{
-              fontSize: '0.72rem',
-              padding: '1px 7px',
-              borderRadius: '999px',
-              backgroundColor: qcSubTab === 'cip' ? '#0369a1' : '#e2e8f0',
-              color: qcSubTab === 'cip' ? '#ffffff' : '#64748b',
-              fontWeight: 800,
-            }}
-          >
-            {waitingCipCount}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setQcSubTab('gate-pass');
-            navigate('/qc/gate-pass');
-          }}
-          style={{
-            padding: '8px 18px',
-            fontSize: '0.88rem',
-            fontWeight: 700,
-            borderRadius: '6px 6px 0 0',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            backgroundColor: qcSubTab === 'gate-pass' ? '#d97706' : '#f1f5f9',
-            color: qcSubTab === 'gate-pass' ? '#ffffff' : '#475569',
-            boxShadow: qcSubTab === 'gate-pass' ? '0 2px 4px rgba(217, 119, 6, 0.25)' : 'none',
-          }}
-        >
-          <span>📋 Gate Pass</span>
-          <span
-            style={{
-              fontSize: '0.72rem',
-              padding: '1px 7px',
-              borderRadius: '999px',
-              backgroundColor: qcSubTab === 'gate-pass' ? '#b45309' : '#e2e8f0',
-              color: qcSubTab === 'gate-pass' ? '#ffffff' : '#64748b',
-              fontWeight: 800,
-            }}
-          >
-            {gatePassWaiters.length}
-          </span>
-        </button>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={fetchTankers} />}
