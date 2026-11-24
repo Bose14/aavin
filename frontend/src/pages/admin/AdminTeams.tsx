@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../../lib/api';
 import { useTranslation } from '../../context/LanguageContext';
-import { ErrorBanner, StatusBadge, ConfirmDialog, TableSkeleton } from '../../components/UiPrimitives';
+import { ErrorBanner, StatusBadge, ConfirmDialog } from '../../components/UiPrimitives';
 import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
 import { normalizeIndianPhone } from '../../lib/format';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 type TeamCode = 'ADMIN' | 'GATE' | 'QC' | 'UNLOADING' | 'BMC';
 
@@ -621,24 +622,9 @@ export default function AdminTeams() {
   ];
 
   return (
-    <div className="page" style={{ padding: '1.5rem', maxWidth: 1400, margin: '0 auto' }}>
+    <Page>
       {/* 1. PAGE HEADER WITH TOP "ADD USER" BUTTON */}
-      <div
-        className="page-header"
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          flexWrap: 'wrap',
-          gap: '1rem',
-          marginBottom: '1.5rem',
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
-            {lang === 'ta' ? 'குழுக்கள் & பயனர்கள்' : 'Teams & Users'}
-          </h1>
-        </div>
+      <PageHeader title={lang === 'ta' ? 'குழுக்கள் & பயனர்கள்' : 'Teams & Users'}>
 
         <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {/* Prominent "Add User" button */}
@@ -661,23 +647,14 @@ export default function AdminTeams() {
           >
             ➕ {lang === 'ta' ? 'பயனர் சேர் (Add User)' : 'Add User'}
           </button>
-        </div>
-      </div>
+        </div></PageHeader>
 
       {error && <ErrorBanner message={error} onRetry={fetchAllUsers} />}
 
       {/* User Created Credentials Notice Banner */}
       {userCreatedAlert && (
         <div
-          className="card"
-          style={{
-            marginBottom: '1.25rem',
-            padding: '1rem 1.25rem',
-            background: '#ecfdf5',
-            border: '1px solid #10b981',
-            borderRadius: 8,
-            color: '#065f46',
-          }}
+          className="card card-body" style={{ background: '#ecfdf5', border: '1px solid #10b981', color: '#065f46' }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
@@ -734,7 +711,7 @@ export default function AdminTeams() {
 
 
       {/* 3. SHOW ENTIRE USER DIRECTORY & INTERNAL TEAM USERS MANAGEMENT */}
-      <div id="team-users-section" className="card" style={{ padding: '1.5rem', background: '#ffffff', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+      <div id="team-users-section" className="card form-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
           <div>
             <h2 style={{ fontSize: '1.3rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
@@ -807,128 +784,38 @@ export default function AdminTeams() {
           </div>
         </div>
 
-        {/* Filter Toolbar */}
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '0.65rem',
-            alignItems: 'center',
-            marginBottom: '1rem',
-            padding: '0.75rem',
-            background: '#f8fafc',
-            borderRadius: 8,
-            border: '1px solid #e2e8f0',
+        {/* User Table (filters live inside the common table component) */}
+        <DataTable
+          filters={[
+            { key: 'search', label: 'Search', type: 'text', value: searchQuery, onChange: setSearchQuery, placeholder: 'Name, ID (e.g. AV_IT_001), phone, email…' },
+            { key: 'team', label: 'Team', type: 'select', value: filterTeam, onChange: setFilterTeam, options: [
+              { value: '', label: 'All Teams (GATE, QC, UNLOAD)' }, { value: 'GATE', label: 'Gate Operations (GATE)' },
+              { value: 'QC', label: 'Quality Control (QC)' }, { value: 'UNLOADING', label: 'Milk Unloading (UNLOAD)' } ] },
+            { key: 'unit', label: 'BMC', type: 'select', value: filterUnit, onChange: setFilterUnit, hidden: units.length === 0,
+              options: [{ value: '', label: 'All BMCs' }, ...units.map(u => ({ value: u.id, label: `BMC: ${u.name} (${u.bmc_code})` }))] },
+            { key: 'shift', label: 'Shift', type: 'select', value: filterShift, onChange: setFilterShift, options: [
+              { value: '', label: 'All Shifts' }, { value: 'Morning', label: 'Morning' }, { value: 'Evening', label: 'Evening' }, { value: 'General', label: 'General' } ] },
+            { key: 'status', label: 'Status', type: 'select', value: filterStatus, onChange: setFilterStatus, options: [
+              { value: 'all', label: 'All Status' }, { value: 'active', label: 'Active Only' }, { value: 'inactive', label: 'Inactive Only' } ] },
+          ]}
+          filtersActive={Boolean(filterTeam || filterUnit || filterShift || filterStatus !== 'all' || searchQuery || userScope !== 'all')}
+          onClearFilters={() => {
+            setUserScope('all');
+            setFilterTeam('');
+            setFilterUnit('');
+            setFilterShift('');
+            setFilterStatus('all');
+            setSearchQuery('');
           }}
-        >
-          {/* Search */}
-          <div style={{ flex: '1 1 200px' }}>
-            <input
-              type="search"
-              placeholder="Search by name, ID (e.g. AV_IT_001), phone, email..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ width: '100%', padding: '0.45rem 0.75rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.84rem' }}
-            />
-          </div>
-
-          {/* Team Filter */}
-          <select
-            value={filterTeam}
-            onChange={(e) => setFilterTeam(e.target.value)}
-            style={{ padding: '0.45rem 0.65rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.84rem' }}
-          >
-            <option value="">All Teams (GATE, QC, UNLOAD)</option>
-            <option value="GATE">Gate Operations (GATE)</option>
-            <option value="QC">Quality Control (QC)</option>
-            <option value="UNLOADING">Milk Unloading (UNLOAD)</option>
-          </select>
-
-          {/* BMC Unit Filter */}
-          {units.length > 0 && (
-            <select
-              value={filterUnit}
-              onChange={(e) => setFilterUnit(e.target.value)}
-              style={{ padding: '0.45rem 0.65rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.84rem' }}
-            >
-              <option value="">All BMCs</option>
-              {units.map((u) => (
-                <option key={u.id} value={u.id}>
-                  BMC: {u.name} ({u.bmc_code})
-                </option>
-              ))}
-            </select>
-          )}
-
-          {/* Shift Filter */}
-          <select
-            value={filterShift}
-            onChange={(e) => setFilterShift(e.target.value)}
-            style={{ padding: '0.45rem 0.65rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.84rem' }}
-          >
-            <option value="">All Shifts</option>
-            <option value="Morning">Morning</option>
-            <option value="Evening">Evening</option>
-            <option value="General">General</option>
-          </select>
-
-          {/* Status Filter */}
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            style={{ padding: '0.45rem 0.65rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.84rem' }}
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active Only</option>
-            <option value="inactive">Inactive Only</option>
-          </select>
-
-          {(filterTeam || filterUnit || filterShift || filterStatus !== 'all' || searchQuery || userScope !== 'all') && (
-            <button
-              type="button"
-              onClick={() => {
-                setUserScope('all');
-                setFilterTeam('');
-                setFilterUnit('');
-                setFilterShift('');
-                setFilterStatus('all');
-                setSearchQuery('');
-              }}
-              className="btn-secondary"
-              style={{ fontSize: '0.78rem', padding: '0.45rem 0.65rem' }}
-            >
-              ✕ Clear Filters
-            </button>
-          )}
-        </div>
-
-        {/* User Table */}
-        {loadingUsers ? (
-          <TableSkeleton rows={4} cols={7} />
-        ) : filteredUsers.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#64748b' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '0.4rem' }}>👥</div>
-            <div style={{ fontWeight: 600, color: '#1e293b' }}>
-              No users found matching current filters.
-            </div>
-            <button
-              type="button"
-              onClick={() => openAddUserModal((filterTeam as any) || 'GATE')}
-              className="btn-primary"
-              style={{ marginTop: '0.75rem', fontSize: '0.84rem', padding: '0.45rem 0.95rem' }}
-            >
-              + Create User
-            </button>
-          </div>
-        ) : (
-          <DataTable
-            rows={filteredUsers}
-            columns={userColumns}
-            getRowKey={(u) => u.id}
-            searchable={false}
-            pageSize={15}
-          />
-        )}
+          rows={loadingUsers ? [] : filteredUsers}
+          columns={userColumns}
+          getRowKey={(u) => u.id}
+          searchable={false}
+          pageSize={15}
+          emptyMessage={loadingUsers ? 'Loading…' : 'No users found matching current filters.'}
+          emptyActionLabel={loadingUsers ? undefined : '+ Create User'}
+          onEmptyAction={() => openAddUserModal((filterTeam as any) || 'GATE')}
+        />
       </div>
 
       {/* 4. ADD USER MODAL */}
@@ -1279,6 +1166,6 @@ export default function AdminTeams() {
       />
 
 
-    </div>
+    </Page>
   );
 }

@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
 
   let unitsQuery = supabase
     .from('bmcs')
-    .select('id, id_token, name, location, bmc_code, route_name, team_name, kind, code_no, milk_type, is_active, created_at, dairy_unit_id, dairy_units(name)')
+    .select('id, id_token, name, location, bmc_code, route_name, team_name, kind, code_no, cc_code, capacity_litres, milk_type, is_active, created_at, dairy_unit_id, dairy_units(name), bmc_opening_balances(balance_date, quantity_litres)')
     .order('name');
   let profilesQuery = supabase
     .from('users')
@@ -60,8 +60,12 @@ router.get('/', async (req, res) => {
   const today = getTodayIso();
   const enriched = (unitsRes.data ?? []).map((u) => {
     const lastDate = lastDateByUnit[u.id] ?? null;
+    const ob = Array.isArray((u as any).bmc_opening_balances) ? (u as any).bmc_opening_balances[0] : (u as any).bmc_opening_balances;
     return {
       ...u,
+      bmc_opening_balances: undefined,
+      opening_balance: ob ? Number(ob.quantity_litres) : null,
+      opening_balance_date: ob?.balance_date ?? null,
       users_count: userCounts[u.id] ?? 0,
       last_record_date: lastDate,
       submitted_today: lastDate === today,
@@ -81,6 +85,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
   const rawBody = req.body as {
     name?: string; location?: string; bmc_code?: string;
     route_name?: string; team_name?: string; kind?: string; code_no?: number | string; milk_type?: string;
+    cc_code?: number | string | null; capacity_litres?: number | string | null;
   };
   const name = typeof rawBody.name === 'string' ? rawBody.name.trim() : '';
   const unitCode = typeof rawBody.bmc_code === 'string' ? rawBody.bmc_code.trim() : '';
@@ -98,6 +103,8 @@ router.post('/', requireRole('admin'), async (req, res) => {
       team_name: optText(rawBody.team_name),
       kind: rawBody.kind === 'CC' ? 'CC' : 'BMC',
       code_no: optInt(rawBody.code_no),
+      cc_code: optInt(rawBody.cc_code),
+      capacity_litres: optNum(rawBody.capacity_litres),
       milk_type: String(rawBody.milk_type ?? '').toUpperCase() === 'BUFFALO' ? 'BUFFALO' : 'COW',
     })
     .select()
@@ -128,6 +135,11 @@ router.post('/', requireRole('admin'), async (req, res) => {
 function optText(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null;
 }
+function optNum(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 function optInt(v: unknown): number | null {
   const n = Number(v);
   return v === null || v === undefined || v === '' || !Number.isInteger(n) ? null : n;
@@ -140,6 +152,8 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
   const rawBody = req.body as {
     name?: string; bmc_code?: string; location?: string | null; is_active?: boolean;
     route_name?: string | null; team_name?: string | null; kind?: string; code_no?: number | string | null; milk_type?: string;
+    cc_code?: number | string | null; capacity_litres?: number | string | null;
+    opening_balance?: number | string | null; opening_balance_date?: string | null;
   };
 
   const patch: Record<string, unknown> = {};
@@ -160,6 +174,12 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
   if (rawBody.team_name !== undefined) patch.team_name = optText(rawBody.team_name);
   if (rawBody.kind !== undefined) patch.kind = rawBody.kind === 'CC' ? 'CC' : 'BMC';
   if (rawBody.code_no !== undefined) patch.code_no = optInt(rawBody.code_no);
+  if (rawBody.cc_code !== undefined) patch.cc_code = optInt(rawBody.cc_code);
+  if (rawBody.capacity_litres !== undefined) {
+    const cap = optNum(rawBody.capacity_litres);
+    if (cap !== null && cap < 0) { res.status(400).json({ error: 'Capacity cannot be negative' }); return; }
+    patch.capacity_litres = cap;
+  }
   if (rawBody.milk_type !== undefined) {
     const mt = String(rawBody.milk_type).toUpperCase();
     if (mt !== 'COW' && mt !== 'BUFFALO') { res.status(400).json({ error: 'Milk type must be cow or buffalo' }); return; }
@@ -169,18 +189,29 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
     patch.is_active = rawBody.is_active;
   }
 
-  if (Object.keys(patch).length === 0) {
+  const openingBalance = rawBody.opening_balance !== undefined ? optNum(rawBody.opening_balance) : undefined;
+  if (Object.keys(patch).length === 0 && openingBalance === undefined) {
     res.status(400).json({ error: 'No valid update fields provided' });
     return;
   }
 
-  const { data, error } = await supabase
-    .from('bmcs')
-    .update(patch)
+  const target = supabase.from('bmcs');
+  const scoped = (Object.keys(patch).length ? target.update(patch) : target.select())
     .eq(lookup.column, lookup.value)
-    .eq('dairy_unit_id', req.profile.dairy_unit_id)
-    .select()
-    .single();
+    .eq('dairy_unit_id', req.profile.dairy_unit_id);
+  const { data, error } = await scoped.select().single();
+  if (!error && openingBalance !== undefined) {
+    if (openingBalance === null) {
+      await supabase.from('bmc_opening_balances').delete().eq('bmc_id', data.id);
+    } else {
+      const day = typeof rawBody.opening_balance_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawBody.opening_balance_date)
+        ? rawBody.opening_balance_date : getTodayIso();
+      const { error: obErr } = await supabase.from('bmc_opening_balances')
+        .upsert({ bmc_id: data.id, balance_date: day, quantity_litres: openingBalance }, { onConflict: 'bmc_id' });
+      if (obErr) { console.error('[api]', req.method, req.originalUrl, obErr.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
+    }
+    patch.opening_balance = openingBalance;
+  }
   if (error) {
     if (error.code === '23505') {
       res.status(409).json({ error: `BMC code "${String(patch.bmc_code)}" already exists` });

@@ -154,10 +154,11 @@ input[type="checkbox"], input[type="radio"] {
 .main-content { margin-left: var(--sidebar-w); flex: 1; min-width: 0; max-width: 100%; min-height: 100vh; overflow-x: hidden; }
 
 /* ── Page ── */
-.page { width: 100%; padding: 1.75rem 2rem; max-width: 1280px; margin: 0 auto; }
+.page { width: 100%; padding: 1.75rem 2rem; max-width: 1400px; margin: 0 auto; }
+.page--narrow { max-width: 880px; }
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
 .page-header > div:first-child { min-width: 0; flex: 1 1 260px; }
-.page-header h1 { font-size: 1.55rem; line-height: 1.25; }
+.page-header h1 { font-size: 1.55rem; line-height: 1.25; font-weight: 700; color: #0f172a; margin: 0; }
 .page-subtitle { color: var(--text-muted); font-size: 0.9rem; margin-top: 0.25rem; }
 .header-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; max-width: 100%; }
 .header-actions input[type="date"],
@@ -578,18 +579,18 @@ input[type="checkbox"], input[type="radio"] {
 /* Reports page */
 .rp-head h1 { font-size: 1.35rem; font-weight: 700; margin: 0 0 0.2rem; color: var(--text); }
 .rp-head p { margin: 0 0 1.25rem; font-size: 0.85rem; color: var(--text-muted); }
-.rp-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
-.rp-report { padding: 1.5rem; }
-.rp-report-top { display: flex; gap: 0.9rem; align-items: flex-start; margin-bottom: 1.25rem; }
+.rp-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+.rp-report { padding: 1.75rem 2rem; }
+.rp-report-top { display: flex; gap: 1rem; align-items: flex-start; margin-bottom: 1.5rem; padding-bottom: 1.25rem; border-bottom: 1px solid #f1f5f9; }
 .rp-icon { width: 44px; height: 44px; flex: none; border-radius: 10px; background: var(--accent-light); color: var(--accent-dark); display: flex; align-items: center; justify-content: center; font-size: 1.35rem; }
 .rp-report h2 { font-size: 1.05rem; font-weight: 700; margin: 0 0 0.2rem; }
 .rp-report-top p { margin: 0; font-size: 0.82rem; color: var(--text-muted); line-height: 1.45; }
 .rp-label { display: block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.4rem; }
-.rp-chips { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 1.15rem; }
+.rp-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.25rem; }
 .rp-chip { border: 1px solid var(--border); background: #fff; color: var(--text); border-radius: 999px; padding: 0.38rem 0.85rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
 .rp-chip:hover { border-color: var(--accent); }
 .rp-chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
-.rp-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; margin-bottom: 1.25rem; }
+.rp-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
 .rp-dates input { width: 100%; height: 40px; border: 1px solid var(--border); border-radius: 8px; padding: 0 0.7rem; font-size: 0.9rem; background: #fff; box-sizing: border-box; }
 .rp-actions { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; border-top: 1px solid #f1f5f9; padding-top: 1.1rem; }
 .rp-pdf { background: var(--primary); color: #fff; border: 0; border-radius: 8px; height: 42px; padding: 0 1.6rem; font-weight: 700; font-size: 0.95rem; cursor: pointer; }
@@ -597,15 +598,95 @@ input[type="checkbox"], input[type="radio"] {
 .rp-pdf:disabled { opacity: 0.55; cursor: not-allowed; }
 .rp-range { font-size: 0.82rem; color: var(--text-muted); }
 .rp-error { color: #b91c1c; font-size: 0.82rem; margin-top: 0.75rem; }
-.rp-info { padding: 1.25rem 1.4rem; }
+.rp-info { padding: 1.5rem 1.6rem; }
 .rp-info h3 { font-size: 0.9rem; font-weight: 700; margin: 0 0 0.7rem; }
 .rp-info ul { margin: 0; padding-left: 1.1rem; font-size: 0.82rem; color: var(--text-muted); line-height: 1.6; }
 .rp-info li { margin-bottom: 0.3rem; }
 @media (max-width: 860px) {
   .rp-grid { grid-template-columns: minmax(0, 1fr); }
-  .rp-report { padding: 1rem; }
+  .rp-report { padding: 1.1rem; }
   .rp-pdf { width: 100%; }
 }
 @media (max-width: 480px) {
   .rp-dates { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Reports page tabs */
+.rp-tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; overflow-x: auto; overflow-y: hidden; }
+.rp-tab { background: none; border: 0; border-bottom: 3px solid transparent; padding: 0.75rem 1.25rem; font-size: 0.92rem; font-weight: 600; color: var(--text-muted); cursor: pointer; white-space: nowrap; margin-bottom: -1px; }
+.rp-tab:hover { color: var(--text); }
+.rp-tab.active { color: #4d7c0f; border-bottom-color: #65a30d; }
+@media (max-width: 480px) {
+  .rp-tab { padding: 0.7rem 0.8rem; font-size: 0.85rem; }
+}
+
+/* Milk entry: one row of litres / fat / SNF and what is calculated from them */
+.milk-entry-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.85rem 1rem; }
+.milk-entry-grid label { display: block; min-width: 0; }
+.milk-entry-label { display: block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: #475569; margin-bottom: 4px; }
+@media (max-width: 560px) {
+  .milk-entry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Sidebar group with sub-menu */
+.nav-group-head { width: 100%; display: flex; align-items: center; justify-content: space-between; background: none; border: 0; text-align: left; font: inherit; cursor: pointer; }
+.nav-group-head.active-parent { color: var(--primary); font-weight: 600; }
+.nav-chevron { display: inline-block; transform: rotate(180deg); transition: transform 0.15s; font-size: 0.9rem; opacity: 0.8; }
+.nav-chevron.open { transform: rotate(0deg); }
+.nav-sub { display: flex; flex-direction: column; gap: 0.25rem; margin: 0.25rem 0 0.25rem 0.9rem; padding-left: 0.6rem; border-left: 1px solid var(--border, #e2e8f0); }
+.nav-sub-item { font-size: 0.92em; }
+
+/* Common table look: bordered, grid lines, bold headers, full pager (shared by every DataTable) */
+.data-table-wrapper { border: 1px solid var(--border); border-radius: 8px; background: var(--white); overflow: hidden; }
+.data-table-wrapper .data-table { font-size: 0.92rem; }
+.data-table-wrapper .data-table th {
+  background: #f8fafc; color: #0f172a; font-size: 0.92rem; font-weight: 700; text-transform: none; letter-spacing: 0;
+  padding: 0.7rem 0.85rem; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
+}
+.data-table-wrapper .data-table td { padding: 0.7rem 0.85rem; border-right: 1px solid #eef2f7; }
+.data-table-wrapper .data-table th:last-child, .data-table-wrapper .data-table td:last-child { border-right: none; }
+.data-table-wrapper .data-table tfoot td { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.data-table-wrapper .data-table tfoot tr:last-child td { border-bottom: none; }
+.table-pagination { gap: 1rem 1.5rem; }
+.pager-btn { height: 34px; min-width: 34px; border: 1px solid var(--border); background: #fff; border-radius: 4px; cursor: pointer; color: #2563eb; font-size: 1rem; line-height: 1; }
+.pager-btn:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
+.pager-input { width: 60px; height: 34px; text-align: center; border: 1px solid var(--border); border-radius: 4px; font: inherit; }
+.pager-show { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-muted); }
+.pager-show select { height: 34px; padding: 0 0.5rem; border: 1px solid var(--border); border-radius: 6px; background: #fff; font: inherit; }
+@media (max-width: 720px) { .pager-btn, .pager-input, .pager-show select { min-height: 44px; } .pager-show { justify-content: center; } }
+
+/* Filter bar inside DataTable */
+.dt-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.5rem; padding: 0.85rem 1rem; border-bottom: 1px solid var(--border); background: var(--white); }
+.dt-filter { display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; color: #475569; }
+.dt-filter select, .dt-filter input { height: 38px; min-width: 150px; padding: 0 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: #fff; font: inherit; color: #0f172a; }
+.dt-filter input[type="search"] { min-width: 240px; }
+.dt-filter select:disabled, .dt-filter input:disabled { background: #f1f5f9; color: #64748b; }
+.dt-filter-actions { margin-left: auto; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+@media (max-width: 720px) {
+  .dt-filter { width: 100%; justify-content: space-between; }
+  .dt-filter select, .dt-filter input, .dt-filter input[type="search"] { flex: 1; min-width: 0; min-height: 44px; }
+  .dt-filter-actions { margin-left: 0; width: 100%; }
+}
+
+/* Common card spacing: every card uses the same radius, border, padding and gap */
+.card { border-radius: var(--radius); border: 1px solid var(--border); background: var(--white); margin-bottom: 1.25rem; }
+.card-body { padding: 1.25rem; }
+.card-toolbar { padding: 0.75rem 1rem; }
+.stats-grid { margin-bottom: 1.25rem; }
+@media (max-width: 720px) { .card-body { padding: 0.95rem; } .card-toolbar { padding: 0.7rem 0.75rem; } }
+.dt-filter input.dt-check { min-width: 0; width: 18px; height: 18px; padding: 0; }
+
+.dt-filters--single { flex-wrap: nowrap; gap: 0.75rem; overflow-x: auto; }
+.dt-filters--single .dt-filter { flex: 0 0 auto; gap: 0.4rem; }
+.dt-filters--single .dt-filter select, .dt-filters--single .dt-filter input { min-width: 0; height: 36px; }
+.dt-filters--single .dt-filter input[type="search"] { width: 210px; }
+.dt-filters--single .dt-filter select { max-width: 150px; }
+.dt-filters--single .dt-filter-actions { flex: 0 0 auto; margin-left: auto; flex-wrap: nowrap; white-space: nowrap; }
+@media (max-width: 720px) { .dt-filters--single .dt-filter { width: auto; } .dt-filters--single .dt-filter-actions { width: auto; } }
+
+/* Rate Chart: versions strip on top, grid full width below */
+.rc-layout { display: block; }
+.rc-version-list { display: flex; gap: 0.75rem; overflow-x: auto; padding-bottom: 2px; }
+.rc-layout .data-table th:first-child, .rc-layout .data-table td:first-child { position: sticky; left: 0; background: #f8fafc; z-index: 3; }
+.rc-layout .data-table thead th:first-child { z-index: 6; }
+.rc-layout .data-table th, .rc-layout .data-table td { min-width: 72px; }

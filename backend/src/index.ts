@@ -3,7 +3,6 @@ import express from 'express';
 import cors from 'cors';
 import dairyUnitsRouter from './routes/dairyUnits';
 import bmcsRouter from './routes/bmcs';
-import societiesRouter from './routes/societies';
 import milkRouter from './routes/milk';
 import tankerRouter from './routes/tanker';
 import analyticsRouter from './routes/analytics';
@@ -112,7 +111,6 @@ app.use(['/users', '/teams', '/bmcs'], (req, res, next) => {
 app.use('/dairy-units', dairyUnitsRouter);
 app.use('/bmcs', bmcsRouter);
 app.use('/milk', milkRouter);
-app.use('/societies', societiesRouter);
 app.use('/tanker', tankerRouter);
 app.use('/analytics', analyticsRouter);
 app.use('/export', exportRouter);

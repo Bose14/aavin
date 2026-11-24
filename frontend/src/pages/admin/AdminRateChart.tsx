@@ -4,6 +4,9 @@ import { formatDateDDMMYYYY, getLocalTodayIso } from '../../lib/format';
 import { gridToCsv, milkTypeLabel, parseRateCsv } from '../../lib/rateChart';
 import type { RateChartGrid } from '../../lib/rateChart';
 import { ConfirmDialog, ErrorBanner, TableSkeleton } from '../../components/UiPrimitives';
+import { DataTable } from '../../components/DataTable';
+import type { DataColumn } from '../../components/DataTable';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 type MilkType = 'COW' | 'BUFFALO';
 
@@ -23,8 +26,6 @@ interface ChartDetail extends RateChartGrid {
   effective_from: string;
 }
 
-const th: React.CSSProperties = { padding: '6px 8px', fontSize: '0.74rem', background: '#f1f5f9', borderBottom: '1px solid #cbd5e1', whiteSpace: 'nowrap', position: 'sticky', top: 0 };
-const td: React.CSSProperties = { padding: '5px 8px', fontSize: '0.82rem', borderBottom: '1px solid #eef2f7', textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
 const lbl: React.CSSProperties = { width: 150, fontWeight: 600, color: '#1e293b', fontSize: '0.86rem' };
 const input: React.CSSProperties = { height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3 };
 
@@ -176,23 +177,21 @@ export default function AdminRateChart() {
   const range = (v: number[]) => (v.length ? `${Math.min(...v).toFixed(1)}–${Math.max(...v).toFixed(1)}` : '');
   const selected = ofType.find((v) => v.id === selectedId) ?? null;
 
+  const rateColumns: DataColumn<{ f: number; i: number }>[] = detail
+    ? [
+        { key: 'fat', header: 'FAT \\ SNF', sortValue: (r) => r.f, render: (r) => <strong>{r.f.toFixed(1)}</strong> },
+        ...detail.snf_values.map((sv, j) => ({
+          key: `snf-${sv}`, header: sv.toFixed(1), align: 'center' as const,
+          render: (r: { f: number; i: number }) => detail.rates[r.i][j].toFixed(2),
+        })),
+      ]
+    : [];
+
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', gap: 8 }}>
-        <div>
-          <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>Rate Chart</h1>
-          <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 2 }}>
-            Price per litre by Fat % and SNF %. Milk entries use the chart that was in force on their collection date.
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={openUpload}
-          style={{ background: '#65a30d', color: '#fff', border: 'none', borderRadius: 3, padding: '7px 16px', fontWeight: 700, fontSize: '0.86rem', cursor: 'pointer' }}
-        >
-          + Upload New Chart
-        </button>
-      </div>
+    <Page>
+      <PageHeader title="Rate Chart" subtitle="Price per litre by Fat % and SNF %. Milk entries use the chart that was in force on their collection date.">
+        <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={openUpload}>+ Upload New Chart</button>
+      </PageHeader>
 
       {error && <ErrorBanner message={error} onRetry={load} />}
       {notice && (
@@ -221,20 +220,21 @@ export default function AdminRateChart() {
       {loading ? (
         <TableSkeleton rows={4} cols={5} />
       ) : ofType.length === 0 ? (
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '1.25rem', color: '#64748b' }}>
+        <div className="card card-body" style={{ color: '#64748b' }}>
           No {milkTypeLabel(tab).toLowerCase()} rate chart yet. BMCs set to {milkTypeLabel(tab).toLowerCase()} milk cannot save entries until one is added.
         </div>
       ) : (
-        <div className="rc-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 280px) 1fr', gap: 14, alignItems: 'start' }}>
-          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: 10 }}>
-            <div style={{ fontSize: '0.74rem', textTransform: 'uppercase', color: '#475569', fontWeight: 700, marginBottom: 6 }}>Versions</div>
+        <div className="rc-layout">
+          <div className="card card-body rc-versions">
+            <div style={{ fontSize: '0.74rem', textTransform: 'uppercase', color: '#475569', fontWeight: 700, marginBottom: 8 }}>Versions</div>
+            <div className="rc-version-list">
             {ofType.map((v) => (
               <button
                 key={v.id}
                 type="button"
                 onClick={() => setSelectedId(v.id)}
                 style={{
-                  display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', marginBottom: 6, borderRadius: 4, cursor: 'pointer',
+                  display: 'block', flex: '0 0 auto', minWidth: 210, textAlign: 'left', padding: '10px 12px', borderRadius: 6, cursor: 'pointer',
                   border: `1px solid ${v.id === selectedId ? '#0284c7' : '#e2e8f0'}`, background: v.id === selectedId ? '#f0f9ff' : '#fff',
                 }}
               >
@@ -246,60 +246,39 @@ export default function AdminRateChart() {
                 <div style={{ fontSize: '0.74rem', color: '#64748b' }}>{v.name || 'Rate chart'} · {v.cells} rates</div>
               </button>
             ))}
+            </div>
           </div>
 
-          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: 12, minWidth: 0 }}>
+          <div style={{ minWidth: 0 }}>
             {detailLoading || !detail ? (
               <TableSkeleton rows={6} cols={6} />
             ) : (
               <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                  <div style={{ fontSize: '0.84rem', color: '#334155' }}>
-                    <strong>{milkTypeLabel(detail.milk_type)} milk</strong> · from {formatDateDDMMYYYY(detail.effective_from)} · Fat {range(detail.fat_values)} · SNF {range(detail.snf_values)}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input
-                      value={fatFilter}
-                      onChange={(e) => setFatFilter(e.target.value)}
-                      placeholder="Jump to fat, e.g. 4.5"
-                      style={{ ...input, width: 150 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => download(`${detail.milk_type.toLowerCase()}-rate-chart-${detail.effective_from}.csv`, gridToCsv(detail))}
-                      style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 3, padding: '4px 12px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
-                    >
-                      Download CSV
-                    </button>
-                    {selected?.is_future && (
-                      <button
-                        type="button"
-                        onClick={() => setDeleteTarget(selected)}
-                        style={{ background: '#fff', border: '1px solid #fca5a5', color: '#b91c1c', borderRadius: 3, padding: '4px 12px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
-                      >
-                        Delete
+                <p style={{ fontSize: '0.88rem', color: '#334155', margin: '0 0 0.75rem' }}>
+                  <strong>{milkTypeLabel(detail.milk_type)} milk</strong> · from {formatDateDDMMYYYY(detail.effective_from)} · Fat {range(detail.fat_values)} · SNF {range(detail.snf_values)}
+                </p>
+                <DataTable
+                  filters={[{ key: 'fat', label: 'Jump to fat', type: 'text', value: fatFilter, onChange: setFatFilter, placeholder: 'e.g. 4.5' }]}
+                  filterActions={(
+                    <>
+                      <button type="button" className="btn-secondary btn-sm" onClick={() => download(`${detail.milk_type.toLowerCase()}-rate-chart-${detail.effective_from}.csv`, gridToCsv(detail))}>
+                        Download CSV
                       </button>
-                    )}
-                  </div>
-                </div>
-                <div style={{ overflow: 'auto', maxHeight: '60vh', border: '1px solid #e2e8f0', borderRadius: 4 }}>
-                  <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-                    <thead>
-                      <tr>
-                        <th style={{ ...th, textAlign: 'left', left: 0, zIndex: 2 }}>FAT \ SNF</th>
-                        {detail.snf_values.map((s) => <th key={s} style={{ ...th, textAlign: 'right' }}>{s.toFixed(1)}</th>)}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {visibleRows.map(({ f, i }) => (
-                        <tr key={f}>
-                          <td style={{ ...td, textAlign: 'left', fontWeight: 700, background: '#f8fafc', position: 'sticky', left: 0 }}>{f.toFixed(1)}</td>
-                          {detail.rates[i].map((r, j) => <td key={j} style={td}>{r.toFixed(2)}</td>)}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      {selected?.is_future && (
+                        <button type="button" className="btn-secondary btn-sm" style={{ color: '#b91c1c', borderColor: '#fca5a5' }} onClick={() => setDeleteTarget(selected)}>
+                          Delete
+                        </button>
+                      )}
+                    </>
+                  )}
+                  rows={visibleRows}
+                  columns={rateColumns}
+                  getRowKey={(r) => String(r.f)}
+                  searchable={false}
+                  pageSize={50}
+                  pageSizeOptions={[25, 50, 100]}
+                  emptyMessage="No fat value matches."
+                />
               </>
             )}
           </div>
@@ -382,6 +361,6 @@ export default function AdminRateChart() {
         onConfirm={() => void confirmDelete()}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
+    </Page>
   );
 }

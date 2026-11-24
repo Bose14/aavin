@@ -5,6 +5,7 @@ import { useTranslation } from '../../context/LanguageContext';
 import { TankerTimeline } from '../../components/TankerTimeline';
 import { ErrorBanner } from '../../components/UiPrimitives';
 import { formatDateDDMMYYYY, formatLitres, formatFatSnf } from '../../lib/format';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 export default function PlantRecords() {
   const { profile } = useAuth();
@@ -61,19 +62,13 @@ export default function PlantRecords() {
   }, [tankers, search]);
 
   return (
-    <div className="page" style={{ padding: '1.5rem', maxWidth: 1400, margin: '0 auto' }}>
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>
-            {teamTitle}
-          </h1>
-        </div>
-      </div>
+    <Page>
+      <PageHeader title={teamTitle} />
 
       {error && <ErrorBanner message={error} onRetry={fetchRecords} />}
 
       {/* Filter and Search Bar */}
-      <div className="card" style={{ padding: '1rem', marginBottom: '1.5rem', background: '#ffffff', borderRadius: 8 }}>
+      <div className="card card-toolbar">
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ flex: '1 1 240px' }}>
             <input
@@ -110,7 +105,7 @@ export default function PlantRecords() {
 
       {/* Table & Timeline */}
       <div style={{ display: 'grid', gridTemplateColumns: selectedTrip ? '1fr 380px' : '1fr', gap: '1.5rem' }}>
-        <div className="card" style={{ background: '#ffffff', borderRadius: 8, overflow: 'hidden' }}>
+        <div className="card" style={{ overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
             <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
               <thead>
@@ -219,7 +214,7 @@ export default function PlantRecords() {
 
         {/* Side Timeline Drawer */}
         {selectedTrip && (
-          <div className="card" style={{ background: '#ffffff', borderRadius: 8, padding: '1.25rem', height: 'fit-content' }}>
+          <div className="card card-body" style={{ height: 'fit-content' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
               <div>
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
@@ -247,6 +242,6 @@ export default function PlantRecords() {
           </div>
         )}
       </div>
-    </div>
+    </Page>
   );
 }

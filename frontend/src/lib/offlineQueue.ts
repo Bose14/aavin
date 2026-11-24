@@ -11,7 +11,6 @@ export interface QueuedMilkPayload {
   rejection_qty?: number;
   rejection_reason?: string;
   dispatch_date?: string;
-  lines?: Array<{ society_id: string; cans: number; litres: number; fat_pct: number; snf_pct: number }>;
   temperature?: number;
   rate_per_litre?: number;
   rate_override?: boolean;

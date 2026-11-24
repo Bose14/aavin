@@ -3,6 +3,7 @@ import api from '../../lib/api';
 import { formatLitres } from '../../lib/format';
 import { ErrorBanner } from '../../components/UiPrimitives';
 import { useAuth } from '../../context/AuthContext';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 export interface UnloadReceivedQuality {
   cell: string; // 'FC' | 'BC'
@@ -371,15 +372,9 @@ export default function UnloadingBay() {
   const filteredUnloadWaiters = unloadEligibleTankers.filter(matchesSearch);
 
   return (
-    <div className="page" style={{ maxWidth: '1180px', margin: '0 auto', padding: '1.25rem' }}>
+    <Page>
       {/* 1. Header */}
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
-            Milk Unloading Bay &amp; Silo Intake
-          </h1>
-        </div>
-      </div>
+      <PageHeader title={<>Milk Unloading Bay &amp; Silo Intake</>} />
 
       {error && <ErrorBanner message={error} onRetry={fetchTankers} />}
       {successMsg && (
@@ -489,15 +484,7 @@ export default function UnloadingBay() {
 
       {/* Main Vehicle Sheet Card */}
       <div
-        className="card"
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: 8,
-          border: '1px solid #cbd5e1',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-          padding: '1.25rem',
-          minHeight: '350px',
-        }}
+        className="card card-body" style={{ minHeight: '350px' }}
       >
         {/* Card Header & Title */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -1207,6 +1194,6 @@ export default function UnloadingBay() {
           </div>
         </div>
       )}
-    </div>
+    </Page>
   );
 }

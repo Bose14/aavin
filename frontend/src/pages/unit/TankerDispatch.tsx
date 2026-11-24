@@ -16,6 +16,7 @@ import type { DataColumn } from '../../components/DataTable';
 import { ConfirmDialog, ErrorBanner, StatusBadge, TableSkeleton } from '../../components/UiPrimitives';
 import { TankerTimeline } from '../../components/TankerTimeline';
 import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 interface CompartmentFormItem {
   compartment_no: number;
@@ -467,13 +468,8 @@ export default function TankerDispatch() {
   ];
 
   return (
-    <div className="page" style={{ maxWidth: '1100px', margin: '0 auto', padding: '16px' }}>
-      <div className="page-header" style={{ marginBottom: '16px' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>
-            {lang === 'ta' ? 'பால் டேங்கர் லாரி அனுப்புதல் (BMC Outward)' : 'Tanker Milk Dispatch (BMC Outward)'}
-          </h1>
-        </div>
+    <Page>
+      <PageHeader title={lang === 'ta' ? 'பால் டேங்கர் லாரி அனுப்புதல் (BMC Outward)' : 'Tanker Milk Dispatch (BMC Outward)'}>
         <div className="header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
             type="button"
@@ -507,8 +503,7 @@ export default function TankerDispatch() {
           >
             {t('exportXlsx')}
           </button>
-        </div>
-      </div>
+        </div></PageHeader>
 
       {/* BMC Stock Summary Banner */}
       {stock && (
@@ -521,7 +516,7 @@ export default function TankerDispatch() {
             <p className="stat-sub">{t('collectedMinusDispatched')}</p>
           </div>
           <div className="stat-card" style={{ borderLeft: '4px solid #0284c7' }}>
-            <p className="stat-label">Total Net Collected at BMC</p>
+            <p className="stat-label">Total Litres Collected</p>
             <p className="stat-value" style={{ fontSize: '20px', fontWeight: 800 }}>
               {formatLitres(stock.collected_net_qty, 1)}
             </p>
@@ -555,7 +550,7 @@ export default function TankerDispatch() {
       {warningMsg && <div className="warning-banner" style={{ marginBottom: '16px' }}><span>⚠ {warningMsg}</span></div>}
 
       {/* Recent Dispatches Table (Displayed on main BMC front face) */}
-      <div className="card table-card" style={{ padding: '20px', marginBottom: '24px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+      <div className="card card-body">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
             Recent Tanker Dispatches
@@ -680,7 +675,7 @@ export default function TankerDispatch() {
                     Available milk to dispatch: <span style={{ fontSize: '17px' }}>{formatLitres(stock.available_stock_qty, 1)}</span>
                   </div>
                   <div style={{ fontSize: '12px', color: '#475569' }}>
-                    Collected {formatLitres(stock.collected_net_qty, 1)} − Dispatched {formatLitres(stock.dispatched_qty, 1)}
+                    Total Litres Collected {formatLitres(stock.collected_net_qty, 1)} − Dispatched {formatLitres(stock.dispatched_qty, 1)}
                   </div>
                 </div>
               )}
@@ -1136,6 +1131,6 @@ export default function TankerDispatch() {
         isAdmin={false}
       />
       <TankerDetailsModal tripId={detailTripId} onClose={() => setDetailTripId(null)} />
-    </div>
+    </Page>
   );
 }

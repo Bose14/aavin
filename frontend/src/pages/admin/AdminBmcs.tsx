@@ -6,6 +6,7 @@ import { formatDateDDMMYYYY, getLocalTodayIso } from '../../lib/format';
 import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
 import { ConfirmDialog, ErrorBanner, StatusBadge, TableSkeleton } from '../../components/UiPrimitives';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 interface Unit {
   id: string;
@@ -13,6 +14,10 @@ interface Unit {
   bmc_code: string;
   location: string | null;
   milk_type?: 'COW' | 'BUFFALO';
+  cc_code?: number | null;
+  capacity_litres?: number | null;
+  opening_balance?: number | null;
+  opening_balance_date?: string | null;
   is_active: boolean;
   users_count: number;
   last_record_date: string | null;
@@ -39,6 +44,9 @@ export default function AdminBmcs() {
   const [editCode, setEditCode] = useState('');
   const [editLocation, setEditLocation] = useState('');
   const [editMilkType, setEditMilkType] = useState<'COW' | 'BUFFALO'>('COW');
+  const [editCcCode, setEditCcCode] = useState('');
+  const [editCapacity, setEditCapacity] = useState('');
+  const [editOpening, setEditOpening] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [toggleTarget, setToggleTarget] = useState<Unit | null>(null);
@@ -90,6 +98,9 @@ export default function AdminBmcs() {
     setEditCode(u.bmc_code);
     setEditLocation(u.location ?? settings.locations[0] ?? '');
     setEditMilkType(u.milk_type === 'BUFFALO' ? 'BUFFALO' : 'COW');
+    setEditCcCode(u.cc_code != null ? String(u.cc_code) : '');
+    setEditCapacity(u.capacity_litres != null ? String(u.capacity_litres) : '');
+    setEditOpening(u.opening_balance != null ? String(u.opening_balance) : '');
   };
 
   const handleSaveEdit = async () => {
@@ -102,6 +113,10 @@ export default function AdminBmcs() {
         bmc_code: editCode.trim().toUpperCase(),
         location: editLocation.trim() || null,
         milk_type: editMilkType,
+        cc_code: editCcCode.trim() === '' ? null : editCcCode.trim(),
+        capacity_litres: editCapacity.trim() === '' ? null : editCapacity.trim(),
+        opening_balance: editOpening.trim() === '' ? null : editOpening.trim(),
+        opening_balance_date: editTarget.opening_balance_date ?? undefined,
       });
       setEditTarget(null);
       await fetchUnits();
@@ -204,11 +219,8 @@ export default function AdminBmcs() {
   ];
 
   return (
-    <div className="page">
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h1 style={{ margin: 0 }}>BMC Administration Dashboard</h1>
-        </div>
+    <Page>
+      <PageHeader title={<>BMC Administration Dashboard</>}>
         <button
           type="button"
           className="btn btn-primary"
@@ -221,8 +233,7 @@ export default function AdminBmcs() {
           style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', width: 'auto', height: '38px', padding: '0 1rem' }}
         >
           <span>+ Add New BMC</span>
-        </button>
-      </div>
+        </button></PageHeader>
 
       {error && <ErrorBanner message={error} onRetry={fetchUnits} />}
 
@@ -448,7 +459,7 @@ export default function AdminBmcs() {
       )}
 
       {/* Filter and Search Bar */}
-      <div className="card" style={{ padding: '12px 16px', marginBottom: '16px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+      <div className="card card-toolbar">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginRight: '4px' }}>Filter:</span>
@@ -576,6 +587,18 @@ export default function AdminBmcs() {
                   <option value="BUFFALO">Buffalo</option>
                 </select>
               </div>
+              <div className="form-group">
+                <label>CC Code (used in stock reports)</label>
+                <input type="number" inputMode="numeric" min="0" step="1" value={editCcCode} onChange={e => setEditCcCode(e.target.value)} placeholder="e.g. 12" />
+              </div>
+              <div className="form-group">
+                <label>Capacity (litres)</label>
+                <input type="number" inputMode="decimal" min="0" step="1" value={editCapacity} onChange={e => setEditCapacity(e.target.value)} placeholder="e.g. 5000" />
+              </div>
+              <div className="form-group">
+                <label>Opening Balance (litres){editTarget?.opening_balance_date ? ` as on ${formatDateDDMMYYYY(editTarget.opening_balance_date)}` : ''}</label>
+                <input type="number" inputMode="decimal" min="0" step="1" value={editOpening} onChange={e => setEditOpening(e.target.value)} placeholder="Stock at the BMC before the first entry" />
+              </div>
             </div>
             <div className="modal-actions">
               <button type="button" className="btn-secondary" onClick={() => setEditTarget(null)}>Cancel</button>
@@ -608,6 +631,6 @@ export default function AdminBmcs() {
         onConfirm={() => void handleConfirmToggle()}
         onCancel={() => setToggleTarget(null)}
       />
-    </div>
+    </Page>
   );
 }

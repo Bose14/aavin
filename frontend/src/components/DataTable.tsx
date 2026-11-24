@@ -9,10 +9,37 @@ export interface DataColumn<T> {
   searchValue?: (row: T) => string;
   render: (row: T) => ReactNode;
   align?: 'left' | 'right' | 'center';
+  /** Net total (all rows). Shown in the totals row when showTotalsRow is on. */
   footerCell?: ReactNode;
+  /** Total of the rows on the current page. When any column sets it, a Page Total row is shown above the Net Total row. */
+  pageFooterCell?: (pageRows: ReadonlyArray<T>) => ReactNode;
+}
+
+export interface TableFilter {
+  key: string;
+  label: string;
+  type: 'select' | 'date' | 'text' | 'checkbox';
+  value: string;
+  onChange: (value: string) => void;
+  /** select: the choices (the first one is usually the "All" option). */
+  options?: ReadonlyArray<{ value: string; label: string }>;
+  placeholder?: string;
+  min?: string;
+  max?: string;
+  disabled?: boolean;
+  hidden?: boolean;
 }
 
 export interface DataTableProps<T> {
+  /** Filter bar shown above the table, in the common style. Values live in the page (controlled). */
+  filters?: ReadonlyArray<TableFilter>;
+  /** Extra controls on the right of the filter bar (export buttons, etc.). */
+  filterActions?: ReactNode;
+  /** When given, a "Clear filters" button appears once any filter differs from its default. */
+  onClearFilters?: () => void;
+  filtersActive?: boolean;
+  /** Keep the filter bar on one line (it scrolls sideways on narrow screens). */
+  singleLine?: boolean;
   rows: ReadonlyArray<T>;
   columns: ReadonlyArray<DataColumn<T>>;
   getRowKey: (row: T) => string;
@@ -25,27 +52,40 @@ export interface DataTableProps<T> {
   onEmptyAction?: () => void;
   showTotalsRow?: boolean;
   onRowClick?: (row: T) => void;
+  /** Rows-per-page choices in the Show selector. */
+  pageSizeOptions?: ReadonlyArray<number>;
 }
 
 export function DataTable<T>({
+  filters,
+  filterActions,
+  onClearFilters,
+  filtersActive = false,
+  singleLine = false,
   rows,
   columns,
   getRowKey,
   getRowClassName,
   searchPlaceholder,
   searchable = true,
-  pageSize = 15,
+  pageSize: initialPageSize = 15,
   emptyMessage,
   emptyActionLabel,
   onEmptyAction,
   showTotalsRow = false,
   onRowClick,
+  pageSizeOptions = [15, 25, 50, 100],
 }: DataTableProps<T>) {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(initialPageSize);
+  const sizeChoices = useMemo(
+    () => Array.from(new Set([...pageSizeOptions, initialPageSize])).sort((a, b) => a - b),
+    [pageSizeOptions, initialPageSize],
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -89,8 +129,34 @@ export function DataTable<T>({
     }
   };
 
+  const hasPageTotals = columns.some(c => Boolean(c.pageFooterCell));
+
   return (
     <div className="data-table-wrapper">
+      {((filters && filters.some(f => !f.hidden)) || filterActions) && (
+        <div className={`dt-filters${singleLine ? ' dt-filters--single' : ''}`}>
+          {(filters ?? []).filter(f => !f.hidden).map(f => (
+            <label key={f.key} className="dt-filter">
+              <span>{f.label}</span>
+              {f.type === 'select' ? (
+                <select value={f.value} disabled={f.disabled} onChange={e => { f.onChange(e.target.value); setPage(1); }}>
+                  {(f.options ?? []).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              ) : f.type === 'checkbox' ? (
+                <input type="checkbox" className="dt-check" checked={f.value === 'true'} disabled={f.disabled} onChange={e => { f.onChange(e.target.checked ? 'true' : ''); setPage(1); }} />
+              ) : f.type === 'date' ? (
+                <input type="date" value={f.value} min={f.min} max={f.max} disabled={f.disabled} onChange={e => { f.onChange(e.target.value); setPage(1); }} />
+              ) : (
+                <input type="search" value={f.value} placeholder={f.placeholder} disabled={f.disabled} onChange={e => { f.onChange(e.target.value); setPage(1); }} />
+              )}
+            </label>
+          ))}
+          {onClearFilters && filtersActive && (
+            <button type="button" className="btn-secondary btn-sm" onClick={() => { onClearFilters(); setPage(1); }}>✕ Clear filters</button>
+          )}
+          {filterActions && <div className="dt-filter-actions">{filterActions}</div>}
+        </div>
+      )}
       {searchable && (
         <div className="table-toolbar">
           <input
@@ -176,10 +242,19 @@ export function DataTable<T>({
           </tbody>
           {showTotalsRow && sorted.length > 0 && (
             <tfoot>
+              {hasPageTotals && (
+                <tr className="totals-row">
+                  {columns.map((col, idx) => (
+                    <td key={col.key} style={{ textAlign: col.align ?? 'left' }}>
+                      {col.pageFooterCell ? col.pageFooterCell(pageRows) : (idx === 0 ? <strong>Page Total</strong> : '')}
+                    </td>
+                  ))}
+                </tr>
+              )}
               <tr className="totals-row">
                 {columns.map((col, idx) => (
                   <td key={col.key} style={{ textAlign: col.align ?? 'left' }}>
-                    {col.footerCell ?? (idx === 0 ? <strong>Total</strong> : '')}
+                    {col.footerCell ?? (idx === 0 ? <strong>{hasPageTotals ? 'Net Total' : 'Total'}</strong> : '')}
                   </td>
                 ))}
               </tr>
@@ -251,32 +326,34 @@ export function DataTable<T>({
         )}
       </div>
 
-      {totalPages > 1 && (
+      {sorted.length > 0 && (
         <div className="table-pagination">
-          <span className="pagination-info">
-            {t('showing')} {startIdx + 1}–{Math.min(startIdx + pageSize, sorted.length)} {t('of')} {sorted.length}
-          </span>
           <div className="pagination-controls">
-            <button
-              type="button"
-              className="btn-secondary btn-sm"
-              disabled={safePage <= 1}
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-            >
-              {t('prev')}
-            </button>
-            <span className="pagination-page-num">
-              {safePage} / {totalPages}
-            </span>
-            <button
-              type="button"
-              className="btn-secondary btn-sm"
-              disabled={safePage >= totalPages}
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            >
-              {t('next')}
-            </button>
+            <button type="button" className="pager-btn" disabled={safePage <= 1} onClick={() => setPage(1)} aria-label="First page">«</button>
+            <button type="button" className="pager-btn" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)} aria-label="Previous page">‹</button>
+            <span className="pagination-page-num">Go to:</span>
+            <input
+              type="number"
+              className="pager-input"
+              min={1}
+              max={totalPages}
+              value={safePage}
+              onChange={e => setPage(Math.min(totalPages, Math.max(1, Number(e.target.value) || 1)))}
+              aria-label="Page number"
+            />
+            <span className="pagination-page-num">/ {totalPages}</span>
+            <button type="button" className="pager-btn" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)} aria-label="Next page">›</button>
+            <button type="button" className="pager-btn" disabled={safePage >= totalPages} onClick={() => setPage(totalPages)} aria-label="Last page">»</button>
           </div>
+          <label className="pager-show">
+            <span>Show</span>
+            <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}>
+              {sizeChoices.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+          <span className="pagination-info">
+            Showing {startIdx + 1}–{Math.min(startIdx + pageSize, sorted.length)} of {sorted.length} records
+          </span>
         </div>
       )}
     </div>

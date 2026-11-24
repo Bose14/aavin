@@ -217,7 +217,7 @@ test('Frontend Tanker UX: All tab first, Total Dispatched removed, BMC column an
 
   // 5. Units renamed to BMC
   assert.ok(recordsSrc.includes("{ id: 'bmc', label: 'BMC' }"), 'Column label must be BMC');
-  assert.ok(recordsSrc.includes('<option value="">All BMCs</option>'), 'Filter must say All BMCs');
+  assert.ok(recordsSrc.includes('All BMCs'), 'Filter must say All BMCs');
   assert.ok(drawerSrc.includes('BMC: <strong>'), 'Drawer header must say BMC');
 });
 
