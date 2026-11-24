@@ -492,6 +492,8 @@ export function shapeTrip(trip: Record<string, any>, loadings: LoadingRow[], sta
     qc_status: trip.qc_status ?? null,
     cip_status: trip.cip_status ?? null,
     trip_status: trip.status,
+    gate_pass: trip.gate_pass || stageData.gate_pass || null,
+    gate_pass_no: trip.gate_pass_no || stageData.gate_pass?.gate_pass_no || null,
     stage_data: stageData,
     created_at: trip.created_at,
   };
@@ -651,7 +653,7 @@ export async function dispatchToTanker(input: DispatchInput): Promise<string> {
 
 export interface StageWrite {
   tripId: string;
-  stageKey: TankerStageKey;
+  stageKey: TankerStageKey | string;
   team: PlantTeam;
   status: 'done' | 'rejected' | 'skipped';
   data: Record<string, unknown>;
@@ -712,7 +714,7 @@ export async function updateStageData(
 const TRIP_COLUMNS = new Set([
   'status', 'driver_name', 'driver_phone', 'gross_weight_kg', 'tare_weight_kg', 'net_weight_kg',
   'received_litres', 'received_fat_pct', 'received_snf_pct', 'qc_status', 'cip_status',
-  'entered_at', 'exited_at',
+  'entered_at', 'exited_at', 'gate_pass', 'gate_pass_no',
 ]);
 
 export async function updateTrip(tripId: string, fields: Record<string, unknown>): Promise<void> {

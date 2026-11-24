@@ -334,9 +334,15 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
       const cipDone =
         (t.stage_data?.cip_completed != null || t.journey?.completedStageKeys?.includes('cip_completed')) &&
         !isCipUnsatisfied;
+      const gatePassDone = Boolean(
+        t.gate_pass != null ||
+        t.stage_data?.gate_pass != null ||
+        (t.journey as any)?.hasGatePass ||
+        t.journey?.completedStageKeys?.includes('gate_pass')
+      );
       const exitDone =
         t.stage_data?.vehicle_exit != null || t.journey?.completedStageKeys?.includes('vehicle_exit');
-      return (cipDone || isQcRej) && !exitDone && t.journey?.tripStatus !== 'exited';
+      return ((cipDone && gatePassDone) || isQcRej) && !exitDone && t.journey?.tripStatus !== 'exited';
     });
   }, [tankers]);
 
@@ -1071,9 +1077,16 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                             {tare !== '—' ? `${Number(tare).toLocaleString('en-IN')} kg` : '—'}
                           </td>
                           <td style={{ padding: '10px 12px' }}>
-                            <span style={{ backgroundColor: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 4, fontWeight: 600, fontSize: '0.75rem' }}>
-                              ✓ CIP Cleaned &amp; Inspected
-                            </span>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                              {(t.gate_pass?.gate_pass_no || t.stage_data?.gate_pass?.gate_pass_no) && (
+                                <span style={{ backgroundColor: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', padding: '2px 8px', borderRadius: 4, fontWeight: 700, fontSize: '0.75rem' }}>
+                                  № {t.gate_pass?.gate_pass_no || t.stage_data?.gate_pass?.gate_pass_no}
+                                </span>
+                              )}
+                              <span style={{ backgroundColor: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 4, fontWeight: 600, fontSize: '0.75rem' }}>
+                                ✓ CIP Passed
+                              </span>
+                            </div>
                           </td>
                           <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                             <button
