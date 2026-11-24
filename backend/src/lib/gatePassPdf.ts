@@ -74,7 +74,7 @@ export function buildGatePassPdf(input: GatePassPdfInput): Promise<Buffer> {
     const boxX = PAGE_W - margin - 120;
     const boxY = margin + 12;
 
-    doc.fillColor('#991b1b').font('Helvetica-Bold').fontSize(15).text('№', boxX - 18, boxY + 2);
+    doc.fillColor('#991b1b').font('Helvetica-Bold').fontSize(13.5).text('No.', boxX - 26, boxY + 3);
     // Draw 6 individual digit boxes
     const digitW = 16;
     const digitH = 20;
