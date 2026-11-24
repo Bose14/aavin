@@ -5,6 +5,7 @@ import { supabase } from '../supabase';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { roleHome } from '../components/ProtectedRoute';
+import aavinLogo from '../assets/aavin-logo.png';
 
 export default function ChangePassword() {
   const { profile, refreshProfile, signOut } = useAuth();
@@ -51,7 +52,10 @@ export default function ChangePassword() {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <div className="auth-brand">🥛 Aavin Security Setup</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.25rem' }}>
+          <img src={aavinLogo} alt="Aavin" style={{ height: '36px', width: 'auto', objectFit: 'contain' }} />
+          <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e3a8a' }}>Security Setup</span>
+        </div>
         <h1>Set your new password</h1>
         <p className="auth-subtitle">
           For account security, please replace your temporary password before continuing.

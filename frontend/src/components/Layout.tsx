@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
 import { listOfflineMilkEntries, syncOfflineMilkEntries } from '../lib/offlineQueue';
 import type { TranslationKey } from '../i18n/translations';
+import aavinLogo from '../assets/aavin-logo.png';
 
 interface NavItem {
   to: string;
@@ -122,9 +123,13 @@ export default function Layout({ children }: { children: ReactNode }) {
         >
           ☰
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-          <span className="brand-logo">🥛</span>
-          <span className="brand-name">{t('appName')}</span>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <img
+            src={aavinLogo}
+            alt="Aavin"
+            className="brand-logo"
+            style={{ height: '30px', width: 'auto', objectFit: 'contain' }}
+          />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
           {(!online || pendingCount > 0 || syncMsg) && (
@@ -148,9 +153,13 @@ export default function Layout({ children }: { children: ReactNode }) {
 
       <aside className={`sidebar ${drawerOpen ? 'open' : ''}`}>
         <div className="sidebar-brand" style={{ justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span className="brand-logo">🥛</span>
-            <span className="brand-name">{t('appName')}</span>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <img
+              src={aavinLogo}
+              alt="Aavin"
+              className="brand-logo"
+              style={{ height: '36px', width: 'auto', objectFit: 'contain' }}
+            />
           </div>
           <div className="lang-toggle" role="group" aria-label="Language">
             <button type="button" className={`lang-btn ${lang === 'en' ? 'active' : ''}`} onClick={() => setLang('en')}>EN</button>

@@ -135,7 +135,7 @@ input[type="checkbox"], input[type="radio"] {
 .layout { display: flex; min-height: 100vh; }
 .sidebar { width: var(--sidebar-w); background: var(--white); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; height: 100vh; z-index: 100; }
 .sidebar-brand { padding: 1.1rem 0.95rem 0.9rem; display: flex; align-items: center; justify-content: space-between; gap: 0.45rem; border-bottom: 1px solid var(--border); }
-.brand-logo { font-size: 1.4rem; }
+.brand-logo { height: 36px; width: auto; object-fit: contain; display: block; }
 .brand-name { font-size: 1.05rem; font-weight: 700; color: var(--primary); white-space: nowrap; }
 .sidebar-nav { flex: 1; padding: 0.75rem 0.75rem; display: flex; flex-direction: column; gap: 0.25rem; overflow-y: auto; }
 .nav-item { display: block; padding: 0.6rem 0.875rem; border-radius: 8px; color: var(--text-muted); font-size: 0.9rem; text-decoration: none; transition: all 0.15s; }
