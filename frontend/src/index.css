@@ -631,3 +631,16 @@ input[type="checkbox"], input[type="radio"] {
 .nav-chevron.open { transform: rotate(0deg); }
 .nav-sub { display: flex; flex-direction: column; gap: 0.25rem; margin: 0.25rem 0 0.25rem 0.9rem; padding-left: 0.6rem; border-left: 1px solid var(--border, #e2e8f0); }
 .nav-sub-item { font-size: 0.92em; }
+
+/* Detailed BMC Report */
+.bmcr-filters { display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+.bmcr-filters label, .bmcr-show { display: flex; align-items: center; gap: 0.6rem; font-size: 0.92rem; color: #475569; }
+.bmcr-filters select, .bmcr-filters input, .bmcr-show select { min-width: 190px; height: 38px; padding: 0 0.75rem; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; font: inherit; color: #0f172a; }
+.bmcr-wrap { border: 1px solid #e2e8f0; border-radius: 8px; overflow: auto; background: #fff; }
+.bmcr-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.25rem; font-size: 0.88rem; color: #475569; }
+.bmcr-pager-nav { display: flex; align-items: center; gap: 0.4rem; }
+.bmcr-pager-nav button { height: 34px; min-width: 34px; border: 1px solid #e2e8f0; background: #fff; border-radius: 4px; cursor: pointer; color: #2563eb; font-size: 1rem; }
+.bmcr-pager-nav button:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
+.bmcr-pager-nav input { width: 60px; height: 34px; text-align: center; border: 1px solid #e2e8f0; border-radius: 4px; }
+.bmcr-show select { min-width: 80px; }
+@media (max-width: 700px) { .bmcr-filters label { width: 100%; justify-content: space-between; } .bmcr-filters select, .bmcr-filters input { min-width: 0; flex: 1; } }
