@@ -52,3 +52,16 @@ update public.bmcs b
   join public.dairy_units d on d.name = 'Namakkal'
   join public.bmc_teams t on t.dairy_unit_id = d.id and t.code = m.team_code
  where b.dairy_unit_id = d.id and lower(b.name) = lower(m.bmc_name);
+
+-- Test team: groups the test BMCs so no BMC is left without a team
+insert into public.bmc_teams (dairy_unit_id, name, code)
+select id, 'Test', 'TEST' from public.dairy_units where name = 'Namakkal'
+on conflict (dairy_unit_id, code) do nothing;
+
+update public.bmcs b
+   set bmc_team_id = t.id, team_name = t.code
+  from public.bmc_teams t
+  join public.dairy_units d on d.id = t.dairy_unit_id
+ where d.name = 'Namakkal' and t.code = 'TEST'
+   and b.dairy_unit_id = d.id and b.bmc_team_id is null
+   and b.bmc_code in ('RNK-001', 'BMC-002', 'SLM_001');
