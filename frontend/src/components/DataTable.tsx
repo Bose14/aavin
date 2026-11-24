@@ -9,7 +9,10 @@ export interface DataColumn<T> {
   searchValue?: (row: T) => string;
   render: (row: T) => ReactNode;
   align?: 'left' | 'right' | 'center';
+  /** Net total (all rows). Shown in the totals row when showTotalsRow is on. */
   footerCell?: ReactNode;
+  /** Total of the rows on the current page. When any column sets it, a Page Total row is shown above the Net Total row. */
+  pageFooterCell?: (pageRows: ReadonlyArray<T>) => ReactNode;
 }
 
 export interface DataTableProps<T> {
@@ -25,6 +28,8 @@ export interface DataTableProps<T> {
   onEmptyAction?: () => void;
   showTotalsRow?: boolean;
   onRowClick?: (row: T) => void;
+  /** Rows-per-page choices in the Show selector. */
+  pageSizeOptions?: ReadonlyArray<number>;
 }
 
 export function DataTable<T>({
@@ -34,18 +39,24 @@ export function DataTable<T>({
   getRowClassName,
   searchPlaceholder,
   searchable = true,
-  pageSize = 15,
+  pageSize: initialPageSize = 15,
   emptyMessage,
   emptyActionLabel,
   onEmptyAction,
   showTotalsRow = false,
   onRowClick,
+  pageSizeOptions = [15, 25, 50, 100],
 }: DataTableProps<T>) {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(initialPageSize);
+  const sizeChoices = useMemo(
+    () => Array.from(new Set([...pageSizeOptions, initialPageSize])).sort((a, b) => a - b),
+    [pageSizeOptions, initialPageSize],
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -88,6 +99,8 @@ export function DataTable<T>({
       setSortDir('desc');
     }
   };
+
+  const hasPageTotals = columns.some(c => Boolean(c.pageFooterCell));
 
   return (
     <div className="data-table-wrapper">
@@ -176,10 +189,19 @@ export function DataTable<T>({
           </tbody>
           {showTotalsRow && sorted.length > 0 && (
             <tfoot>
+              {hasPageTotals && (
+                <tr className="totals-row">
+                  {columns.map((col, idx) => (
+                    <td key={col.key} style={{ textAlign: col.align ?? 'left' }}>
+                      {col.pageFooterCell ? col.pageFooterCell(pageRows) : (idx === 0 ? <strong>Page Total</strong> : '')}
+                    </td>
+                  ))}
+                </tr>
+              )}
               <tr className="totals-row">
                 {columns.map((col, idx) => (
                   <td key={col.key} style={{ textAlign: col.align ?? 'left' }}>
-                    {col.footerCell ?? (idx === 0 ? <strong>Total</strong> : '')}
+                    {col.footerCell ?? (idx === 0 ? <strong>{hasPageTotals ? 'Net Total' : 'Total'}</strong> : '')}
                   </td>
                 ))}
               </tr>
@@ -251,32 +273,34 @@ export function DataTable<T>({
         )}
       </div>
 
-      {totalPages > 1 && (
+      {sorted.length > 0 && (
         <div className="table-pagination">
-          <span className="pagination-info">
-            {t('showing')} {startIdx + 1}–{Math.min(startIdx + pageSize, sorted.length)} {t('of')} {sorted.length}
-          </span>
           <div className="pagination-controls">
-            <button
-              type="button"
-              className="btn-secondary btn-sm"
-              disabled={safePage <= 1}
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-            >
-              {t('prev')}
-            </button>
-            <span className="pagination-page-num">
-              {safePage} / {totalPages}
-            </span>
-            <button
-              type="button"
-              className="btn-secondary btn-sm"
-              disabled={safePage >= totalPages}
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            >
-              {t('next')}
-            </button>
+            <button type="button" className="pager-btn" disabled={safePage <= 1} onClick={() => setPage(1)} aria-label="First page">«</button>
+            <button type="button" className="pager-btn" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)} aria-label="Previous page">‹</button>
+            <span className="pagination-page-num">Go to:</span>
+            <input
+              type="number"
+              className="pager-input"
+              min={1}
+              max={totalPages}
+              value={safePage}
+              onChange={e => setPage(Math.min(totalPages, Math.max(1, Number(e.target.value) || 1)))}
+              aria-label="Page number"
+            />
+            <span className="pagination-page-num">/ {totalPages}</span>
+            <button type="button" className="pager-btn" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)} aria-label="Next page">›</button>
+            <button type="button" className="pager-btn" disabled={safePage >= totalPages} onClick={() => setPage(totalPages)} aria-label="Last page">»</button>
           </div>
+          <label className="pager-show">
+            <span>Show</span>
+            <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}>
+              {sizeChoices.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+          <span className="pagination-info">
+            Showing {startIdx + 1}–{Math.min(startIdx + pageSize, sorted.length)} of {sorted.length} records
+          </span>
         </div>
       )}
     </div>
