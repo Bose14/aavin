@@ -672,3 +672,11 @@ input[type="checkbox"], input[type="radio"] {
 .stats-grid { margin-bottom: 1.25rem; }
 @media (max-width: 720px) { .card-body { padding: 0.95rem; } .card-toolbar { padding: 0.7rem 0.75rem; } }
 .dt-filter input.dt-check { min-width: 0; width: 18px; height: 18px; padding: 0; }
+
+.dt-filters--single { flex-wrap: nowrap; gap: 0.75rem; overflow-x: auto; }
+.dt-filters--single .dt-filter { flex: 0 0 auto; gap: 0.4rem; }
+.dt-filters--single .dt-filter select, .dt-filters--single .dt-filter input { min-width: 0; height: 36px; }
+.dt-filters--single .dt-filter input[type="search"] { width: 210px; }
+.dt-filters--single .dt-filter select { max-width: 150px; }
+.dt-filters--single .dt-filter-actions { flex: 0 0 auto; margin-left: auto; flex-wrap: nowrap; white-space: nowrap; }
+@media (max-width: 720px) { .dt-filters--single .dt-filter { width: auto; } .dt-filters--single .dt-filter-actions { width: auto; } }

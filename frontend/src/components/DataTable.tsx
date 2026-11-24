@@ -38,6 +38,8 @@ export interface DataTableProps<T> {
   /** When given, a "Clear filters" button appears once any filter differs from its default. */
   onClearFilters?: () => void;
   filtersActive?: boolean;
+  /** Keep the filter bar on one line (it scrolls sideways on narrow screens). */
+  singleLine?: boolean;
   rows: ReadonlyArray<T>;
   columns: ReadonlyArray<DataColumn<T>>;
   getRowKey: (row: T) => string;
@@ -59,6 +61,7 @@ export function DataTable<T>({
   filterActions,
   onClearFilters,
   filtersActive = false,
+  singleLine = false,
   rows,
   columns,
   getRowKey,
@@ -131,7 +134,7 @@ export function DataTable<T>({
   return (
     <div className="data-table-wrapper">
       {((filters && filters.some(f => !f.hidden)) || filterActions) && (
-        <div className="dt-filters">
+        <div className={`dt-filters${singleLine ? ' dt-filters--single' : ''}`}>
           {(filters ?? []).filter(f => !f.hidden).map(f => (
             <label key={f.key} className="dt-filter">
               <span>{f.label}</span>
