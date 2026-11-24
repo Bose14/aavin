@@ -60,6 +60,22 @@ function toSheetRow(r: Record<string, unknown>, label: Record<string, unknown>):
   return out;
 }
 
+/** Sums a set of rows into one TOTAL row; percentages and Sp.Gr. are recalculated from the totals (as in the statement). */
+function totalRow(group: AckViewRow[], label: string, date: string, extra: Record<string, unknown> = {}): Row {
+  const t: Record<string, number> = {};
+  for (const f of SUM_FIELDS) t[f] = group.reduce((s, r) => s + n(r[f]), 0);
+  const invFat = t.inv_l ? (t.inv_lit_fat / t.inv_l) * 100 : 0;
+  const invSnf = t.inv_l ? (t.inv_lit_snf / t.inv_l) * 100 : 0;
+  const ackFat = t.ack_litres ? (t.ack_lit_fat / t.ack_litres) * 100 : 0;
+  const ackSnf = t.ack_litres ? (t.ack_lit_snf / t.ack_litres) * 100 : 0;
+  return toSheetRow({
+    ...t, inv_fat: invFat, inv_snf: invSnf, inv_sp: sp(invFat, invSnf),
+    ack_fat: ackFat, ack_snf: ackSnf, ack_sp: sp(ackFat, ackSnf),
+  }, {
+    date, shift: '', kind: '', route: '', milk: '', team: '', code: '', name: label, dest: '', tanker: '', dc: '', ...extra,
+  });
+}
+
 /** Build the statement rows, grouped by date, then tanker, with a TOTAL row after each tanker. */
 export function buildMilkAckRows(rows: AckViewRow[], formatDate: (iso: string) => string): Row[] {
   const sorted = [...rows].sort((a, b) =>
@@ -84,22 +100,91 @@ export function buildMilkAckRows(rows: AckViewRow[], formatDate: (iso: string) =
       }));
     }
 
-    // TOTAL row: sums, with percentages and Sp.Gr. recalculated from the totals (as in the statement)
-    const t: Record<string, number> = {};
-    for (const f of SUM_FIELDS) t[f] = group.reduce((s, r) => s + n(r[f]), 0);
-    const invFat = t.inv_l ? (t.inv_lit_fat / t.inv_l) * 100 : 0;
-    const invSnf = t.inv_l ? (t.inv_lit_snf / t.inv_l) * 100 : 0;
-    const ackFat = t.ack_litres ? (t.ack_lit_fat / t.ack_litres) * 100 : 0;
-    const ackSnf = t.ack_litres ? (t.ack_lit_snf / t.ack_litres) * 100 : 0;
-    out.push(toSheetRow({
-      ...t, inv_fat: invFat, inv_snf: invSnf, inv_sp: sp(invFat, invSnf),
-      ack_fat: ackFat, ack_snf: ackSnf, ack_sp: sp(ackFat, ackSnf),
-    }, {
-      date: formatDate(group[0].trip_date), shift: '', kind: '', route: group[0].route_name ?? '', milk: group[0].milk_type ?? '',
-      team: '', code: '', name: 'TOTAL', dest: group[0].dest, tanker: group[0].vehicle_number, dc: '',
+    out.push(totalRow(group, 'TOTAL', formatDate(group[0].trip_date), {
+      route: group[0].route_name ?? '', milk: group[0].milk_type ?? '', dest: group[0].dest, tanker: group[0].vehicle_number,
     }));
   }
   return out;
+}
+
+export type AckGroup = 'team' | 'bmc' | 'tanker';
+
+const NO_TEAM = 'NO TEAM';
+const groupKey = (g: AckGroup, r: AckViewRow) =>
+  g === 'team' ? (r.team_name?.trim() || NO_TEAM) : g === 'bmc' ? r.bmc_name : r.vehicle_number;
+
+/**
+ * Statement grouped by team, BMC or tanker: every group lists its rows (by date), then a
+ * "TOTAL - <group>" row; a GRAND TOTAL closes the sheet.
+ */
+export function buildGroupedAckRows(rows: AckViewRow[], group: AckGroup, formatDate: (iso: string) => string): Row[] {
+  const cmpIn = (a: AckViewRow, b: AckViewRow) =>
+    a.trip_date.localeCompare(b.trip_date) ||
+    a.dispatch_at.localeCompare(b.dispatch_at) ||
+    String(a.trip_id).localeCompare(String(b.trip_id), undefined, { numeric: true }) ||
+    a.bmc_name.localeCompare(b.bmc_name);
+  const sorted = [...rows].sort((a, b) => {
+    const ka = groupKey(group, a);
+    const kb = groupKey(group, b);
+    return (ka === NO_TEAM ? 1 : 0) - (kb === NO_TEAM ? 1 : 0) || ka.localeCompare(kb, undefined, { numeric: true }) || (group === 'team' ? a.bmc_name.localeCompare(b.bmc_name) : 0) || cmpIn(a, b);
+  });
+
+  const out: Row[] = [];
+  let i = 0;
+  while (i < sorted.length) {
+    const key = groupKey(group, sorted[i]);
+    const part: AckViewRow[] = [];
+    while (i < sorted.length && groupKey(group, sorted[i]) === key) part.push(sorted[i++]);
+    for (const r of part) {
+      out.push(toSheetRow(r, {
+        date: formatDate(r.trip_date), shift: r.shift ?? '', kind: r.kind ?? '', route: r.route_name ?? '',
+        milk: r.milk_type ?? '', team: r.team_name ?? '', code: r.code_no ?? r.bmc_code ?? '', name: r.bmc_name,
+        dest: r.dest, tanker: r.vehicle_number, dc: r.dc_number,
+      }));
+    }
+    out.push(totalRow(part, `TOTAL - ${key}`, ''));
+  }
+  if (sorted.length) out.push(totalRow(sorted, 'GRAND TOTAL', ''));
+  return out;
+}
+
+export const SUMMARY_COLUMNS = {
+  team: 'TEAM', bmc: 'BMC', tanker: 'TANKER',
+} as const;
+
+/** One line per team / BMC / tanker with the quantities that matter, plus a grand total. */
+export function buildAckSummary(rows: AckViewRow[], group: AckGroup): { columns: string[]; rows: Row[] } {
+  const label = SUMMARY_COLUMNS[group];
+  const columns = [
+    label, 'Trips', 'Dmr/Inv.Qty (In Lts.)', 'Ack. Qty ( In Lts.)', 'QTY -DIFF (LIT)',
+    'Inv. Fat%', 'Inv. Snf%', 'Ack. Fat%', 'Ack. Snf%',
+    'Dmr/Inv. Kg Fat', 'Ack. KG FAT', 'DIFF-FAT KG', 'Dmr/Inv. Kg Snf', 'Ack. KG SNF', 'DIFF-SNF KG', 'Net Loss Fat', 'Net Loss Snf',
+  ];
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  const line = (name: string, part: AckViewRow[]): Row => {
+    const t: Record<string, number> = {};
+    for (const f of SUM_FIELDS) t[f] = part.reduce((s, r) => s + n(r[f]), 0);
+    return {
+      [label]: name,
+      Trips: new Set(part.map((r) => String(r.trip_id))).size,
+      'Dmr/Inv.Qty (In Lts.)': r2(t.inv_l),
+      'Ack. Qty ( In Lts.)': r2(t.ack_litres),
+      'QTY -DIFF (LIT)': r2(t.qty_diff_lit),
+      'Inv. Fat%': t.inv_l ? r2((t.inv_lit_fat / t.inv_l) * 100) : 0,
+      'Inv. Snf%': t.inv_l ? r2((t.inv_lit_snf / t.inv_l) * 100) : 0,
+      'Ack. Fat%': t.ack_litres ? r2((t.ack_lit_fat / t.ack_litres) * 100) : 0,
+      'Ack. Snf%': t.ack_litres ? r2((t.ack_lit_snf / t.ack_litres) * 100) : 0,
+      'Dmr/Inv. Kg Fat': r2(t.inv_kg_fat), 'Ack. KG FAT': r2(t.ack_kg_fat), 'DIFF-FAT KG': r2(t.diff_fat_kg),
+      'Dmr/Inv. Kg Snf': r2(t.inv_kg_snf), 'Ack. KG SNF': r2(t.ack_kg_snf), 'DIFF-SNF KG': r2(t.diff_snf_kg),
+      'Net Loss Fat': r2(t.net_loss_fat), 'Net Loss Snf': r2(t.net_loss_snf),
+    };
+  };
+  const by = new Map<string, AckViewRow[]>();
+  for (const r of rows) by.set(groupKey(group, r), [...(by.get(groupKey(group, r)) ?? []), r]);
+  const keys = [...by.keys()].sort((a, b) => (a === NO_TEAM ? 1 : 0) - (b === NO_TEAM ? 1 : 0) || a.localeCompare(b, undefined, { numeric: true }));
+  const out = keys.map((k) => line(k, by.get(k)!));
+  if (rows.length) out.push(line('GRAND TOTAL', rows));
+  return { columns, rows: out };
 }
 
 const MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
