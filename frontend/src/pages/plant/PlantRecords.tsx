@@ -105,14 +105,6 @@ export default function PlantRecords() {
               </button>
             )}
           </div>
-          <button
-            type="button"
-            onClick={fetchRecords}
-            className="btn-secondary btn-sm"
-            style={{ padding: '0.55rem 1rem' }}
-          >
-            {lang === 'ta' ? 'புதுப்பி' : 'Refresh'}
-          </button>
         </div>
       </div>
 

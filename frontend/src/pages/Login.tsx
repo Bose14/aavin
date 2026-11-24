@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
 import { roleHome } from '../components/ProtectedRoute';
 import Captcha from '../components/Captcha';
+import aavinLogo from '../assets/aavin-logo.png';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -46,7 +47,10 @@ export default function Login() {
     <div className="auth-container">
       <div className="auth-card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-          <div className="auth-brand" style={{ marginBottom: 0 }}>🥛 Aavin Internal Portal</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <img src={aavinLogo} alt="Aavin" style={{ height: '36px', width: 'auto', objectFit: 'contain' }} />
+            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e3a8a' }}>Internal Portal</span>
+          </div>
           <div className="lang-toggle" role="group" aria-label="Language">
             <button type="button" className={`lang-btn ${lang === 'en' ? 'active' : ''}`} onClick={() => setLang('en')}>EN</button>
             <button type="button" className={`lang-btn ${lang === 'ta' ? 'active' : ''}`} onClick={() => setLang('ta')}>தமிழ்</button>
