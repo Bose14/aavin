@@ -13,6 +13,10 @@ interface Unit {
   bmc_code: string;
   location: string | null;
   milk_type?: 'COW' | 'BUFFALO';
+  cc_code?: number | null;
+  capacity_litres?: number | null;
+  opening_balance?: number | null;
+  opening_balance_date?: string | null;
   is_active: boolean;
   users_count: number;
   last_record_date: string | null;
@@ -39,6 +43,9 @@ export default function AdminBmcs() {
   const [editCode, setEditCode] = useState('');
   const [editLocation, setEditLocation] = useState('');
   const [editMilkType, setEditMilkType] = useState<'COW' | 'BUFFALO'>('COW');
+  const [editCcCode, setEditCcCode] = useState('');
+  const [editCapacity, setEditCapacity] = useState('');
+  const [editOpening, setEditOpening] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [toggleTarget, setToggleTarget] = useState<Unit | null>(null);
@@ -90,6 +97,9 @@ export default function AdminBmcs() {
     setEditCode(u.bmc_code);
     setEditLocation(u.location ?? settings.locations[0] ?? '');
     setEditMilkType(u.milk_type === 'BUFFALO' ? 'BUFFALO' : 'COW');
+    setEditCcCode(u.cc_code != null ? String(u.cc_code) : '');
+    setEditCapacity(u.capacity_litres != null ? String(u.capacity_litres) : '');
+    setEditOpening(u.opening_balance != null ? String(u.opening_balance) : '');
   };
 
   const handleSaveEdit = async () => {
@@ -102,6 +112,10 @@ export default function AdminBmcs() {
         bmc_code: editCode.trim().toUpperCase(),
         location: editLocation.trim() || null,
         milk_type: editMilkType,
+        cc_code: editCcCode.trim() === '' ? null : editCcCode.trim(),
+        capacity_litres: editCapacity.trim() === '' ? null : editCapacity.trim(),
+        opening_balance: editOpening.trim() === '' ? null : editOpening.trim(),
+        opening_balance_date: editTarget.opening_balance_date ?? undefined,
       });
       setEditTarget(null);
       await fetchUnits();
@@ -575,6 +589,18 @@ export default function AdminBmcs() {
                   <option value="COW">Cow</option>
                   <option value="BUFFALO">Buffalo</option>
                 </select>
+              </div>
+              <div className="form-group">
+                <label>CC Code (used in stock reports)</label>
+                <input type="number" inputMode="numeric" min="0" step="1" value={editCcCode} onChange={e => setEditCcCode(e.target.value)} placeholder="e.g. 12" />
+              </div>
+              <div className="form-group">
+                <label>Capacity (litres)</label>
+                <input type="number" inputMode="decimal" min="0" step="1" value={editCapacity} onChange={e => setEditCapacity(e.target.value)} placeholder="e.g. 5000" />
+              </div>
+              <div className="form-group">
+                <label>Opening Balance (litres){editTarget?.opening_balance_date ? ` as on ${formatDateDDMMYYYY(editTarget.opening_balance_date)}` : ''}</label>
+                <input type="number" inputMode="decimal" min="0" step="1" value={editOpening} onChange={e => setEditOpening(e.target.value)} placeholder="Stock at the BMC before the first entry" />
               </div>
             </div>
             <div className="modal-actions">
