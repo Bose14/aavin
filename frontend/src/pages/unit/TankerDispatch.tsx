@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
+import TankerDetailsModal from '../../components/TankerDetailsModal';
 import api from '../../lib/api';
 import { useTranslation } from '../../context/LanguageContext';
 import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
@@ -64,6 +65,7 @@ interface StockSummary {
 }
 
 export default function TankerDispatch() {
+  const [detailTripId, setDetailTripId] = useState<string | null>(null);
   const { t, lang } = useTranslation();
   const { settings } = useDairyUnitSettings();
 
@@ -450,10 +452,7 @@ export default function TankerDispatch() {
         <div style={{ display: 'flex', gap: '6px' }}>
           <button
             type="button"
-            onClick={() => {
-              setSelectedTrip(r);
-              setDrawerOpen(true);
-            }}
+            onClick={() => setDetailTripId(String(r.id))}
             className="btn btn-secondary btn-sm"
             title="View complete lorry details, compartments & live journey timeline"
           >
@@ -1136,6 +1135,7 @@ export default function TankerDispatch() {
         onTripUpdated={() => void fetchAll()}
         isAdmin={false}
       />
+      <TankerDetailsModal tripId={detailTripId} onClose={() => setDetailTripId(null)} />
     </div>
   );
 }

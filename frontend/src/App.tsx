@@ -13,6 +13,7 @@ import AdminTeams from './pages/admin/AdminTeams';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminMilkRecords from './pages/admin/AdminMilkRecords';
 import AdminTankerRecords from './pages/admin/AdminTankerRecords';
+import AdminReports from './pages/admin/AdminReports';
 import AdminTankers from './pages/admin/AdminTankers';
 import AdminRateChart from './pages/admin/AdminRateChart';
 import AdminSettings from './pages/admin/AdminSettings';
@@ -47,6 +48,7 @@ export default function App() {
             {/* Admin portal */}
             <Route path="/admin" element={<Navigate to="/admin/tanker" replace />} />
             <Route path="/admin/tanker" element={<ProtectedRoute role="admin"><Layout><AdminTankerRecords /></Layout></ProtectedRoute>} />
+            <Route path="/admin/reports" element={<ProtectedRoute role="admin"><Layout><AdminReports /></Layout></ProtectedRoute>} />
             <Route path="/admin/tankers" element={<ProtectedRoute role="admin"><Layout><AdminTankers /></Layout></ProtectedRoute>} />
             <Route path="/admin/rates" element={<ProtectedRoute role="admin"><Layout><AdminRateChart /></Layout></ProtectedRoute>} />
             <Route path="/admin/bmcs" element={<ProtectedRoute role="admin"><Layout><AdminBmcs /></Layout></ProtectedRoute>} />

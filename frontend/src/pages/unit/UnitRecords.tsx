@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import TankerDetailsModal from '../../components/TankerDetailsModal';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
@@ -16,9 +17,9 @@ import {
   ErrorBanner,
   TableSkeleton,
 } from '../../components/UiPrimitives';
-import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
 
 export default function UnitRecords() {
+  const [detailTripId, setDetailTripId] = useState<string | null>(null);
   const { profile } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -35,8 +36,6 @@ export default function UnitRecords() {
     () => (searchParams.get('status') as any) || 'all',
   );
 
-  const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);
@@ -460,8 +459,7 @@ export default function UnitRecords() {
           style={{ fontSize: '0.75rem', height: '28px', padding: '0 10px', width: 'auto' }}
           onClick={(e) => {
             e.stopPropagation();
-            setSelectedTrip(r);
-            setDrawerOpen(true);
+            setDetailTripId(String(r.id));
           }}
         >
           View Dossier
@@ -695,14 +693,7 @@ export default function UnitRecords() {
         </div>
       )}
 
-      {/* Tanker Dossier Drawer */}
-      <TankerDetailDrawer
-        isOpen={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        trip={selectedTrip}
-        onTripUpdated={fetchRecords}
-        isAdmin={false}
-      />
+      <TankerDetailsModal tripId={detailTripId} onClose={() => setDetailTripId(null)} />
     </div>
   );
 }
