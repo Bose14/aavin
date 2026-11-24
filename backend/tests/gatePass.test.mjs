@@ -86,3 +86,27 @@ test('4. shapeTrip resolves gate_pass from fallback store and cip_completed stag
   assert.equal(shaped.gate_pass_no, '005522');
   assert.equal(shaped.stage_data.gate_pass?.gate_pass_no, '005522');
 });
+
+test('5. getNextGatePassNo formats 6-digit zero-padded sequential serial numbers', async () => {
+  const { getNextGatePassNo, saveGatePassFallback, deleteGatePassFallback } = await import('../dist/lib/gatePassStore.js');
+  const nextNo = getNextGatePassNo();
+  assert.match(nextNo, /^\d{6}$/, 'Must be 6 digits');
+  assert.ok(parseInt(nextNo, 10) >= 1, 'Must be at least 1 (000001)');
+
+  // Test increment
+  const currInt = parseInt(nextNo, 10);
+  const tempTripId = 'temp-seq-verify';
+  try {
+    saveGatePassFallback(tempTripId, {
+      gate_pass_no: nextNo,
+      date: '2026-11-24',
+      time: '10:00 PM',
+      to_whom_issued: 'Seq Test',
+      vehicle_no: 'TN00TEST',
+    });
+    const afterNo = getNextGatePassNo();
+    assert.equal(parseInt(afterNo, 10), currInt + 1, 'Increments by 1');
+  } finally {
+    deleteGatePassFallback(tempTripId);
+  }
+});

@@ -129,7 +129,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
   const [gatePassTanker, setGatePassTanker] = useState<any>(null);
 
   // Gate Pass Form States (Matching authentic Aavin yellow voucher slip)
-  const [gatePassNo, setGatePassNo] = useState('005616');
+  const [gatePassNo, setGatePassNo] = useState('000001');
   const [gatePassDate, setGatePassDate] = useState(() => {
     const d = new Date();
     const day = String(d.getDate()).padStart(2, '0');
@@ -591,9 +591,29 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     if (existingNo) {
       setGatePassNo(existingNo);
     } else {
-      const idx = tankers.indexOf(t);
-      const baseNum = 5616 + (idx >= 0 ? idx : 1);
-      setGatePassNo(String(baseNum).padStart(6, '0'));
+      const issuedNumbers = tankers
+        .map((tanker) => {
+          const gp = tanker.gate_pass || tanker.stage_data?.gate_pass || (tanker.stage_data?.cip_completed as any)?.gate_pass;
+          const numStr = gp?.gate_pass_no || gp?.gate_pass_number || tanker.gate_pass_no;
+          if (!numStr) return null;
+          const n = parseInt(String(numStr).replace(/\D/g, ''), 10);
+          return isNaN(n) ? null : n;
+        })
+        .filter((n): n is number => n !== null && n < 900000);
+
+      const normalizedNumbers = issuedNumbers.map((n) => (n === 5616 ? 1 : n));
+      const maxIssued = normalizedNumbers.length > 0 ? Math.max(...normalizedNumbers) : 0;
+      const nextNum = maxIssued + 1;
+      setGatePassNo(String(nextNum).padStart(6, '0'));
+
+      // Also query server for next sequential number to stay strictly in sync
+      api.get<{ next_gate_pass_no: string }>('/tanker/next-gate-pass-no')
+        .then((res) => {
+          if (res.data?.next_gate_pass_no) {
+            setGatePassNo(res.data.next_gate_pass_no);
+          }
+        })
+        .catch(() => {});
     }
 
     const d = new Date();
@@ -1310,7 +1330,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                     <tbody>
                       {filteredIssuedGatePasses.map((t) => {
                         const gp = t.gate_pass || t.stage_data?.gate_pass || {};
-                        const gpNo = gp.gate_pass_no || t.gate_pass_no || '005616';
+                        const gpNo = gp.gate_pass_no || t.gate_pass_no || '000001';
                         const driver = gp.to_whom_issued || t.driver_name || '—';
                         const purpose = gp.purpose || (t.bmcs?.name ? `TO ${t.bmcs.name.toUpperCase()}` : 'TO BMC');
                         const isExited = t.journey?.tripStatus === 'exited' || t.stage_data?.vehicle_exit != null;
@@ -2956,24 +2976,10 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                         </span>
                       ))}
                     </div>
-                    <div style={{ marginTop: '4px' }}>
-                      <input
-                        type="text"
-                        maxLength={6}
-                        placeholder="Serial #"
-                        value={gatePassNo}
-                        onChange={(e) => setGatePassNo(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                        style={{
-                          width: '80px',
-                          fontSize: '11px',
-                          padding: '2px 4px',
-                          textAlign: 'center',
-                          border: '1px solid #f87171',
-                          borderRadius: 3,
-                          backgroundColor: '#fff',
-                        }}
-                        title="Edit serial number"
-                      />
+                    <div style={{ marginTop: '3px' }}>
+                      <span style={{ fontSize: '9px', color: '#991b1b', fontWeight: 700, letterSpacing: '0.4px' }}>
+                        AUTO-GENERATED
+                      </span>
                     </div>
                   </div>
                 </div>

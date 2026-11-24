@@ -58,3 +58,35 @@ export function getGatePassFallback(tripId: string): StoredGatePass | null {
   const store = readGatePassStore();
   return store[String(tripId)] ?? null;
 }
+
+export function deleteGatePassFallback(tripId: string): void {
+  try {
+    ensureDir();
+    const store = readGatePassStore();
+    if (store[String(tripId)]) {
+      delete store[String(tripId)];
+      fs.writeFileSync(STORE_FILE, JSON.stringify(store, null, 2), 'utf8');
+    }
+  } catch (err) {
+    console.error('[gatePassStore] Failed to delete fallback gate pass:', err);
+  }
+}
+
+export function getNextGatePassNo(): string {
+  const store = readGatePassStore();
+  let max = 0;
+  for (const [id, pass] of Object.entries(store)) {
+    if (id.includes('test')) continue;
+    const raw = pass.gate_pass_no || pass.gate_pass_number || '0';
+    const num = parseInt(String(raw).replace(/\D/g, ''), 10);
+    if (!isNaN(num) && num < 900000) {
+      if (num === 5616) {
+        if (max < 1) max = 1;
+      } else if (num > max) {
+        max = num;
+      }
+    }
+  }
+  const next = max + 1;
+  return String(next).padStart(6, '0');
+}

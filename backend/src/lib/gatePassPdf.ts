@@ -92,7 +92,7 @@ export function buildGatePassPdf(input: GatePassPdfInput): Promise<Buffer> {
     });
 
     // 5. Gate Pass Serial Number (top right)
-    const passNo = (input.gate_pass_no || '005616').replace(/\D/g, '').padStart(6, '0').slice(-6);
+    const passNo = (input.gate_pass_no || '000001').replace(/\D/g, '').padStart(6, '0').slice(-6);
     const boxX = PAGE_W - margin - 120;
     const boxY = margin + 12;
 

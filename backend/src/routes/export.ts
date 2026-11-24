@@ -374,7 +374,7 @@ router.get('/gate-pass/:id', async (req, res) => {
       .maybeSingle();
 
     const pdfBuffer = await buildGatePassPdf({
-      gate_pass_no: gp.gate_pass_no || gp.gate_pass_number || trip.gate_pass_no || '005616',
+      gate_pass_no: gp.gate_pass_no || gp.gate_pass_number || trip.gate_pass_no || '000001',
       union_name: du?.report_title || "Namakkal District Co-operative Milk Producers' Union Limited,",
       union_sub_name: du?.name ? `${du.name.toUpperCase()} MILK UNION` : 'NAMAKKAL MILK UNION',
       date: gp.date || trip.date || new Date().toISOString().slice(0, 10),
@@ -392,7 +392,7 @@ router.get('/gate-pass/:id', async (req, res) => {
       security_officer: gp.security_officer || '',
     });
 
-    const passDigits = String(gp.gate_pass_no || '005616').replace(/\D/g, '') || 'slip';
+    const passDigits = String(gp.gate_pass_no || '000001').replace(/\D/g, '') || 'slip';
     const vNum = sanitizeFilenamePart(String(trip.tanker_number || 'tanker'));
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="Gate_Pass_${passDigits}_${vNum}.pdf"`);

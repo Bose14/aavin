@@ -35,7 +35,7 @@ import {
   updateStageData,
   updateTrip,
 } from '../lib/tripStore';
-import { saveGatePassFallback, getGatePassFallback } from '../lib/gatePassStore';
+import { saveGatePassFallback, getGatePassFallback, getNextGatePassNo } from '../lib/gatePassStore';
 import type { LegacyTripRow } from '../lib/tripStore';
 import { supabase } from '../supabase';
 import { computeActiveUsersPerTeam } from '../lib/teamCounts';
@@ -804,7 +804,12 @@ router.post('/:id/gate-pass', async (req, res) => {
     }
 
     const payload = req.body || {};
-    const gpNumber = payload.gate_pass_no || payload.gate_pass_number || `${Math.floor(100000 + Math.random() * 900000)}`;
+    const existingGp = getGatePassFallback(String(trip.id));
+    const gpNumber =
+      existingGp?.gate_pass_no ||
+      payload.gate_pass_no ||
+      payload.gate_pass_number ||
+      getNextGatePassNo();
     const nowIso = new Date().toISOString();
     const gatePassData = {
       gate_pass_no: String(gpNumber).padStart(6, '0'),
@@ -865,6 +870,16 @@ router.post('/:id/gate-pass', async (req, res) => {
     }
 
     res.status(200).json({ success: true, gate_pass: gatePassData });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// GET /tanker/next-gate-pass-no — Retrieve next sequential gate pass number
+router.get('/next-gate-pass-no', async (_req, res) => {
+  try {
+    const nextNo = getNextGatePassNo();
+    res.json({ next_gate_pass_no: nextNo });
   } catch (err) {
     sendError(res, err);
   }
