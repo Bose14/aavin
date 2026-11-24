@@ -1,125 +1,67 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from '../../context/LanguageContext';
-import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
-import {
-  formatDateDDMMYYYY,
-  formatDateTimeDDMMYYYY,
-  formatLitres,
-  getLocalTodayIso,
-} from '../../lib/format';
+import { formatDateDDMMYYYY, formatLitres, getLocalTodayIso } from '../../lib/format';
 import { StatCard } from '../../components/StatCard';
 import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
-import {
-  ErrorBanner,
-  StatsGridSkeleton,
-  TableSkeleton,
-} from '../../components/UiPrimitives';
-import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
-import {
-  MilkVolumeChart,
-  TransitLossTrendChart,
-} from '../../components/ProcessCharts';
+import { ErrorBanner, StatsGridSkeleton, TableSkeleton } from '../../components/UiPrimitives';
+import { MilkVolumeChart } from '../../components/ProcessCharts';
 import { Page, PageHeader } from '../../components/PageLayout';
-
-// ==========================================
-// BMC Process Analytics Interfaces
-// ==========================================
 
 interface ProcessKPIs {
   total_dispatched_count: number;
   total_dispatched_litres: number;
-  active_in_plant_count: number;
   completed_count: number;
   completed_litres: number;
-  qc_rejected_count: number;
-  qc_rejected_litres: number;
   transit_loss_litres: number;
   transit_loss_pct: number;
   transit_loss_tone: 'green' | 'amber' | 'red';
-  avg_plant_turnaround_min: number | null;
-  sla_delayed_count: number;
-  sla_compliance_pct: number;
 }
 
-interface ProcessPipelineStage {
-  key: string;
-  title: string;
-  team: string;
-  team_label: string;
-  active_count: number;
-  delayed_count: number;
-  color: string;
-  desc: string;
-}
-
-interface QualityReconciliation {
-  avg_dispatch_fat: number;
-  avg_received_fat: number;
-  fat_variance: number;
-  avg_dispatch_snf: number;
-  avg_received_snf: number;
-  snf_variance: number;
-  avg_temperature: number | null;
-  temp_compliant_pct: number;
-  organoleptic_satisfied_pct: number;
-}
-
-interface ActiveInPlantTanker {
-  id: string;
-  tanker_number: string;
-  dc_number: string;
-  bmc_name: string;
-  bmc_code: string;
-  current_stage_key: string;
-  current_stage_title: string;
-  stage_color: string;
-  waiting_team: string;
-  waiting_team_label: string;
-  waiting_since_minutes: number;
-  is_over_limit: boolean;
+interface DailyTrend {
+  date: string;
+  dispatched_count: number;
   dispatched_litres: number;
-  compartments_count: number;
-  driver_name: string;
+  received_count: number;
+  received_litres: number;
+  transit_loss_litres: number;
+  qc_rejected_count: number;
+  avg_turnaround_min: number | null;
 }
 
 interface ProcessAnalyticsResponse {
   period: string;
   date_range: { from: string; to: string };
   kpis: ProcessKPIs;
-  pipeline: ProcessPipelineStage[];
-  quality_reconciliation: QualityReconciliation;
-  active_tankers: ActiveInPlantTanker[];
-  daily_trend: Array<{
-    date: string;
-    dispatched_count: number;
-    dispatched_litres: number;
-    received_count: number;
-    received_litres: number;
-    transit_loss_litres: number;
-    qc_rejected_count: number;
-    avg_turnaround_min: number | null;
-  }>;
+  daily_trend: DailyTrend[];
 }
+
+interface StockSummary {
+  collected_net_qty: number;
+  dispatched_qty: number;
+  available_stock_qty: number;
+}
+
+interface MilkRow { date: string; quantity_litres: number; rejection_qty?: number | null }
+
+type DayRow = DailyTrend & { collected_litres: number };
 
 export default function UnitDashboard() {
   const { profile } = useAuth();
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { settings } = useDairyUnitSettings();
 
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('today');
   const [customFrom, setCustomFrom] = useState(() => getLocalTodayIso());
   const [customTo, setCustomTo] = useState(() => getLocalTodayIso());
   const [appliedCustom, setAppliedCustom] = useState(() => ({ from: getLocalTodayIso(), to: getLocalTodayIso() }));
 
-  const [processData, setProcessData] = useState<ProcessAnalyticsResponse | null>(null);
-  const [tankers, setTankers] = useState<any[]>([]);
-  const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [data, setData] = useState<ProcessAnalyticsResponse | null>(null);
+  const [stock, setStock] = useState<StockSummary | null>(null);
+  const [collectedByDay, setCollectedByDay] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -132,14 +74,20 @@ export default function UnitDashboard() {
         params.from = appliedCustom.from;
         params.to = appliedCustom.to;
       }
-      const [procRes, tkRes] = await Promise.all([
+      const [procRes, stockRes] = await Promise.all([
         api.get<ProcessAnalyticsResponse>('/analytics/process', { params }),
-        api.get<any[]>('/tanker', { params: { status: 'all' } }).catch(() => ({ data: [] })),
+        api.get<StockSummary>('/tanker/stock').catch(() => ({ data: null })),
       ]);
-      setProcessData(procRes.data);
-      setTankers(tkRes.data || []);
+      setData(procRes.data);
+      setStock(stockRes.data);
+      const milk = await api.get<MilkRow[]>('/milk', { params: { from: procRes.data.date_range.from, to: procRes.data.date_range.to } });
+      const byDay: Record<string, number> = {};
+      for (const m of milk.data || []) {
+        byDay[m.date] = (byDay[m.date] ?? 0) + Number(m.quantity_litres) - Number(m.rejection_qty ?? 0);
+      }
+      setCollectedByDay(byDay);
     } catch (err: unknown) {
-      setError((err as Error)?.message || 'Failed to load process analytics.');
+      setError((err as Error)?.message || 'Failed to load analytics.');
     } finally {
       setLoading(false);
     }
@@ -149,120 +97,46 @@ export default function UnitDashboard() {
     void fetchData();
   }, [fetchData]);
 
-  const rangeFrom = processData?.date_range?.from;
-  const rangeTo = processData?.date_range?.to;
+  const rangeFrom = data?.date_range?.from;
+  const rangeTo = data?.date_range?.to;
+  const unitHeading = profile?.bmcs ? `${profile.bmcs.name} · ${profile.bmcs.bmc_code}` : profile?.full_name ?? 'BMC Unit';
+  const totalCollected = Object.values(collectedByDay).reduce((s, v) => s + v, 0);
 
-  const formatDuration = (mins: number | null | undefined) => {
-    if (mins == null) return 'N/A';
-    if (mins < 60) return `${mins}m`;
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return `${h}h ${m}m`;
-  };
+  const rows: DayRow[] = useMemo(() => {
+    if (!data) return [];
+    const byDate = new Map<string, DayRow>();
+    for (const d of data.daily_trend) byDate.set(d.date, { ...d, collected_litres: collectedByDay[d.date] ?? 0 });
+    for (const [date, litres] of Object.entries(collectedByDay)) {
+      if (!byDate.has(date)) {
+        byDate.set(date, { date, dispatched_count: 0, dispatched_litres: 0, received_count: 0, received_litres: 0, transit_loss_litres: 0, qc_rejected_count: 0, avg_turnaround_min: null, collected_litres: litres });
+      }
+    }
+    return [...byDate.values()].sort((a, b) => b.date.localeCompare(a.date));
+  }, [data, collectedByDay]);
 
-  const kpis = processData?.kpis;
-  const totalCompleted = (kpis?.completed_count ?? 0) + (kpis?.qc_rejected_count ?? 0);
-  const qcAcceptanceRate =
-    totalCompleted > 0
-      ? (((kpis?.completed_count ?? 0) / totalCompleted) * 100).toFixed(1)
-      : '100.0';
+  const sum = (f: (r: DayRow) => number) => rows.reduce((s, r) => s + f(r), 0);
 
-  const unitHeading = profile?.bmcs
-    ? `${profile.bmcs.name} · ${profile.bmcs.bmc_code}`
-    : profile?.full_name ?? 'BMC Unit';
-
-  // Delayed tankers alert check
-  const delayedActiveTankers = processData?.active_tankers.filter((t) => t.is_over_limit) ?? [];
-
-  // Daily trend columns
-  const dailyColumns: DataColumn<{
-    date: string;
-    dispatched_count: number;
-    dispatched_litres: number;
-    received_count: number;
-    received_litres: number;
-    transit_loss_litres: number;
-    qc_rejected_count: number;
-    avg_turnaround_min: number | null;
-  }>[] = [
+  const columns: DataColumn<DayRow>[] = [
+    { key: 'date', header: 'Date', sortValue: (d) => d.date, render: (d) => <strong>{formatDateDDMMYYYY(d.date)}</strong>, footerCell: <strong>Total</strong> },
+    { key: 'collected', header: 'Collected (L)', align: 'right', sortValue: (d) => d.collected_litres, render: (d) => formatLitres(d.collected_litres, 1), footerCell: <strong>{formatLitres(sum((r) => r.collected_litres), 1)}</strong> },
+    { key: 'dispatched', header: 'Dispatched (L)', align: 'right', sortValue: (d) => d.dispatched_litres, render: (d) => <>{formatLitres(d.dispatched_litres, 1)} <span style={{ fontSize: '0.75rem', color: '#64748b' }}>({d.dispatched_count} trips)</span></>, footerCell: <strong>{formatLitres(sum((r) => r.dispatched_litres), 1)}</strong> },
+    { key: 'received', header: 'Received at Dairy (L)', align: 'right', sortValue: (d) => d.received_litres, render: (d) => (d.received_litres > 0 ? formatLitres(d.received_litres, 1) : '-'), footerCell: <strong>{formatLitres(sum((r) => r.received_litres), 1)}</strong> },
     {
-      key: 'date',
-      header: 'Date',
-      sortValue: (d) => d.date,
-      render: (d) => <span style={{ fontWeight: 600 }}>{formatDateDDMMYYYY(d.date)}</span>,
-    },
-    {
-      key: 'dispatched_litres',
-      header: 'Dispatched (L)',
-      sortValue: (d) => d.dispatched_litres,
-      render: (d) => (
-        <span>
-          <strong>{formatLitres(d.dispatched_litres, 1)}</strong>{' '}
-          <span style={{ fontSize: '0.75rem', color: '#64748b' }}>({d.dispatched_count} trips)</span>
-        </span>
-      ),
-    },
-    {
-      key: 'received_litres',
-      header: 'Silo Received (L)',
-      sortValue: (d) => d.received_litres,
-      render: (d) => (
-        <span style={{ color: '#047857', fontWeight: 600 }}>
-          {formatLitres(d.received_litres, 1)}
-        </span>
-      ),
-    },
-    {
-      key: 'transit_loss_litres',
-      header: 'Transit Loss',
-      sortValue: (d) => d.transit_loss_litres,
+      key: 'loss', header: 'Transit Loss', align: 'right', sortValue: (d) => d.transit_loss_litres,
       render: (d) => {
-        const loss = d.transit_loss_litres;
-        const pct = d.dispatched_litres > 0 ? (loss / d.dispatched_litres) * 100 : 0;
-        const isHigh = pct >= 0.5;
-        return (
-          <span style={{ color: isHigh ? '#dc2626' : '#475569', fontWeight: 600 }}>
-            {loss > 0 ? `-${formatLitres(loss, 1)}` : '0.0 L'}{' '}
-            <span style={{ fontSize: '0.75rem' }}>({pct.toFixed(2)}%)</span>
-          </span>
-        );
+        const pct = d.dispatched_litres > 0 ? (d.transit_loss_litres / d.dispatched_litres) * 100 : 0;
+        return <span style={{ color: pct >= 0.5 ? '#dc2626' : '#475569', fontWeight: 600 }}>{d.transit_loss_litres > 0 ? `-${formatLitres(d.transit_loss_litres, 1)}` : '0.0 L'} <span style={{ fontSize: '0.75rem' }}>({pct.toFixed(2)}%)</span></span>;
       },
-    },
-    {
-      key: 'qc_rejected_count',
-      header: 'QC Rejected',
-      sortValue: (d) => d.qc_rejected_count,
-      render: (d) =>
-        d.qc_rejected_count > 0 ? (
-          <span style={{ color: '#dc2626', fontWeight: 700 }}>{d.qc_rejected_count} trips</span>
-        ) : (
-          <span style={{ color: '#16a34a', fontWeight: 600 }}>0</span>
-        ),
-    },
-    {
-      key: 'avg_turnaround_min',
-      header: 'Avg Turnaround',
-      sortValue: (d) => d.avg_turnaround_min ?? 0,
-      render: (d) => <span>{formatDuration(d.avg_turnaround_min)}</span>,
+      footerCell: <strong>{formatLitres(sum((r) => r.transit_loss_litres), 1)}</strong>,
     },
   ];
 
   return (
     <Page>
-      {/* Top Header */}
-      <PageHeader title={<>{unitHeading} Process Analytics</>} subtitle={<><div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-            <span style={{ fontSize: '1.4rem' }}>🥛</span>
-            
-          </div>
-          {rangeFrom && rangeTo && (
-            <div style={{ margin: '2px 0 0 0', fontSize: '0.86rem', color: '#64748b' }}>
-              <strong style={{ color: '#334155' }}>
-                {formatDateDDMMYYYY(rangeFrom)} to {formatDateDDMMYYYY(rangeTo)}
-              </strong>
-            </div>
-          )}</>}>
-
-        {/* Period Selector Tabs */}
+      <PageHeader
+        title={<>{unitHeading} Analytics</>}
+        subtitle={rangeFrom && rangeTo ? <>{formatDateDDMMYYYY(rangeFrom)} to {formatDateDDMMYYYY(rangeTo)}</> : undefined}
+      >
         <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <div className="period-tabs">
             {(['today', 'week', 'month', 'year', 'custom'] as const).map((pr) => (
@@ -311,500 +185,56 @@ export default function UnitDashboard() {
           >
             <span>+</span> Dispatch Tanker
           </button>
-        </div></PageHeader>
+        </div>
+      </PageHeader>
 
       {error && <ErrorBanner message={error} onRetry={fetchData} />}
 
-      {/* Delay Alert Banner */}
-      {delayedActiveTankers.length > 0 && (
-        <div
-          style={{
-            backgroundColor: '#fef2f2',
-            border: '1px solid #f87171',
-            borderRadius: 8,
-            padding: '12px 16px',
-            marginBottom: '1.25rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            boxShadow: '0 1px 3px rgba(220, 38, 38, 0.1)',
-          }}
-        >
-          <span style={{ fontSize: '1.4rem' }}>⚠️</span>
-          <div style={{ flex: 1 }}>
-            <strong style={{ color: '#991b1b', fontSize: '0.92rem' }}>
-              SLA Delay Alert ({delayedActiveTankers.length} {delayedActiveTankers.length === 1 ? 'tanker' : 'tankers'} delayed):
-            </strong>
-            <div style={{ fontSize: '0.84rem', color: '#7f1d1d', marginTop: 2 }}>
-              {delayedActiveTankers.map((t) => (
-                <span key={t.id} style={{ marginRight: 16 }}>
-                  • <strong>{t.tanker_number}</strong> (DC #{t.dc_number}): waiting at{' '}
-                  <strong style={{ textDecoration: 'underline' }}>{t.current_stage_title}</strong> for{' '}
-                  <strong>{t.waiting_team_label}</strong> team ({formatDuration(t.waiting_since_minutes)})
-                </span>
-              ))}
-            </div>
-          </div>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => navigate('/bmc/records?status=waiting')}
-            style={{ fontSize: '0.78rem', height: 28, padding: '0 10px', whiteSpace: 'nowrap' }}
-          >
-            Track in Records &rarr;
-          </button>
-        </div>
-      )}
-
       {loading ? (
         <>
-          <StatsGridSkeleton count={7} />
-          <TableSkeleton rows={4} cols={7} />
+          <StatsGridSkeleton count={4} />
+          <TableSkeleton rows={4} cols={5} />
         </>
-      ) : processData ? (
+      ) : data ? (
         <>
-          {/* 1. Dairy Journey Pipeline Stepper (7 Stages) */}
-          <div
-            className="card card-body"
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span>🔄</span> Live Dairy Plant Reception Pipeline (7 Stages)
-                </h3>
-                <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                  Real-time progression of tankers dispatched by {unitHeading}
-                </span>
-              </div>
-              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>
-                Active in Plant: <strong style={{ color: 'var(--primary)' }}>{processData.kpis.active_in_plant_count}</strong>
-              </span>
-            </div>
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-                gap: 8,
-              }}
-            >
-              {processData.pipeline.map((stage, idx) => {
-                const isActive = stage.active_count > 0;
-                const hasDelay = stage.delayed_count > 0;
-                return (
-                  <div
-                    key={stage.key}
-                    style={{
-                      border: `1.5px solid ${hasDelay ? '#ef4444' : isActive ? stage.color : '#e2e8f0'}`,
-                      backgroundColor: hasDelay ? '#fef2f2' : isActive ? '#f0f9ff' : '#f8fafc',
-                      borderRadius: 8,
-                      padding: '10px 12px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      minHeight: 88,
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b' }}>
-                          STEP {idx + 1}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: '0.68rem',
-                            fontWeight: 700,
-                            padding: '1px 6px',
-                            borderRadius: 4,
-                            backgroundColor: '#e2e8f0',
-                            color: '#475569',
-                          }}
-                        >
-                          {stage.team_label}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', lineHeight: 1.25 }}>
-                        {stage.title}
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-                      <span
-                        style={{
-                          fontSize: '1.1rem',
-                          fontWeight: 800,
-                          color: hasDelay ? '#dc2626' : isActive ? 'var(--primary-dark)' : '#94a3b8',
-                        }}
-                      >
-                        {stage.active_count}
-                      </span>
-                      {hasDelay && (
-                        <span
-                          style={{
-                            fontSize: '0.66rem',
-                            fontWeight: 800,
-                            color: '#ffffff',
-                            backgroundColor: '#ef4444',
-                            padding: '1px 5px',
-                            borderRadius: 4,
-                          }}
-                        >
-                          {stage.delayed_count} DELAYED
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 2. Process KPIs Grid */}
-          <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
+          <div className="stats-grid">
+            <StatCard label="Total Litres Collected" value={formatLitres(totalCollected, 1)} sub="Milk entered in this period" onClick={() => navigate('/bmc/milk-entry')} />
+            <StatCard label="Dispatched" value={formatLitres(data.kpis.total_dispatched_litres, 1)} sub={`${data.kpis.total_dispatched_count} tankers`} onClick={() => navigate('/bmc/records')} />
             <StatCard
-              label="Total Dispatched"
-              value={formatLitres(processData.kpis.total_dispatched_litres, 1)}
-              sub={`${processData.kpis.total_dispatched_count} outward trips`}
-              onClick={() => navigate('/bmc/records')}
-            />
-            <StatCard
-              label="Active in Plant"
-              value={`${processData.kpis.active_in_plant_count} tankers`}
-              sub="Navigating dairy stages"
-              valueTone={processData.kpis.active_in_plant_count > 0 ? 'warning' : undefined}
-              onClick={() => navigate('/bmc/records?status=waiting')}
-            />
-            <StatCard
-              label="Received in Silos"
-              value={formatLitres(processData.kpis.completed_litres, 1)}
-              sub={`${processData.kpis.completed_count} trips completed`}
-              positive={processData.kpis.completed_count > 0}
-              onClick={() => navigate('/bmc/records?status=processed')}
+              label="Available to Dispatch"
+              value={formatLitres(stock?.available_stock_qty ?? 0, 1)}
+              positive={(stock?.available_stock_qty ?? 0) > 0}
+              sub="Collected minus dispatched (all time)"
+              onClick={() => navigate('/bmc/tanker')}
             />
             <StatCard
               label="Transit Loss"
-              value={`${formatLitres(processData.kpis.transit_loss_litres, 1)} (${processData.kpis.transit_loss_pct.toFixed(2)}%)`}
-              valueTone={
-                processData.kpis.transit_loss_tone === 'green'
-                  ? 'positive'
-                  : processData.kpis.transit_loss_tone === 'amber'
-                  ? 'warning'
-                  : 'negative'
-              }
-              sub={
-                processData.kpis.transit_loss_tone === 'green'
-                  ? 'Within threshold (≤ 0.5%)'
-                  : 'Attention needed'
-              }
-              positive={processData.kpis.transit_loss_tone === 'green'}
-              onClick={() => navigate('/bmc/records')}
-            />
-            <StatCard
-              label="QC Acceptance"
-              value={`${qcAcceptanceRate}%`}
-              sub={`${processData.kpis.qc_rejected_count} rejected`}
-              valueTone={processData.kpis.qc_rejected_count > 0 ? 'negative' : 'positive'}
-              positive={processData.kpis.qc_rejected_count === 0}
-              onClick={() => navigate('/bmc/records?status=rejected')}
-            />
-            <StatCard
-              label="Avg Turnaround"
-              value={formatDuration(processData.kpis.avg_plant_turnaround_min)}
-              sub="Gate In to Gate Out"
-              onClick={() => navigate('/bmc/records')}
-            />
-            <StatCard
-              label="SLA Compliance"
-              value={`${processData.kpis.sla_compliance_pct}%`}
-              sub={`${processData.kpis.sla_delayed_count} delayed stages`}
-              valueTone={processData.kpis.sla_compliance_pct >= 90 ? 'positive' : 'warning'}
-              positive={processData.kpis.sla_compliance_pct >= 90}
+              value={`${formatLitres(data.kpis.transit_loss_litres, 1)} (${data.kpis.transit_loss_pct}%)`}
+              valueTone={data.kpis.transit_loss_tone === 'red' ? 'negative' : data.kpis.transit_loss_tone === 'amber' ? 'warning' : 'positive'}
+              sub={data.kpis.completed_count > 0 ? `Across ${data.kpis.completed_count} received trips` : 'Waiting for receipts'}
               onClick={() => navigate('/bmc/records')}
             />
           </div>
 
-          {/* 3. Process Quality & Chemical Reconciliation Card */}
-          <div
-            className="card card-body"
-          >
-            <h2 style={{ fontSize: '1rem', fontWeight: 800, margin: '0 0 0.9rem 0', color: '#1e293b' }}>
-              🧪 Process Quality &amp; Chemical Reconciliation (BMC vs Plant Receipt)
-            </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 14px', backgroundColor: '#f8fafc' }}>
-                <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>FAT Reconciliation</div>
-                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#1e293b' }}>
-                  {processData.quality_reconciliation.avg_dispatch_fat}% &rarr; {processData.quality_reconciliation.avg_received_fat}%
-                </div>
-                <div
-                  style={{
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    color: processData.quality_reconciliation.fat_variance < -0.1 ? '#dc2626' : '#16a34a',
-                    marginTop: 4,
-                  }}
-                >
-                  Variance: {processData.quality_reconciliation.fat_variance > 0 ? `+${processData.quality_reconciliation.fat_variance}%` : `${processData.quality_reconciliation.fat_variance}%`}
-                </div>
-              </div>
+          <MilkVolumeChart
+            data={data.daily_trend}
+            title="Daily Milk Volume: Dispatched vs Received"
+            emptyActionLabel="Dispatch Tanker"
+            onEmptyAction={() => navigate('/bmc/tanker')}
+          />
 
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 14px', backgroundColor: '#f8fafc' }}>
-                <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>SNF Reconciliation</div>
-                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#1e293b' }}>
-                  {processData.quality_reconciliation.avg_dispatch_snf}% &rarr; {processData.quality_reconciliation.avg_received_snf}%
-                </div>
-                <div
-                  style={{
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    color: processData.quality_reconciliation.snf_variance < -0.1 ? '#dc2626' : '#16a34a',
-                    marginTop: 4,
-                  }}
-                >
-                  Variance: {processData.quality_reconciliation.snf_variance > 0 ? `+${processData.quality_reconciliation.snf_variance}%` : `${processData.quality_reconciliation.snf_variance}%`}
-                </div>
-              </div>
-
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 14px', backgroundColor: '#f8fafc' }}>
-                <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>Arrival Milk Temp</div>
-                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-dark)' }}>
-                  {processData.quality_reconciliation.avg_temperature != null ? `${processData.quality_reconciliation.avg_temperature}°C` : 'N/A'}
-                </div>
-                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#16a34a', marginTop: 4 }}>
-                  {processData.quality_reconciliation.temp_compliant_pct}% within &le; 4.5°C benchmark
-                </div>
-              </div>
-
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 14px', backgroundColor: '#f8fafc' }}>
-                <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>Organoleptic Pass Rate</div>
-                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#166534' }}>
-                  {processData.quality_reconciliation.organoleptic_satisfied_pct}% Satisfied
-                </div>
-                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 4 }}>
-                  Appearance, flavor, and sediment test
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Graphical Analytics (Clean & User-Friendly) */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.25rem', marginBottom: '1.25rem' }}>
-            <MilkVolumeChart
-              data={processData.daily_trend}
-              title="Daily Milk Volume: Dispatched vs Received"
-              emptyActionLabel="Dispatch Tanker"
-              onEmptyAction={() => navigate('/bmc/tanker')}
-            />
-
-            <TransitLossTrendChart
-              data={processData.daily_trend}
-              threshold={settings.transit_loss_warn_pct ?? 0.5}
-              title="Daily Transit Loss Trend & Threshold"
-            />
-          </div>
-
-          {/* 4. Outward Tanker Dispatches & Live Plant Status */}
-          <div
-            className="card card-body"
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>🥛</span> Outward Tanker Dispatches &amp; Live Plant Status ({tankers.length})
-                </h2>
-              </div>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => navigate('/bmc/records')}
-                style={{ fontSize: '0.8rem', fontWeight: 600 }}
-              >
-                View Full Audit Register &rarr;
-              </button>
-            </div>
-
-            {tankers.length === 0 ? (
-              <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-                No outward tankers dispatched yet during this period.{' '}
-                <button
-                  type="button"
-                  onClick={() => navigate('/bmc/tanker')}
-                  style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer', padding: 0 }}
-                >
-                  Create first tanker dispatch
-                </button>
-              </div>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                  <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', textAlign: 'left', color: '#475569' }}>
-                      <th style={{ padding: '8px 10px' }}>Date</th>
-                      <th style={{ padding: '8px 10px' }}>Tanker / Lorry</th>
-                      <th style={{ padding: '8px 10px' }}>DC No</th>
-                      <th style={{ padding: '8px 10px' }}>Dispatched Litres</th>
-                      <th style={{ padding: '8px 10px' }}>Compartments</th>
-                      <th style={{ padding: '8px 10px' }}>Driver</th>
-                      <th style={{ padding: '8px 10px' }}>Destination</th>
-                      <th style={{ padding: '8px 10px' }}>Plant Stage</th>
-                      <th style={{ padding: '8px 10px' }}>Dairy Received</th>
-                      <th style={{ padding: '8px 10px' }}>Transit Loss</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'right' }}>Dossier</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tankers.slice(0, 15).map((t) => {
-                      const j = t.journey;
-                      const isRej = j?.isQcRejected || t.qc_status === 'rejected';
-                      const dc = t.dc_number || t.stage_data?.dc_number || t.stage_data?.vehicle_entered?.dc_number || '—';
-                      const comps = t.compartments || j?.compartments || t.stage_data?.compartments || [];
-                      const compCount = comps.length > 0 ? comps.length : 1;
-                      const calc = j?.calculated;
-
-                      return (
-                        <tr
-                          key={t.id}
-                          style={{
-                            borderBottom: '1px solid #f1f5f9',
-                            cursor: 'pointer',
-                          }}
-                          onClick={() => {
-                            setSelectedTrip(t);
-                            setDrawerOpen(true);
-                          }}
-                        >
-                          <td style={{ padding: '8px 10px', color: '#64748b' }}>
-                            {t.created_at ? formatDateTimeDDMMYYYY(t.created_at) : formatDateDDMMYYYY(t.date)}
-                          </td>
-                          <td style={{ padding: '8px 10px', color: '#0f172a', fontWeight: 700 }}>
-                            {t.tanker_number}
-                          </td>
-                          <td style={{ padding: '8px 10px', color: 'var(--primary)', fontWeight: 600 }}>
-                            #{dc}
-                          </td>
-                          <td style={{ padding: '8px 10px', color: '#0f172a', fontWeight: 700 }}>
-                            {formatLitres(t.quantity_dispatched, 1)}
-                          </td>
-                          <td style={{ padding: '8px 10px', color: '#475569' }}>
-                            <span
-                              style={{
-                                backgroundColor: '#f1f5f9',
-                                color: '#334155',
-                                padding: '2px 6px',
-                                borderRadius: 4,
-                                fontWeight: 600,
-                                fontSize: '0.72rem',
-                              }}
-                            >
-                              {compCount} {compCount === 1 ? 'Comp' : 'Comps'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '8px 10px', color: '#334155' }}>
-                            {t.driver_name || 'Driver'}
-                          </td>
-                          <td style={{ padding: '8px 10px', color: '#475569' }}>
-                            {t.destination || 'Namakkal Dairy'}
-                          </td>
-                          <td style={{ padding: '8px 10px' }}>
-                            {isRej ? (
-                              <span style={{ background: '#fee2e2', color: '#991b1b', padding: '2px 7px', borderRadius: 4, fontWeight: 700, fontSize: '0.72rem' }}>
-                                QC REJECTED
-                              </span>
-                            ) : (
-                              <span
-                                style={{
-                                  background: j?.stageColor?.badgeBg || 'var(--primary-light)',
-                                  color: j?.stageColor?.badgeText || 'var(--primary-dark)',
-                                  border: `1px solid ${j?.stageColor?.border || '#bae6fd'}`,
-                                  padding: '2px 7px',
-                                  borderRadius: 4,
-                                  fontWeight: 600,
-                                  fontSize: '0.72rem',
-                                }}
-                              >
-                                {j?.tripStatusLabel || 'Dispatched'}
-                              </span>
-                            )}
-                          </td>
-                          <td style={{ padding: '8px 10px', color: '#047857', fontWeight: 600 }}>
-                            {t.received_qty != null
-                              ? formatLitres(t.received_qty, 1)
-                              : calc?.received_litres != null
-                              ? formatLitres(calc.received_litres, 1)
-                              : '—'}
-                          </td>
-                          <td style={{ padding: '8px 10px' }}>
-                            {calc?.transit_loss_litres != null ? (
-                              <span
-                                style={{
-                                  color: calc.transit_loss_pct > 0.5 ? '#dc2626' : '#475569',
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {calc.transit_loss_litres > 0 ? `-${formatLitres(calc.transit_loss_litres, 1)}` : '0.0 L'}{' '}
-                                <span style={{ fontSize: '0.72rem' }}>
-                                  ({calc.transit_loss_pct?.toFixed(2)}%)
-                                </span>
-                              </span>
-                            ) : (
-                              <span style={{ color: '#94a3b8' }}>—</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '8px 10px', textAlign: 'right' }}>
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              style={{ fontSize: '0.75rem', height: '28px', padding: '0 10px', width: 'auto' }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedTrip(t);
-                                setDrawerOpen(true);
-                              }}
-                            >
-                              View Dossier
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* 5. Daily Activity & Trend Breakdown */}
-          {processData.daily_trend && processData.daily_trend.length > 0 && (
-            <div className="card table-card">
-              <div style={{ padding: '1rem 1.25rem 0.5rem' }}>
-                <h2 style={{ margin: 0, padding: 0, fontSize: '1rem', color: '#1e293b', fontWeight: 800 }}>
-                  📅 Daily Process Activity &amp; Loss Breakdown
-                </h2>
-                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                  Daily comparison of outward dispatch volume against plant silo receipt and transit loss
-                </span>
-              </div>
-
-              <DataTable
-                rows={processData.daily_trend}
-                columns={dailyColumns}
-                getRowKey={(d) => d.date}
-                emptyMessage="No daily activity recorded for this period."
-              />
-            </div>
-          )}
+          <DataTable
+            rows={rows}
+            columns={columns}
+            getRowKey={(d) => d.date}
+            searchable={false}
+            pageSize={25}
+            pageSizeOptions={[25, 50, 100]}
+            emptyMessage="No milk collected or dispatched in this period."
+            showTotalsRow
+          />
         </>
       ) : null}
-
-      {/* Tanker Dossier Drawer for BMC staff */}
-      <TankerDetailDrawer
-        isOpen={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        trip={selectedTrip}
-        onTripUpdated={fetchData}
-        isAdmin={false}
-      />
     </Page>
   );
 }
