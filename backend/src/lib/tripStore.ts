@@ -538,8 +538,21 @@ export async function fetchTrips(q: TripQuery): Promise<TripsResult> {
 
   let query = supabase.from('tanker_trips').select(TRIP_SELECT).eq('dairy_unit_id', q.dairyUnitId).neq('status', 'cancelled');
   if (tripIds) query = query.in('id', tripIds);
-  if (q.from) query = query.gte('trip_date', q.from);
-  if (q.to) query = query.lte('trip_date', q.to);
+  if (q.from && q.to) {
+    const fromIso = new Date(`${q.from}T00:00:00+05:30`).toISOString();
+    const toIso = new Date(`${q.to}T23:59:59.999+05:30`).toISOString();
+    query = query.or(
+      `and(trip_date.gte.${q.from},trip_date.lte.${q.to}),and(entered_at.gte.${fromIso},entered_at.lte.${toIso}),and(exited_at.gte.${fromIso},exited_at.lte.${toIso}),and(created_at.gte.${fromIso},created_at.lte.${toIso}),and(status.neq.exited,status.neq.cancelled)`,
+    );
+  } else if (q.from) {
+    const fromIso = new Date(`${q.from}T00:00:00+05:30`).toISOString();
+    query = query.or(
+      `trip_date.gte.${q.from},entered_at.gte.${fromIso},exited_at.gte.${fromIso},created_at.gte.${fromIso},and(status.neq.exited,status.neq.cancelled)`,
+    );
+  } else if (q.to) {
+    const toIso = new Date(`${q.to}T23:59:59.999+05:30`).toISOString();
+    query = query.or(`trip_date.lte.${q.to},entered_at.lte.${toIso},exited_at.lte.${toIso},created_at.lte.${toIso}`);
+  }
   if (q.openOnly) query = query.is('exited_at', null);
   if (q.tripKey) {
     const key = idLookup(q.tripKey);
