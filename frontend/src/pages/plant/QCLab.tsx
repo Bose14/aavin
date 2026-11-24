@@ -1216,11 +1216,6 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     'Adulteration detected',
   ];
 
-  const waitingQcCount = qcEligibleTankers.length;
-  const waitingCipCount = cipEligibleTankers.length;
-  const passedCount = tankers.filter((t) => t.stage_data?.qc_completed?.qc_status === 'accepted').length;
-  const rejectedCount = tankers.filter((t) => t.stage_data?.qc_completed?.qc_status === 'rejected' || t.journey?.tripStatus === 'qc_rejected').length;
-
   // Search filter
   const matchesSearch = (t: any) => {
     if (!searchQuery.trim()) return true;
@@ -1272,48 +1267,6 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
           <button type="button" onClick={() => setSuccessMsg('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534' }}>✕</button>
         </div>
       )}
-
-      {/* QC Dashboard KPI Metric Cards */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '12px',
-          marginBottom: '1.25rem',
-        }}
-      >
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #fed7aa', borderLeft: '4px solid #ea580c', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#c2410c', textTransform: 'uppercase' }}>Waiting for QC</div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#9a3412', marginTop: '2px' }}>{waitingQcCount}</div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>Gross Weight done</div>
-        </div>
-
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #bae6fd', borderLeft: '4px solid #0284c7', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase' }}>Awaiting CIP</div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#075985', marginTop: '2px' }}>{waitingCipCount}</div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>Tare Weight done</div>
-        </div>
-
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #fef08a', borderLeft: '4px solid #d97706', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#b45309', textTransform: 'uppercase' }}>Awaiting Gate Pass</div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#92400e', marginTop: '2px' }}>{gatePassWaiters.length}</div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>CIP passed, ready for exit</div>
-        </div>
-
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #bbf7d0', borderLeft: '4px solid #16a34a', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>Gate Passes Issued</div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#14532d', marginTop: '2px' }}>{issuedGatePasses.length}</div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>Stored & ready to print</div>
-        </div>
-
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #475569', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#334155', textTransform: 'uppercase' }}>QC Accepted / Rej</div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-            <span style={{ color: '#16a34a' }}>{passedCount}</span> / <span style={{ color: '#dc2626' }}>{rejectedCount}</span>
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>Lab decisions</div>
-        </div>
-      </div>
 
       {/* Main Vehicle Sheet Container */}
       <div
