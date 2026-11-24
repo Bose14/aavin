@@ -322,7 +322,7 @@ export function DailyProfitLossChart({
                       y={0}
                       dy={8}
                       textAnchor="middle"
-                      fill={isSelected ? '#4f46e5' : CHART_COLORS.axis}
+                      fill={isSelected ? CHART_COLORS.primary : CHART_COLORS.axis}
                       fontWeight={isSelected ? 700 : 500}
                       fontSize={isSelected ? 13 : 11}
                       style={{ cursor: 'pointer' }}

@@ -54,7 +54,7 @@ export default function ChangePassword() {
       <div className="auth-card">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.25rem' }}>
           <img src={aavinLogo} alt="Aavin" style={{ height: '36px', width: 'auto', objectFit: 'contain' }} />
-          <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e3a8a' }}>Security Setup</span>
+          <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--primary-dark)' }}>Security Setup</span>
         </div>
         <h1>Set your new password</h1>
         <p className="auth-subtitle">

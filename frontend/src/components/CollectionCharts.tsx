@@ -224,7 +224,7 @@ export function MilkCollectionTrendChart({
                       y={0}
                       dy={8}
                       textAnchor="middle"
-                      fill={isSelected ? '#4f46e5' : CHART_COLORS.axis}
+                      fill={isSelected ? CHART_COLORS.primary : CHART_COLORS.axis}
                       fontWeight={isSelected ? 700 : 500}
                       fontSize={isSelected ? 13 : 11}
                       style={{ cursor: 'pointer' }}
@@ -373,7 +373,7 @@ export function QualityTrendChart({
                       y={0}
                       dy={8}
                       textAnchor="middle"
-                      fill={isSelected ? '#4f46e5' : CHART_COLORS.axis}
+                      fill={isSelected ? CHART_COLORS.primary : CHART_COLORS.axis}
                       fontWeight={isSelected ? 700 : 500}
                       fontSize={isSelected ? 13 : 11}
                       style={{ cursor: 'pointer' }}
@@ -397,7 +397,7 @@ export function QualityTrendChart({
             <ReferenceLine y={fatBenchmark} stroke="#f59e0b" strokeDasharray="4 4" />
             <ReferenceLine y={snfBenchmark} stroke="#10b981" strokeDasharray="4 4" />
             {selectedDate && (
-              <ReferenceLine x={selectedDate} stroke="#4f46e5" strokeWidth={2} strokeDasharray="3 3" />
+              <ReferenceLine x={selectedDate} stroke={CHART_COLORS.primary} strokeWidth={2} strokeDasharray="3 3" />
             )}
             <Tooltip
               content={<QualityTooltip />}

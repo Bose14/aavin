@@ -42,9 +42,9 @@ interface MergedUserRecord {
 }
 
 const TEAM_COLOR_CONFIG: Record<string, { tone: 'indigo' | 'amber' | 'blue'; border: string; bg: string; dot: string }> = {
-  GATE: { tone: 'indigo', border: '#818cf8', bg: '#f5f3ff', dot: '#4f46e5' },
+  GATE: { tone: 'indigo', border: '#7dd3fc', bg: '#f0f9ff', dot: '#258bd6' },
   QC: { tone: 'amber', border: '#fbbf24', bg: '#fffbeb', dot: '#d97706' },
-  UNLOADING: { tone: 'blue', border: '#60a5fa', bg: '#eff6ff', dot: '#2563eb' },
+  UNLOADING: { tone: 'blue', border: '#60a5fa', bg: '#eff6ff', dot: '#0284c7' },
 };
 
 export default function AdminTeams() {

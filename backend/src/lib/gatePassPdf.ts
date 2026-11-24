@@ -92,7 +92,7 @@ export function buildGatePassPdf(input: GatePassPdfInput): Promise<Buffer> {
     });
 
     // 5. Gate Pass Serial Number (top right)
-    const passNo = (input.gate_pass_no || '000001').replace(/\D/g, '').padStart(6, '0').slice(-6);
+    const formattedPassNo = (input.gate_pass_no || '000001').replace(/\D/g, '').padStart(6, '0').slice(-6);
     const boxX = PAGE_W - margin - 120;
     const boxY = margin + 12;
 
@@ -103,7 +103,7 @@ export function buildGatePassPdf(input: GatePassPdfInput): Promise<Buffer> {
     for (let i = 0; i < 6; i++) {
       const dx = boxX + i * digitW;
       doc.rect(dx, boxY, digitW, digitH).lineWidth(0.8).strokeColor('#991b1b').stroke();
-      doc.fillColor('#991b1b').font('Courier-Bold').fontSize(14).text(passNo[i] || '0', dx + 4, boxY + 3);
+      doc.fillColor('#991b1b').font('Courier-Bold').fontSize(14).text(formattedPassNo[i] || '0', dx + 4, boxY + 3);
     }
 
     // 6. Date & Time Row
