@@ -377,7 +377,7 @@ export default function UnitDashboard() {
                 </span>
               </div>
               <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>
-                Active in Plant: <strong style={{ color: '#0284c7' }}>{processData.kpis.active_in_plant_count}</strong>
+                Active in Plant: <strong style={{ color: 'var(--primary)' }}>{processData.kpis.active_in_plant_count}</strong>
               </span>
             </div>
 
@@ -434,7 +434,7 @@ export default function UnitDashboard() {
                         style={{
                           fontSize: '1.1rem',
                           fontWeight: 800,
-                          color: hasDelay ? '#dc2626' : isActive ? '#0369a1' : '#94a3b8',
+                          color: hasDelay ? '#dc2626' : isActive ? 'var(--primary-dark)' : '#94a3b8',
                         }}
                       >
                         {stage.active_count}
@@ -568,7 +568,7 @@ export default function UnitDashboard() {
 
               <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 14px', backgroundColor: '#f8fafc' }}>
                 <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>Arrival Milk Temp</div>
-                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0369a1' }}>
+                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-dark)' }}>
                   {processData.quality_reconciliation.avg_temperature != null ? `${processData.quality_reconciliation.avg_temperature}°C` : 'N/A'}
                 </div>
                 <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#16a34a', marginTop: 4 }}>
@@ -630,7 +630,7 @@ export default function UnitDashboard() {
                 <button
                   type="button"
                   onClick={() => navigate('/bmc/tanker')}
-                  style={{ background: 'none', border: 'none', color: '#0284c7', fontWeight: 600, cursor: 'pointer', padding: 0 }}
+                  style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer', padding: 0 }}
                 >
                   Create first tanker dispatch
                 </button>
@@ -680,7 +680,7 @@ export default function UnitDashboard() {
                           <td style={{ padding: '8px 10px', color: '#0f172a', fontWeight: 700 }}>
                             {t.tanker_number}
                           </td>
-                          <td style={{ padding: '8px 10px', color: '#0284c7', fontWeight: 600 }}>
+                          <td style={{ padding: '8px 10px', color: 'var(--primary)', fontWeight: 600 }}>
                             #{dc}
                           </td>
                           <td style={{ padding: '8px 10px', color: '#0f172a', fontWeight: 700 }}>
@@ -714,8 +714,8 @@ export default function UnitDashboard() {
                             ) : (
                               <span
                                 style={{
-                                  background: j?.stageColor?.badgeBg || '#e0f2fe',
-                                  color: j?.stageColor?.badgeText || '#0369a1',
+                                  background: j?.stageColor?.badgeBg || 'var(--primary-light)',
+                                  color: j?.stageColor?.badgeText || 'var(--primary-dark)',
                                   border: `1px solid ${j?.stageColor?.border || '#bae6fd'}`,
                                   padding: '2px 7px',
                                   borderRadius: 4,

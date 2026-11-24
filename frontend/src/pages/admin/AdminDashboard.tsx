@@ -340,7 +340,7 @@ export default function AdminDashboard() {
             {t.tanker_number}
           </button>
           <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-            DC #{t.dc_number || '-'} · <span style={{ fontWeight: 600, color: '#0369a1' }}>{t.compartments_count} Comp</span>
+            DC #{t.dc_number || '-'} · <span style={{ fontWeight: 600, color: 'var(--primary-dark)' }}>{t.compartments_count} Comp</span>
           </div>
         </div>
       ),
@@ -397,7 +397,7 @@ export default function AdminDashboard() {
                 : '#f1f5f9',
             color:
               t.waiting_team === 'gate'
-                ? '#0369a1'
+                ? 'var(--primary-dark)'
                 : t.waiting_team === 'qc'
                 ? '#92400e'
                 : t.waiting_team === 'unloading'
@@ -453,7 +453,7 @@ export default function AdminDashboard() {
           </div>
           {rangeFrom && rangeTo && (
             <div style={{ margin: '4px 0 0 0', fontSize: '0.86rem', color: '#64748b' }}>
-              <strong style={{ color: '#0369a1' }}>{formatDateDDMMYYYY(rangeFrom)} to {formatDateDDMMYYYY(rangeTo)}</strong>
+              <strong style={{ color: 'var(--primary-dark)' }}>{formatDateDDMMYYYY(rangeFrom)} to {formatDateDDMMYYYY(rangeTo)}</strong>
             </div>
           )}</>}>
 
@@ -472,7 +472,7 @@ export default function AdminDashboard() {
                   fontSize: '0.82rem',
                   fontWeight: period === pr ? 700 : 500,
                   cursor: 'pointer',
-                  backgroundColor: period === pr ? '#0284c7' : 'transparent',
+                  backgroundColor: period === pr ? 'var(--primary)' : 'transparent',
                   color: period === pr ? '#ffffff' : '#475569',
                 }}
               >
@@ -589,7 +589,7 @@ export default function AdminDashboard() {
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: '0.82rem', color: '#0369a1', fontWeight: 700, backgroundColor: '#e0f2fe', padding: '3px 8px', borderRadius: 4 }}>
+                <span style={{ fontSize: '0.82rem', color: 'var(--primary-dark)', fontWeight: 700, backgroundColor: 'var(--primary-light)', padding: '3px 8px', borderRadius: 4 }}>
                   Total: {processData.kpis.total_dispatched_count} Dispatches
                 </span>
               </div>
@@ -620,7 +620,7 @@ export default function AdminDashboard() {
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.borderColor = '#0284c7';
+                    e.currentTarget.style.borderColor = 'var(--primary)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.transform = 'translateY(0)';
@@ -664,7 +664,7 @@ export default function AdminDashboard() {
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px', marginTop: 'auto' }}>
-                    <span style={{ fontSize: '1.35rem', fontWeight: 800, color: st.active_count > 0 ? '#0284c7' : '#94a3b8' }}>
+                    <span style={{ fontSize: '1.35rem', fontWeight: 800, color: st.active_count > 0 ? 'var(--primary)' : '#94a3b8' }}>
                       {st.active_count}
                     </span>
                     <span style={{ fontSize: '0.72rem', color: '#64748b' }}>active</span>
@@ -749,7 +749,7 @@ export default function AdminDashboard() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: '1.25rem' }}>🚪</span>
-                  <strong style={{ fontSize: '0.95rem', color: '#0369a1' }}>Gate Operations Team</strong>
+                  <strong style={{ fontSize: '0.95rem', color: 'var(--primary-dark)' }}>Gate Operations Team</strong>
                 </div>
                 <StatusBadge tone={processData.team_performance.gate.active_queue > 0 ? 'amber' : 'green'}>
                   {processData.team_performance.gate.active_queue} in queue
@@ -758,7 +758,7 @@ export default function AdminDashboard() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.82rem' }}>
                 <div style={{ background: '#ffffff', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
                   <div style={{ color: '#64748b' }}>Total Gate Ops</div>
-                  <div style={{ fontWeight: 800, fontSize: '1.15rem', color: '#0369a1', marginTop: 2 }}>
+                  <div style={{ fontWeight: 800, fontSize: '1.15rem', color: 'var(--primary-dark)', marginTop: 2 }}>
                     {processData.team_performance.gate.total_ops}
                   </div>
                 </div>
@@ -809,7 +809,7 @@ export default function AdminDashboard() {
                 </div>
                 <div style={{ background: '#ffffff', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
                   <div style={{ color: '#64748b' }}>CIP Cleanings</div>
-                  <div style={{ fontWeight: 800, fontSize: '1.15rem', color: '#0369a1', marginTop: 2 }}>
+                  <div style={{ fontWeight: 800, fontSize: '1.15rem', color: 'var(--primary-dark)', marginTop: 2 }}>
                     {processData.team_performance.qc.cip_cleanings_count}
                   </div>
                 </div>
@@ -836,7 +836,7 @@ export default function AdminDashboard() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.82rem' }}>
                 <div style={{ background: '#ffffff', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
                   <div style={{ color: '#64748b' }}>Tankers Unloaded</div>
-                  <div style={{ fontWeight: 800, fontSize: '1.15rem', color: '#0369a1', marginTop: 2 }}>
+                  <div style={{ fontWeight: 800, fontSize: '1.15rem', color: 'var(--primary-dark)', marginTop: 2 }}>
                     {processData.team_performance.unloading.total_unloaded}
                   </div>
                 </div>
@@ -890,7 +890,7 @@ export default function AdminDashboard() {
 
               <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 14px', backgroundColor: '#f8fafc' }}>
                 <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>Arrival Milk Temp</div>
-                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0369a1' }}>
+                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-dark)' }}>
                   {processData.quality_reconciliation.avg_temperature != null ? `${processData.quality_reconciliation.avg_temperature}°C` : 'N/A'}
                 </div>
                 <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#16a34a', marginTop: 4 }}>

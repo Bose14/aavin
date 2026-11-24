@@ -782,7 +782,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                               {t.tanker_number}
                             </span>
                           </td>
-                          <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0284c7' }}>
+                          <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--primary)' }}>
                             #{dc}
                           </td>
                           <td style={{ padding: '10px 12px', color: '#334155' }}>
@@ -869,7 +869,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                               {t.tanker_number}
                             </span>
                           </td>
-                          <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0284c7' }}>
+                          <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--primary)' }}>
                             #{dc}
                           </td>
                           <td style={{ padding: '10px 12px', color: '#334155' }}>
@@ -956,7 +956,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                               {t.tanker_number}
                             </span>
                           </td>
-                          <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0284c7' }}>
+                          <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--primary)' }}>
                             #{dc}
                           </td>
                           <td style={{ padding: '10px 12px', color: '#334155' }}>
@@ -1041,7 +1041,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                               {t.tanker_number}
                             </span>
                           </td>
-                          <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0284c7' }}>
+                          <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--primary)' }}>
                             #{dc}
                           </td>
                           <td style={{ padding: '10px 12px', color: '#334155' }}>
@@ -1730,7 +1730,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                         width: 150,
                         height: 28,
                         padding: '2px 8px',
-                        border: '2px solid #0284c7',
+                        border: '2px solid var(--primary)',
                         borderRadius: 3,
                         fontWeight: 700,
                         fontSize: '0.95rem',

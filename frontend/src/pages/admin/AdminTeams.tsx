@@ -44,7 +44,7 @@ interface MergedUserRecord {
 const TEAM_COLOR_CONFIG: Record<string, { tone: 'indigo' | 'amber' | 'blue'; border: string; bg: string; dot: string }> = {
   GATE: { tone: 'indigo', border: '#7dd3fc', bg: '#f0f9ff', dot: '#258bd6' },
   QC: { tone: 'amber', border: '#fbbf24', bg: '#fffbeb', dot: '#d97706' },
-  UNLOADING: { tone: 'blue', border: '#60a5fa', bg: '#eff6ff', dot: '#0284c7' },
+  UNLOADING: { tone: 'blue', border: '#7dd3fc', bg: '#f0f9ff', dot: '#258bd6' },
 };
 
 export default function AdminTeams() {

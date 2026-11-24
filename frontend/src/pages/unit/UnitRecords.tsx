@@ -254,7 +254,7 @@ export default function UnitRecords() {
         const seal = r.seal_number || r.stage_data?.vehicle_entered?.seal_number;
         return (
           <div>
-            <div style={{ fontWeight: 700, color: '#0284c7', fontSize: '0.85rem' }}>
+            <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '0.85rem' }}>
               #{dc}
             </div>
             {seal && (
@@ -336,8 +336,8 @@ export default function UnitRecords() {
         return (
           <span
             style={{
-              backgroundColor: j?.stageColor?.badgeBg || '#e0f2fe',
-              color: j?.stageColor?.badgeText || '#0369a1',
+              backgroundColor: j?.stageColor?.badgeBg || 'var(--primary-light)',
+              color: j?.stageColor?.badgeText || 'var(--primary-dark)',
               border: `1px solid ${j?.stageColor?.border || '#bae6fd'}`,
               padding: '3px 8px',
               borderRadius: 5,
@@ -508,8 +508,8 @@ export default function UnitRecords() {
             fontSize: '0.88rem',
             fontWeight: 700,
             cursor: 'pointer',
-            color: statusTab === 'all' ? '#0284c7' : '#64748b',
-            borderBottom: statusTab === 'all' ? '3px solid #0284c7' : '3px solid transparent',
+            color: statusTab === 'all' ? 'var(--primary)' : '#64748b',
+            borderBottom: statusTab === 'all' ? '3px solid var(--primary)' : '3px solid transparent',
           }}
         >
           All Journeys ({tabCounts.all})
@@ -525,8 +525,8 @@ export default function UnitRecords() {
             fontSize: '0.88rem',
             fontWeight: 700,
             cursor: 'pointer',
-            color: statusTab === 'transit' ? '#0284c7' : '#64748b',
-            borderBottom: statusTab === 'transit' ? '3px solid #0284c7' : '3px solid transparent',
+            color: statusTab === 'transit' ? 'var(--primary)' : '#64748b',
+            borderBottom: statusTab === 'transit' ? '3px solid var(--primary)' : '3px solid transparent',
           }}
         >
           On the Way ({tabCounts.transit})
@@ -542,8 +542,8 @@ export default function UnitRecords() {
             fontSize: '0.88rem',
             fontWeight: 700,
             cursor: 'pointer',
-            color: statusTab === 'inside_plant' ? '#0284c7' : '#64748b',
-            borderBottom: statusTab === 'inside_plant' ? '3px solid #0284c7' : '3px solid transparent',
+            color: statusTab === 'inside_plant' ? 'var(--primary)' : '#64748b',
+            borderBottom: statusTab === 'inside_plant' ? '3px solid var(--primary)' : '3px solid transparent',
           }}
         >
           Inside Plant ({tabCounts.inside_plant})
@@ -559,8 +559,8 @@ export default function UnitRecords() {
             fontSize: '0.88rem',
             fontWeight: 700,
             cursor: 'pointer',
-            color: statusTab === 'completed' ? '#0284c7' : '#64748b',
-            borderBottom: statusTab === 'completed' ? '3px solid #0284c7' : '3px solid transparent',
+            color: statusTab === 'completed' ? 'var(--primary)' : '#64748b',
+            borderBottom: statusTab === 'completed' ? '3px solid var(--primary)' : '3px solid transparent',
           }}
         >
           Completed ({tabCounts.completed})
