@@ -671,3 +671,4 @@ input[type="checkbox"], input[type="radio"] {
 .card-toolbar { padding: 0.75rem 1rem; }
 .stats-grid { margin-bottom: 1.25rem; }
 @media (max-width: 720px) { .card-body { padding: 0.95rem; } .card-toolbar { padding: 0.7rem 0.75rem; } }
+.dt-filter input.dt-check { min-width: 0; width: 18px; height: 18px; padding: 0; }

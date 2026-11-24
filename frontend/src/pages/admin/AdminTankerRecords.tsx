@@ -9,7 +9,7 @@ import {
 } from '../../lib/format';
 import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
-import { ErrorBanner, TableSkeleton } from '../../components/UiPrimitives';
+import { ErrorBanner } from '../../components/UiPrimitives';
 import { TankerTimeline } from '../../components/TankerTimeline';
 import { TankerDetailDrawer } from '../../components/TankerDetailDrawer';
 import { StagePipeline } from '../../components/StagePipeline';
@@ -212,8 +212,8 @@ export default function AdminTankerRecords() {
   }, []);
 
   useEffect(() => {
-    if (selectedUnitId) void loadUnits();
-  }, [selectedUnitId, loadUnits]);
+    void loadUnits();
+  }, [loadUnits]);
 
   // Fetch Tanker Records and Stats
   const fetchData = useCallback(
@@ -745,168 +745,54 @@ export default function AdminTankerRecords() {
         </button>
       </div>
 
-      {/* 5. FILTERS & SEARCH TOOLBAR */}
-      <div
-        className="filter-bar card"
-        style={{
-          padding: '12px 16px',
-          marginBottom: '16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          backgroundColor: '#ffffff',
-          borderRadius: '8px',
-          border: '1px solid #e2e8f0',
-        }}
-      >
-        {/* Top Controls Row */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
-          {/* Search */}
-          <div style={{ flex: '1 1 240px', minWidth: '200px' }}>
-            <input
-              type="search"
-              placeholder="🔍 Search tanker, seal, driver, gate pass..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ width: '100%', height: '36px', padding: '0 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-            />
-          </div>
-
-          {/* BMC Filter */}
-          <select
-            value={selectedUnitId}
-            onChange={(e) => setSelectedUnitId(e.target.value)}
-            onFocus={() => void loadUnits()}
-            onMouseDown={() => void loadUnits()}
-            style={{ height: '36px', padding: '0 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff' }}
-          >
-            <option value="">All BMCs</option>
-            {units.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name} ({u.bmc_code})
-              </option>
-            ))}
-          </select>
-
-          {/* Waiting Team Filter */}
-          <select
-            value={waitingTeamFilter}
-            onChange={(e) => setWaitingTeamFilter(e.target.value)}
-            style={{ height: '36px', padding: '0 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff' }}
-          >
-            <option value="">All Teams</option>
-            <option value="gate">Gate</option>
-            <option value="qc">QC</option>
-            <option value="unloading">Unloading</option>
-            <option value="transit">Transit</option>
-          </select>
-
-          {/* Delayed Only Checkbox */}
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', height: '36px', padding: '0 10px', borderRadius: '6px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
-            <input
-              type="checkbox"
-              checked={delayedOnly}
-              onChange={(e) => setDelayedOnly(e.target.checked)}
-            />
-            <span style={{ color: delayedOnly ? '#dc2626' : '#334155', fontWeight: delayedOnly ? 700 : 500 }}>
-              Delayed Only
-            </span>
-          </label>
-
-          {/* Date filter */}
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', height: '36px' }}>
-            <select
-              value={datePreset}
-              onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              aria-label="Date filter"
-              style={{ height: '36px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-            >
-              <option value="today">Today</option>
-              <option value="yesterday">Yesterday</option>
-              <option value="this_week">This Week</option>
-              <option value="last_week">Last Week</option>
-              <option value="last_month">Last Month</option>
-              <option value="all">All Dates</option>
-              <option value="custom">Custom…</option>
-            </select>
-            {datePreset === 'custom' ? (
-              <>
-                <input
-                  type="date"
-                  value={customFrom}
-                  max={customTo || undefined}
-                  onChange={(e) => setCustomFrom(e.target.value)}
-                  aria-label="From date"
-                  style={{ height: '36px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-                />
-                <span style={{ color: '#64748b', fontSize: '12px' }}>to</span>
-                <input
-                  type="date"
-                  value={customTo}
-                  min={customFrom || undefined}
-                  onChange={(e) => setCustomTo(e.target.value)}
-                  aria-label="To date"
-                  style={{ height: '36px', padding: '0 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
-                />
-              </>
-            ) : (
-              <span style={{ color: '#64748b', fontSize: '12px' }}>
-                {datePreset === 'all'
-                  ? 'All Records'
-                  : fromDate === toDate
-                  ? formatDateDDMMYYYY(fromDate)
-                  : `${formatDateDDMMYYYY(fromDate)} – ${formatDateDDMMYYYY(toDate)}`}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Milk ACK Report download (uses the date filter above) */}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+      {/* Tanker table with its filters (common DataTable pattern) */}
+      <DataTable
+        filters={[
+          { key: 'search', label: 'Search', type: 'text', value: searchQuery, onChange: setSearchQuery, placeholder: 'Tanker, seal, driver, gate pass…' },
+          { key: 'bmc', label: 'BMC', type: 'select', value: selectedUnitId, onChange: setSelectedUnitId,
+            options: [{ value: '', label: 'All BMCs' }, ...units.map((u) => ({ value: u.id, label: `${u.name} (${u.bmc_code})` }))] },
+          { key: 'team', label: 'Team', type: 'select', value: waitingTeamFilter, onChange: setWaitingTeamFilter, options: [
+            { value: '', label: 'All Teams' }, { value: 'gate', label: 'Gate' }, { value: 'qc', label: 'QC' },
+            { value: 'unloading', label: 'Unloading' }, { value: 'transit', label: 'Transit' } ] },
+          { key: 'delayed', label: 'Delayed only', type: 'checkbox', value: delayedOnly ? 'true' : '', onChange: (v) => setDelayedOnly(v === 'true') },
+          { key: 'period', label: 'Period', type: 'select', value: datePreset, onChange: (v) => setDatePreset(v as DatePreset), options: [
+            { value: 'today', label: 'Today' }, { value: 'yesterday', label: 'Yesterday' }, { value: 'this_week', label: 'This Week' },
+            { value: 'last_week', label: 'Last Week' }, { value: 'last_month', label: 'Last Month' }, { value: 'all', label: 'All Dates' },
+            { value: 'custom', label: 'Custom…' } ] },
+          { key: 'from', label: 'From', type: 'date', value: customFrom, onChange: setCustomFrom, max: customTo || undefined, hidden: datePreset !== 'custom' },
+          { key: 'to', label: 'To', type: 'date', value: customTo, onChange: setCustomTo, min: customFrom || undefined, hidden: datePreset !== 'custom' },
+        ]}
+        filterActions={(
           <button
             type="button"
             onClick={handleExportMilkAck}
             disabled={!fromDate || !toDate || fromDate > toDate}
             className="btn btn-primary btn-sm"
-            style={{ height: '34px', fontSize: '12px', padding: '0 12px', fontWeight: 700, width: 'auto' }}
+            style={{ width: 'auto' }}
             title="Download the Milk ACK report for the selected dates"
           >
             🥛 Milk ACK Report (.xlsx)
           </button>
-        </div>
-      </div>
-
-      {/* 4. MAIN TANKER TABLE */}
-      {loading ? (
-        <TableSkeleton rows={8} cols={9} />
-      ) : records.length === 0 ? (
-        <div className="card" style={{ padding: '40px 20px', textAlign: 'center', color: '#64748b' }}>
-          <div style={{ fontSize: '28px', marginBottom: '8px' }}>🥛</div>
-          <h3 style={{ margin: '0 0 6px 0', fontSize: '16px', color: '#1e293b' }}>
-            {activeTab === 'waiting'
-              ? 'No tankers waiting. All caught up!'
-              : activeTab === 'processed'
-              ? 'No processed tankers found for the selected period.'
-              : activeTab === 'rejected'
-              ? 'No rejected tankers. Quality checks clean!'
-              : 'No tanker records found.'}
-          </h3>
-          <p style={{ margin: 0, fontSize: '13px' }}>
-            Try clearing filters or check back when new tanker dispatches are initiated.
-          </p>
-        </div>
-      ) : (
-        <div className="table-responsive">
-          <DataTable
-            rows={records}
-            columns={columns}
-            getRowKey={(r) => r.id}
-            searchable={false}
-            pageSize={20}
-            onRowClick={handleOpenDrawer}
-          />
-        </div>
-      )}
+        )}
+        rows={loading ? [] : records}
+        columns={columns}
+        getRowKey={(r) => r.id}
+        searchable={false}
+        pageSize={20}
+        pageSizeOptions={[20, 50, 100]}
+        onRowClick={handleOpenDrawer}
+        emptyMessage={
+          loading
+            ? 'Loading…'
+            : activeTab === 'waiting'
+            ? 'No tankers waiting. All caught up!'
+            : activeTab === 'processed'
+            ? 'No processed tankers found for the selected period.'
+            : activeTab === 'rejected'
+            ? 'No rejected tankers. Quality checks clean!'
+            : 'No tanker records found.'
+        }
+      />
 
       {/* PART B: ROW DETAIL DRAWER */}
       <TankerDetailDrawer
