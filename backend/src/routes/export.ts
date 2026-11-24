@@ -22,6 +22,7 @@ import { buildReconciliation } from '../lib/reconReport';
 import type { ReconTripInput } from '../lib/reconReport';
 import { buildReconPdf } from '../lib/reconPdf';
 import { buildGatePassPdf } from '../lib/gatePassPdf';
+import { getGatePassFallback } from '../lib/gatePassStore';
 
 const router = Router();
 router.use(authMiddleware);
@@ -358,7 +359,12 @@ router.get('/gate-pass/:id', async (req, res) => {
     }
     const trip = found.row;
     const stageData = (trip.stage_data as Record<string, any>) || {};
-    const gp = (trip.gate_pass as Record<string, any>) || stageData.gate_pass || {};
+    const gp =
+      (trip.gate_pass as Record<string, any>) ||
+      stageData.gate_pass ||
+      (stageData.cip_completed as any)?.gate_pass ||
+      getGatePassFallback(String(trip.id)) ||
+      {};
 
     // Get dairy unit union details
     const { data: du } = await supabase

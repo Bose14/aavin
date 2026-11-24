@@ -11,6 +11,7 @@
 import { supabase } from '../supabase';
 import { idLookup } from './ids';
 import type { PlantTeam, StageRecordItem, TankerStageKey } from './tankerJourney';
+import { getGatePassFallback } from './gatePassStore';
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -492,9 +493,12 @@ export function shapeTrip(trip: Record<string, any>, loadings: LoadingRow[], sta
     qc_status: trip.qc_status ?? null,
     cip_status: trip.cip_status ?? null,
     trip_status: trip.status,
-    gate_pass: trip.gate_pass || stageData.gate_pass || null,
-    gate_pass_no: trip.gate_pass_no || stageData.gate_pass?.gate_pass_no || null,
-    stage_data: stageData,
+    gate_pass: trip.gate_pass || stageData.gate_pass || (stageData.cip_completed as any)?.gate_pass || getGatePassFallback(String(trip.id)) || null,
+    gate_pass_no: trip.gate_pass_no || stageData.gate_pass?.gate_pass_no || (stageData.cip_completed as any)?.gate_pass?.gate_pass_no || getGatePassFallback(String(trip.id))?.gate_pass_no || null,
+    stage_data: {
+      ...stageData,
+      gate_pass: stageData.gate_pass || trip.gate_pass || (stageData.cip_completed as any)?.gate_pass || getGatePassFallback(String(trip.id)) || undefined,
+    },
     created_at: trip.created_at,
   };
 }
@@ -724,7 +728,18 @@ export async function updateTrip(tripId: string, fields: Record<string, unknown>
   }
   if (Object.keys(patch).length === 0) return;
   const { error } = await supabase.from('tanker_trips').update(patch).eq('id', tripId);
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === '42703' || error.message.includes('column') || error.message.includes('does not exist')) {
+      const safePatch = { ...patch };
+      delete safePatch.gate_pass;
+      delete safePatch.gate_pass_no;
+      if (Object.keys(safePatch).length > 0) {
+        await supabase.from('tanker_trips').update(safePatch).eq('id', tripId);
+      }
+      return;
+    }
+    throw new Error(error.message);
+  }
 }
 
 /** Admin removes a whole trip; a BMC removes only its own loadings while the trip is still loading. */
