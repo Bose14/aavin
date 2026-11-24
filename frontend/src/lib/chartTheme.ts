@@ -1,5 +1,6 @@
 export const CHART_COLORS = {
-  primary: '#4f46e5',
+  primary: '#258bd6',
+  accent: '#70b423',
   amber: '#f59e0b',
   profit: '#10b981',
   loss: '#ef4444',
@@ -7,7 +8,7 @@ export const CHART_COLORS = {
   zeroLine: '#64748b',
   axis: '#64748b',
   slate: '#334155',
-  cursor: 'rgba(79, 70, 229, 0.06)',
+  cursor: 'rgba(37, 139, 214, 0.08)',
 } as const;
 
 export const ZERO_INCLUSIVE_DOMAIN: [

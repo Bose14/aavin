@@ -49,7 +49,7 @@ export default function Login() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <img src={aavinLogo} alt="Aavin" style={{ height: '36px', width: 'auto', objectFit: 'contain' }} />
-            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e3a8a' }}>Internal Portal</span>
+            <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--primary-dark)' }}>Internal Portal</span>
           </div>
           <div className="lang-toggle" role="group" aria-label="Language">
             <button type="button" className={`lang-btn ${lang === 'en' ? 'active' : ''}`} onClick={() => setLang('en')}>EN</button>

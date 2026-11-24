@@ -1464,7 +1464,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                     type="submit"
                     disabled={submitting}
                     style={{
-                      backgroundColor: '#6366f1',
+                      backgroundColor: '#258bd6',
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: 4,

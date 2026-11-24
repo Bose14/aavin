@@ -44,7 +44,7 @@ export default function Captcha({ onVerify }: CaptchaProps) {
           fontSize: '1.6rem',
           fontWeight: 700,
           letterSpacing: '0.05em',
-          color: ['#4f46e5', '#1d4ed8', '#7c3aed', '#2563eb', '#4338ca', '#6d28d9'][i],
+          color: ['#258bd6', '#1d76b8', '#1665a0', '#0284c7', '#0369a1', '#70b423'][i],
           userSelect: 'none',
         }}
       >
