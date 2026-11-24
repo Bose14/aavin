@@ -99,3 +99,30 @@ test('litresFromNetWeight: net kg / specific gravity of the QC fat and SNF', () 
   // no QC quality yet: plant density
   assert.equal(litresFromNetWeight(1030, null, null), 1000);
 });
+
+test('grouped statement: rows per team with a TOTAL per team and a GRAND TOTAL', async () => {
+  const { buildGroupedAckRows, buildAckSummary } = await import('../dist/lib/milkAckReport.js');
+  const rows = [
+    view(1, 'A', 'D1', { team_name: 'RPM' }),
+    view(1, 'B', 'D2', { team_name: 'NKL', vehicle_number: 'TN1' }),
+    view(2, 'C', 'D3', { team_name: 'RPM', vehicle_number: 'TN2' }),
+    view(3, 'D', 'D4', { team_name: null, vehicle_number: 'TN2' }),
+  ];
+  const out = buildGroupedAckRows(rows, 'team', (d) => d);
+  const names = out.map((r) => r['NAME OF THE BMC/CC']);
+  assert.deepEqual(names, ['B', 'TOTAL - NKL', 'A', 'C', 'TOTAL - RPM', 'D', 'TOTAL - NO TEAM', 'GRAND TOTAL']);
+  assert.equal(out[4]['Dmr/Inv.Qty (In Lts.)'], 8000);
+  assert.equal(out[7]['Ack. Qty ( In Lts.)'], 15840);
+
+  const s = buildAckSummary(rows, 'team');
+  assert.equal(s.columns[0], 'TEAM');
+  assert.deepEqual(s.rows.map((r) => r.TEAM), ['NKL', 'RPM', 'NO TEAM', 'GRAND TOTAL']);
+  assert.equal(s.rows[1].Trips, 2);
+  assert.equal(s.rows[3]['QTY -DIFF (LIT)'], -160);
+});
+
+test('grouped statement by tanker keeps each vehicle together', async () => {
+  const { buildGroupedAckRows } = await import('../dist/lib/milkAckReport.js');
+  const out = buildGroupedAckRows([view(1, 'A', 'D1', { vehicle_number: 'TN2' }), view(2, 'B', 'D2', { vehicle_number: 'TN1' }), view(3, 'C', 'D3', { vehicle_number: 'TN2' })], 'tanker', (d) => d);
+  assert.deepEqual(out.map((r) => r['NAME OF THE BMC/CC']), ['B', 'TOTAL - TN1', 'A', 'C', 'TOTAL - TN2', 'GRAND TOTAL']);
+});

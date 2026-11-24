@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import api from '../../lib/api';
-import { formatDateDDMMYYYY } from '../../lib/format';
+import { formatDateDDMMYYYY, triggerBlobDownload } from '../../lib/format';
 
 type Preset = 'today' | 'yesterday' | 'this_week' | 'last_week' | 'this_month' | 'last_month' | 'custom';
 const ymd = (d: Date) => d.toLocaleDateString('en-CA'); // local yyyy-mm-dd
@@ -38,12 +38,22 @@ function rangeFor(preset: Exclude<Preset, 'custom'>): { from: string; to: string
   }
 }
 
+type AckGroup = 'date' | 'team' | 'bmc' | 'tanker';
+const ACK_GROUPS: { id: AckGroup; label: string; hint: string }[] = [
+  { id: 'date', label: 'Date-wise', hint: 'Every entry by date, with a total after each tanker' },
+  { id: 'team', label: 'Team-wise', hint: 'Grouped by team (RPM, T.CODE, NKL …) with team totals and a summary sheet' },
+  { id: 'bmc', label: 'BMC-wise', hint: 'Grouped by BMC with BMC totals and a summary sheet' },
+  { id: 'tanker', label: 'Tanker-wise', hint: 'Grouped by tanker with tanker totals and a summary sheet' },
+];
+
 export default function AdminReports() {
   const [preset, setPreset] = useState<Preset>('today');
   const [from, setFrom] = useState(rangeFor('today').from);
   const [to, setTo] = useState(rangeFor('today').to);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [ackGroup, setAckGroup] = useState<AckGroup>('date');
+  const [ackBusy, setAckBusy] = useState(false);
 
   const invalid = !from || !to || from > to;
 
@@ -52,6 +62,19 @@ export default function AdminReports() {
     setPreset(p);
     setFrom(r.from);
     setTo(r.to);
+  };
+
+  const downloadAck = async () => {
+    setAckBusy(true);
+    setError('');
+    try {
+      const suffix = ackGroup === 'date' ? '' : `_${ackGroup}_wise`;
+      await triggerBlobDownload('/export/milk-ack', { from, to, format: 'xlsx', ...(ackGroup === 'date' ? {} : { group: ackGroup }) }, `Milk_ACK${suffix}_${from}_to_${to}.xlsx`);
+    } catch {
+      setError('Could not download the report. Please try again.');
+    } finally {
+      setAckBusy(false);
+    }
   };
 
   // Opens the PDF in a new tab (the browser's PDF viewer has its own download button)
@@ -80,64 +103,92 @@ export default function AdminReports() {
         <h1 style={{ margin: 0 }}>Milk Bill Union Reports</h1>
       </div>
 
+      <div className="card rp-report">
+        <span className="rp-label">Date range (applies to every report below)</span>
+        <div className="rp-chips">
+          {PRESETS.map((p) => (
+            <button key={p.id} type="button" className={`rp-chip${preset === p.id ? ' active' : ''}`} onClick={() => pick(p.id)}>
+              {p.label}
+            </button>
+          ))}
+          <button type="button" className={`rp-chip${preset === 'custom' ? ' active' : ''}`} onClick={() => setPreset('custom')}>
+            Custom
+          </button>
+        </div>
+        <div className="rp-dates" style={{ marginBottom: 0 }}>
+          <div>
+            <label className="rp-label" htmlFor="rp-from">From date</label>
+            <input id="rp-from" type="date" value={from} max={to || undefined} onChange={(e) => { setFrom(e.target.value); setPreset('custom'); }} />
+          </div>
+          <div>
+            <label className="rp-label" htmlFor="rp-to">To date</label>
+            <input id="rp-to" type="date" value={to} min={from || undefined} onChange={(e) => { setTo(e.target.value); setPreset('custom'); }} />
+          </div>
+        </div>
+        {from > to && to && <div className="rp-error">From date must be on or before To date.</div>}
+        {error && <div className="rp-error">{error}</div>}
+      </div>
+
       <div className="rp-grid">
-        <div className="card rp-report">
-          <div className="rp-report-top">
-            <div className="rp-icon">📄</div>
-            <div>
-              <h2>Quantity And Quality Reconciliation Report</h2>
-              <p>What each BMC sent on every tanker, what the union received and what was acknowledged back to each BMC.</p>
+        <div>
+          <div className="card rp-report">
+            <div className="rp-report-top">
+              <div className="rp-icon">📊</div>
+              <div>
+                <h2>Milk ACK Report</h2>
+                <p>Milk disposal and acknowledgement statement as an Excel file. Choose how it is grouped.</p>
+              </div>
             </div>
-          </div>
-
-          <span className="rp-label">Date range</span>
-          <div className="rp-chips">
-            {PRESETS.map((p) => (
-              <button key={p.id} type="button" className={`rp-chip${preset === p.id ? ' active' : ''}`} onClick={() => pick(p.id)}>
-                {p.label}
+            <span className="rp-label">Report by</span>
+            <div className="rp-chips" style={{ marginBottom: '0.5rem' }}>
+              {ACK_GROUPS.map((g) => (
+                <button key={g.id} type="button" className={`rp-chip${ackGroup === g.id ? ' active' : ''}`} onClick={() => setAckGroup(g.id)}>
+                  {g.label}
+                </button>
+              ))}
+            </div>
+            <p className="rp-range" style={{ marginTop: 0, marginBottom: '1.1rem' }}>{ACK_GROUPS.find((g) => g.id === ackGroup)?.hint}</p>
+            <div className="rp-actions">
+              <button type="button" className="rp-pdf" onClick={downloadAck} disabled={invalid || ackBusy}>
+                {ackBusy ? 'Preparing…' : 'Download Excel'}
               </button>
-            ))}
-            <button type="button" className={`rp-chip${preset === 'custom' ? ' active' : ''}`} onClick={() => setPreset('custom')}>
-              Custom
-            </button>
-          </div>
-
-          <div className="rp-dates">
-            <div>
-              <label className="rp-label" htmlFor="rp-from">From date</label>
-              <input id="rp-from" type="date" value={from} max={to || undefined} onChange={(e) => { setFrom(e.target.value); setPreset('custom'); }} />
-            </div>
-            <div>
-              <label className="rp-label" htmlFor="rp-to">To date</label>
-              <input id="rp-to" type="date" value={to} min={from || undefined} onChange={(e) => { setTo(e.target.value); setPreset('custom'); }} />
+              {!invalid && (
+                <span className="rp-range">
+                  {from === to ? formatDateDDMMYYYY(from) : `${formatDateDDMMYYYY(from)} to ${formatDateDDMMYYYY(to)}`}
+                </span>
+              )}
             </div>
           </div>
 
-          <div className="rp-actions">
-            <button type="button" className="rp-pdf" onClick={openPdf} disabled={invalid || busy}>
-              {busy ? 'Preparing…' : 'Open PDF'}
-            </button>
-            {!invalid && (
-              <span className="rp-range">
-                {from === to ? formatDateDDMMYYYY(from) : `${formatDateDDMMYYYY(from)} to ${formatDateDDMMYYYY(to)}`}
-              </span>
-            )}
+          <div className="card rp-report">
+            <div className="rp-report-top">
+              <div className="rp-icon">📄</div>
+              <div>
+                <h2>Quantity And Quality Reconciliation Report</h2>
+                <p>What each BMC sent on every tanker, what the union received and what was acknowledged back to each BMC.</p>
+              </div>
+            </div>
+            <div className="rp-actions">
+              <button type="button" className="rp-pdf" onClick={openPdf} disabled={invalid || busy}>
+                {busy ? 'Preparing…' : 'Open PDF'}
+              </button>
+              <span className="rp-range">Opens in a new tab</span>
+            </div>
           </div>
-          {from > to && to && <div className="rp-error">From date must be on or before To date.</div>}
-          {error && <div className="rp-error">{error}</div>}
         </div>
 
         <div className="card rp-info">
-          <h3>What is in the report</h3>
+          <h3>Milk ACK Report options</h3>
           <ul>
-            <li>One block per tanker with its vehicle number and DC number</li>
-            <li>Send details: litres, fat and SNF per BMC and cell (FC / MC / BC)</li>
-            <li>Ack at union: litres, fat, SNF, temperature and MBRT per cell</li>
-            <li>Ack to BMC: litres, fat and SNF acknowledged back to each BMC</li>
+            <li><b>Date-wise:</b> every entry by date, with a total after each tanker</li>
+            <li><b>Team-wise:</b> grouped by team, with a total per team</li>
+            <li><b>BMC-wise:</b> grouped by BMC, with a total per BMC</li>
+            <li><b>Tanker-wise:</b> grouped by tanker, with a total per tanker</li>
           </ul>
           <h3 style={{ marginTop: '1rem' }}>Good to know</h3>
           <ul>
-            <li>The report opens in a new tab. Use the viewer to download or print it.</li>
+            <li>Team, BMC and tanker reports also have a Summary sheet with one line per group.</li>
+            <li>Total rows are highlighted.</li>
             <li>Cancelled trips are left out.</li>
           </ul>
         </div>

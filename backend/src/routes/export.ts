@@ -3,8 +3,8 @@ import * as XLSX from '../lib/spreadsheet';
 import { supabase } from '../supabase';
 import { fetchTrip, fetchTrips } from '../lib/tripStore';
 import { ensureAcknowledgements } from '../lib/ack';
-import { buildMilkAckRows, ackTitle, ACK_COLUMNS } from '../lib/milkAckReport';
-import type { AckViewRow } from '../lib/milkAckReport';
+import { buildMilkAckRows, buildGroupedAckRows, buildAckSummary, ackTitle, ACK_COLUMNS } from '../lib/milkAckReport';
+import type { AckViewRow, AckGroup } from '../lib/milkAckReport';
 import { requireRole } from '../middleware/requireRole';
 import { authMiddleware } from '../middleware/auth';
 import {
@@ -298,9 +298,10 @@ router.get('/milk', async (req, res) => {
 });
 
 // GET /export/tanker?from=&to=&format=csv|xlsx&bmc_id=&status=&stage=&waiting_team=&delayed_only=&search=
-// GET /export/milk-ack?from=&to=&format=xlsx|csv — Milk disposal & acknowledgement statement
+// GET /export/milk-ack?from=&to=&format=xlsx|csv&group=date|team|bmc|tanker — Milk disposal & acknowledgement statement
 router.get('/milk-ack', requireRole('admin'), async (req, res) => {
-  const { from, to, format } = req.query as Record<string, string | undefined>;
+  const { from, to, format, group: groupParam } = req.query as Record<string, string | undefined>;
+  const group: AckGroup | null = groupParam === 'team' || groupParam === 'bmc' || groupParam === 'tanker' ? groupParam : null;
   const dateOk = (v?: string) => !v || /^\d{4}-\d{2}-\d{2}$/.test(v);
   if (!dateOk(from) || !dateOk(to)) {
     res.status(400).json({ error: 'from and to must be yyyy-mm-dd' });
@@ -324,13 +325,33 @@ router.get('/milk-ack', requireRole('admin'), async (req, res) => {
     const { data, error } = await q.limit(20000);
     if (error) throw new Error(error.message);
 
-    const rows = buildMilkAckRows((data ?? []) as unknown as AckViewRow[], formatDateDDMMYYYY);
+    const viewRows = (data ?? []) as unknown as AckViewRow[];
     const wb = XLSX.book_new();
     const { data: unit } = await supabase.from('dairy_units').select('name').eq('id', dairyUnitId).maybeSingle();
-    const ws = { rows, columns: [...ACK_COLUMNS] as string[], title: ackTitle(unit?.name, from, to), highlightRow: (r: Record<string, unknown>) => r['NAME OF THE BMC/CC'] === 'TOTAL' };
-    XLSX.book_append_sheet(wb, ws, 'Milk ACK');
+    const isTotal = (r: Record<string, unknown>) => /^(TOTAL|GRAND TOTAL)/.test(String(r['NAME OF THE BMC/CC']));
+    const heading = ackTitle(unit?.name, from, to);
+    let ws;
+    if (group) {
+      const summary = buildAckSummary(viewRows, group);
+      const label = summary.columns[0];
+      XLSX.book_append_sheet(
+        wb,
+        { rows: summary.rows, columns: summary.columns, title: `${heading} - ${label} WISE SUMMARY`, highlightRow: (r) => r[label] === 'GRAND TOTAL' },
+        'Summary',
+      );
+      ws = {
+        rows: buildGroupedAckRows(viewRows, group, formatDateDDMMYYYY),
+        columns: [...ACK_COLUMNS] as string[],
+        title: `${heading} - ${label} WISE`,
+        highlightRow: isTotal,
+      };
+      XLSX.book_append_sheet(wb, ws, 'Milk ACK');
+    } else {
+      ws = { rows: buildMilkAckRows(viewRows, formatDateDDMMYYYY), columns: [...ACK_COLUMNS] as string[], title: heading, highlightRow: isTotal };
+      XLSX.book_append_sheet(wb, ws, 'Milk ACK');
+    }
 
-    const baseName = `Milk_ACK_${buildRangeTag(from, to)}`;
+    const baseName = `Milk_ACK${group ? `_${group}_wise` : ''}_${buildRangeTag(from, to)}`;
     if (format === 'csv') {
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${baseName}.csv"`);
