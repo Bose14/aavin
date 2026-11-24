@@ -550,7 +550,7 @@ export default function TankerDispatch() {
       {warningMsg && <div className="warning-banner" style={{ marginBottom: '16px' }}><span>⚠ {warningMsg}</span></div>}
 
       {/* Recent Dispatches Table (Displayed on main BMC front face) */}
-      <div className="card table-card" style={{ padding: '20px', marginBottom: '24px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+      <div className="card card-body">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
             Recent Tanker Dispatches

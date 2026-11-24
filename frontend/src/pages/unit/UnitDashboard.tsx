@@ -365,14 +365,7 @@ export default function UnitDashboard() {
         <>
           {/* 1. Dairy Journey Pipeline Stepper (7 Stages) */}
           <div
-            className="card"
-            style={{
-              padding: '14px 18px',
-              marginBottom: '1.25rem',
-              border: '1px solid #e2e8f0',
-              borderRadius: 10,
-              backgroundColor: '#ffffff',
-            }}
+            className="card card-body"
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
               <div>
@@ -533,14 +526,7 @@ export default function UnitDashboard() {
 
           {/* 3. Process Quality & Chemical Reconciliation Card */}
           <div
-            className="card"
-            style={{
-              marginBottom: '1.25rem',
-              padding: '1.15rem 1.25rem',
-              border: '1px solid #e2e8f0',
-              borderRadius: 10,
-              backgroundColor: '#ffffff',
-            }}
+            className="card card-body"
           >
             <h2 style={{ fontSize: '1rem', fontWeight: 800, margin: '0 0 0.9rem 0', color: '#1e293b' }}>
               🧪 Process Quality &amp; Chemical Reconciliation (BMC vs Plant Receipt)
@@ -620,14 +606,7 @@ export default function UnitDashboard() {
 
           {/* 4. Outward Tanker Dispatches & Live Plant Status */}
           <div
-            className="card"
-            style={{
-              marginBottom: '1.25rem',
-              padding: '16px 20px',
-              backgroundColor: '#ffffff',
-              borderRadius: '10px',
-              border: '1px solid #e2e8f0',
-            }}
+            className="card card-body"
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
               <div>
@@ -797,7 +776,7 @@ export default function UnitDashboard() {
 
           {/* 5. Daily Activity & Trend Breakdown */}
           {processData.daily_trend && processData.daily_trend.length > 0 && (
-            <div className="card table-card" style={{ borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: '1.5rem' }}>
+            <div className="card table-card">
               <div style={{ padding: '1rem 1.25rem 0.5rem' }}>
                 <h2 style={{ margin: 0, padding: 0, fontSize: '1rem', color: '#1e293b', fontWeight: 800 }}>
                   📅 Daily Process Activity &amp; Loss Breakdown

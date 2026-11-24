@@ -585,7 +585,7 @@ export default function UnitRecords() {
       </div>
 
       {(
-        <div className="card table-card" style={{ borderRadius: 10, border: '1px solid #e2e8f0' }}>
+        <div className="card table-card">
           {/* Summary Strip */}
           <div className="table-summary-strip" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, padding: '10px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.82rem' }}>
             <span>Journeys: <strong>{filteredRecords.length}</strong></span>

@@ -578,7 +578,7 @@ export default function AdminDashboard() {
           )}
 
           {/* Live Process Funnel / Pipeline Stepper */}
-          <div className="card" style={{ marginBottom: '1.5rem', padding: '1.25rem', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+          <div className="card card-body">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 6 }}>
               <div>
                 <h2 style={{ fontSize: '1.02rem', fontWeight: 700, margin: 0, color: '#1e293b' }}>
@@ -745,7 +745,7 @@ export default function AdminDashboard() {
           {/* Plant Teams Operations & Efficiency Panel */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
             {/* 1. Gate Operations Performance */}
-            <div className="card" style={{ padding: '1.1rem 1.25rem', border: '1px solid #bae6fd', borderRadius: 10, background: '#f8fafc' }}>
+            <div className="card card-body" style={{ border: '1px solid #bae6fd', background: '#f8fafc' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: '1.25rem' }}>🚪</span>
@@ -784,7 +784,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* 2. QC Lab Team Performance */}
-            <div className="card" style={{ padding: '1.1rem 1.25rem', border: '1px solid #fde68a', borderRadius: 10, background: '#f8fafc' }}>
+            <div className="card card-body" style={{ border: '1px solid #fde68a', background: '#f8fafc' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: '1.25rem' }}>🧪</span>
@@ -823,7 +823,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* 3. Unloading Bay Performance */}
-            <div className="card" style={{ padding: '1.1rem 1.25rem', border: '1px solid #bbf7d0', borderRadius: 10, background: '#f8fafc' }}>
+            <div className="card card-body" style={{ border: '1px solid #bbf7d0', background: '#f8fafc' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: '1.25rem' }}>🥛</span>
@@ -863,7 +863,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Process Quality & Chemical Reconciliation Card */}
-          <div className="card" style={{ marginBottom: '1.5rem', padding: '1.25rem', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+          <div className="card card-body">
             <h2 style={{ fontSize: '1.02rem', fontWeight: 700, margin: '0 0 1rem 0', color: '#1e293b' }}>
               🧪 Process Quality &amp; Chemical Reconciliation (BMC vs Plant Receipt)
             </h2>
@@ -952,7 +952,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Live In-Plant Tankers Monitor Table */}
-          <div className="card table-card" style={{ marginBottom: '1.5rem', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+          <div className="card table-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem 0.5rem', flexWrap: 'wrap', gap: 6 }}>
               <div>
                 <h2 style={{ margin: 0, padding: 0, fontSize: '1.05rem', color: '#1e293b', fontWeight: 700 }}>
@@ -982,7 +982,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Source BMC Process Scorecard Table */}
-          <div className="card table-card" style={{ borderRadius: 10, border: '1px solid #e2e8f0' }}>
+          <div className="card table-card">
             <div style={{ padding: '1rem 1.25rem 0.5rem' }}>
               <h2 style={{ margin: 0, padding: 0, fontSize: '1.05rem', color: '#1e293b', fontWeight: 700 }}>
                 Source BMC Process &amp; Transit Performance Scorecard

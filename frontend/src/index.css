@@ -664,3 +664,10 @@ input[type="checkbox"], input[type="radio"] {
   .dt-filter select, .dt-filter input, .dt-filter input[type="search"] { flex: 1; min-width: 0; min-height: 44px; }
   .dt-filter-actions { margin-left: 0; width: 100%; }
 }
+
+/* Common card spacing: every card uses the same radius, border, padding and gap */
+.card { border-radius: var(--radius); border: 1px solid var(--border); background: var(--white); margin-bottom: 1.25rem; }
+.card-body { padding: 1.25rem; }
+.card-toolbar { padding: 0.75rem 1rem; }
+.stats-grid { margin-bottom: 1.25rem; }
+@media (max-width: 720px) { .card-body { padding: 0.95rem; } .card-toolbar { padding: 0.7rem 0.75rem; } }

@@ -109,15 +109,7 @@ export default function AdminSettings() {
 
       {/* 1. PASSWORD & SECURITY */}
       <div
-        className="card"
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-          padding: '24px',
-          marginBottom: '20px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-        }}
+        className="card card-body"
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
           <span style={{ fontSize: '20px' }}>🔒</span>
@@ -275,15 +267,7 @@ export default function AdminSettings() {
 
       {/* 2. PROFILE & ACCOUNT DETAILS */}
       <div
-        className="card"
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-          padding: '24px',
-          marginBottom: '20px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-        }}
+        className="card card-body"
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
           <span style={{ fontSize: '20px' }}>👤</span>
@@ -437,15 +421,7 @@ export default function AdminSettings() {
 
       {/* 3. APPLICATION & LANGUAGE PREFERENCES */}
       <div
-        className="card"
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-          padding: '24px',
-          marginBottom: '20px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-        }}
+        className="card card-body"
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
           <span style={{ fontSize: '20px' }}>🌐</span>

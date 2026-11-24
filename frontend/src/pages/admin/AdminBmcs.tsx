@@ -459,7 +459,7 @@ export default function AdminBmcs() {
       )}
 
       {/* Filter and Search Bar */}
-      <div className="card" style={{ padding: '12px 16px', marginBottom: '16px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+      <div className="card card-toolbar">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginRight: '4px' }}>Filter:</span>

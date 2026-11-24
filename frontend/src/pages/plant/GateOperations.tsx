@@ -692,15 +692,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
 
       {/* Main Vehicle Sheet Container */}
       <div
-        className="card"
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '8px',
-          border: '1px solid #cbd5e1',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-          padding: '1.25rem',
-          minHeight: '350px',
-        }}
+        className="card card-body" style={{ minHeight: '350px' }}
       >
         {/* Card Header & Title */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>

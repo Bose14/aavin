@@ -654,15 +654,7 @@ export default function AdminTeams() {
       {/* User Created Credentials Notice Banner */}
       {userCreatedAlert && (
         <div
-          className="card"
-          style={{
-            marginBottom: '1.25rem',
-            padding: '1rem 1.25rem',
-            background: '#ecfdf5',
-            border: '1px solid #10b981',
-            borderRadius: 8,
-            color: '#065f46',
-          }}
+          className="card card-body" style={{ background: '#ecfdf5', border: '1px solid #10b981', color: '#065f46' }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
@@ -719,7 +711,7 @@ export default function AdminTeams() {
 
 
       {/* 3. SHOW ENTIRE USER DIRECTORY & INTERNAL TEAM USERS MANAGEMENT */}
-      <div id="team-users-section" className="card" style={{ padding: '1.5rem', background: '#ffffff', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+      <div id="team-users-section" className="card form-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
           <div>
             <h2 style={{ fontSize: '1.3rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
