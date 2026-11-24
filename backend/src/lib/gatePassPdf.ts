@@ -165,13 +165,12 @@ export function buildGatePassPdf(input: GatePassPdfInput): Promise<Buffer> {
     doc.text('To whom issued : ', margin + 14, curY, { continued: true });
     doc.font('Helvetica-Bold').fontSize(11).fillColor('#1e3a8a').text((input.to_whom_issued || '—').toUpperCase());
 
-    // Line 2: Issued by Stores / CC / TPT / ADM / Lab / P&I
+    // Line 2: Issued by
     curY += 18;
     const issuedByVal = (input.issued_by || 'Lab').toUpperCase();
     doc.font('Helvetica').fontSize(10).fillColor('#0f172a');
     doc.text('Issued by : ', margin + 14, curY, { continued: true });
-    doc.font('Helvetica-Bold').fillColor('#1e3a8a').text(`[ ${issuedByVal} ] `, { continued: true });
-    doc.font('Helvetica').fillColor('#64748b').fontSize(9).text('(Stores / CC / TPT / ADM / Lab / P&I)');
+    doc.font('Helvetica-Bold').fillColor('#1e3a8a').text(issuedByVal);
 
     // Line 3: Vehicle No. if any
     curY += 18;

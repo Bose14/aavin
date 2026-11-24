@@ -3169,9 +3169,6 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                           </button>
                         );
                       })}
-                      <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: '6px' }}>
-                        (Stores / CC / TPT / ADM / Lab / P&I)
-                      </span>
                     </div>
                   </div>
 
