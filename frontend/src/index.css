@@ -606,3 +606,9 @@ input[type="checkbox"], input[type="radio"] {
 @media (max-width: 480px) {
   .rp-dates { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Reports page tabs */
+.rp-tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem; overflow-x: auto; }
+.rp-tab { background: none; border: 0; border-bottom: 3px solid transparent; padding: 0.7rem 1.1rem; font-size: 0.92rem; font-weight: 600; color: var(--text-muted); cursor: pointer; white-space: nowrap; margin-bottom: -1px; }
+.rp-tab:hover { color: var(--text); }
+.rp-tab.active { color: #4d7c0f; border-bottom-color: #65a30d; }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import api from '../../lib/api';
 import { formatDateDDMMYYYY, triggerBlobDownload } from '../../lib/format';
 
@@ -46,36 +46,141 @@ const ACK_GROUPS: { id: AckGroup; label: string; hint: string }[] = [
   { id: 'tanker', label: 'Tanker-wise', hint: 'Grouped by tanker with tanker totals and a summary sheet' },
 ];
 
-export default function AdminReports() {
+/** Each report owns one of these, so every report has its own date range. */
+function useDateRange() {
   const [preset, setPreset] = useState<Preset>('today');
   const [from, setFrom] = useState(rangeFor('today').from);
   const [to, setTo] = useState(rangeFor('today').to);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [ackGroup, setAckGroup] = useState<AckGroup>('date');
-  const [ackBusy, setAckBusy] = useState(false);
-
-  const invalid = !from || !to || from > to;
-
   const pick = (p: Exclude<Preset, 'custom'>) => {
     const r = rangeFor(p);
     setPreset(p);
     setFrom(r.from);
     setTo(r.to);
   };
+  const setFromDate = (v: string) => { setFrom(v); setPreset('custom'); };
+  const setToDate = (v: string) => { setTo(v); setPreset('custom'); };
+  return { preset, setPreset, from, to, pick, setFromDate, setToDate, invalid: !from || !to || from > to };
+}
+type DateRange = ReturnType<typeof useDateRange>;
 
-  const downloadAck = async () => {
-    setAckBusy(true);
+function DateRangeFields({ r, idPrefix }: { r: DateRange; idPrefix: string }) {
+  return (
+    <>
+      <span className="rp-label">Date range</span>
+      <div className="rp-chips">
+        {PRESETS.map((p) => (
+          <button key={p.id} type="button" className={`rp-chip${r.preset === p.id ? ' active' : ''}`} onClick={() => r.pick(p.id)}>
+            {p.label}
+          </button>
+        ))}
+        <button type="button" className={`rp-chip${r.preset === 'custom' ? ' active' : ''}`} onClick={() => r.setPreset('custom')}>
+          Custom
+        </button>
+      </div>
+      <div className="rp-dates">
+        <div>
+          <label className="rp-label" htmlFor={`${idPrefix}-from`}>From date</label>
+          <input id={`${idPrefix}-from`} type="date" value={r.from} max={r.to || undefined} onChange={(e) => r.setFromDate(e.target.value)} />
+        </div>
+        <div>
+          <label className="rp-label" htmlFor={`${idPrefix}-to`}>To date</label>
+          <input id={`${idPrefix}-to`} type="date" value={r.to} min={r.from || undefined} onChange={(e) => r.setToDate(e.target.value)} />
+        </div>
+      </div>
+      {r.from > r.to && r.to && <div className="rp-error" style={{ marginBottom: '0.8rem' }}>From date must be on or before To date.</div>}
+    </>
+  );
+}
+
+function ReportLayout({ icon, title, description, info, children }: { icon: string; title: string; description: string; info: ReactNode; children: ReactNode }) {
+  return (
+    <div className="rp-grid">
+      <div className="card rp-report">
+        <div className="rp-report-top">
+          <div className="rp-icon">{icon}</div>
+          <div>
+            <h2>{title}</h2>
+            <p>{description}</p>
+          </div>
+        </div>
+        {children}
+      </div>
+      <div className="card rp-info">{info}</div>
+    </div>
+  );
+}
+
+function rangeText(r: DateRange) {
+  return r.from === r.to ? formatDateDDMMYYYY(r.from) : `${formatDateDDMMYYYY(r.from)} to ${formatDateDDMMYYYY(r.to)}`;
+}
+
+function MilkAckReport() {
+  const r = useDateRange();
+  const [group, setGroup] = useState<AckGroup>('date');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const download = async () => {
+    setBusy(true);
     setError('');
     try {
-      const suffix = ackGroup === 'date' ? '' : `_${ackGroup}_wise`;
-      await triggerBlobDownload('/export/milk-ack', { from, to, format: 'xlsx', ...(ackGroup === 'date' ? {} : { group: ackGroup }) }, `Milk_ACK${suffix}_${from}_to_${to}.xlsx`);
+      const suffix = group === 'date' ? '' : `_${group}_wise`;
+      await triggerBlobDownload('/export/milk-ack', { from: r.from, to: r.to, format: 'xlsx', ...(group === 'date' ? {} : { group }) }, `Milk_ACK${suffix}_${r.from}_to_${r.to}.xlsx`);
     } catch {
       setError('Could not download the report. Please try again.');
     } finally {
-      setAckBusy(false);
+      setBusy(false);
     }
   };
+
+  return (
+    <ReportLayout
+      icon="📊"
+      title="Milk ACK Report"
+      description="Milk disposal and acknowledgement statement as an Excel file. Choose how it is grouped."
+      info={
+        <>
+          <h3>Report by</h3>
+          <ul>
+            <li><b>Date-wise:</b> every entry by date, with a total after each tanker</li>
+            <li><b>Team-wise:</b> grouped by team, with a total per team</li>
+            <li><b>BMC-wise:</b> grouped by BMC, with a total per BMC</li>
+            <li><b>Tanker-wise:</b> grouped by tanker, with a total per tanker</li>
+          </ul>
+          <h3 style={{ marginTop: '1rem' }}>Good to know</h3>
+          <ul>
+            <li>Team, BMC and tanker reports also have a Summary sheet with one line per group.</li>
+            <li>Total rows are highlighted.</li>
+            <li>Cancelled trips are left out.</li>
+          </ul>
+        </>
+      }
+    >
+      <DateRangeFields r={r} idPrefix="ack" />
+      <span className="rp-label">Report by</span>
+      <div className="rp-chips" style={{ marginBottom: '0.5rem' }}>
+        {ACK_GROUPS.map((g) => (
+          <button key={g.id} type="button" className={`rp-chip${group === g.id ? ' active' : ''}`} onClick={() => setGroup(g.id)}>
+            {g.label}
+          </button>
+        ))}
+      </div>
+      <p className="rp-range" style={{ marginTop: 0, marginBottom: '1.1rem' }}>{ACK_GROUPS.find((g) => g.id === group)?.hint}</p>
+      <div className="rp-actions">
+        <button type="button" className="rp-pdf" onClick={download} disabled={r.invalid || busy}>
+          {busy ? 'Preparing…' : 'Download Excel'}
+        </button>
+        {!r.invalid && <span className="rp-range">{rangeText(r)}</span>}
+      </div>
+      {error && <div className="rp-error">{error}</div>}
+    </ReportLayout>
+  );
+}
+
+function ReconciliationReport() {
+  const r = useDateRange();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
   // Opens the PDF in a new tab (the browser's PDF viewer has its own download button)
   const openPdf = async () => {
@@ -84,7 +189,7 @@ export default function AdminReports() {
     // Open the tab right away so the browser does not block it as a pop-up
     const tab = window.open('', '_blank');
     try {
-      const res = await api.get('/export/recon-report', { params: { from, to }, responseType: 'blob' });
+      const res = await api.get('/export/recon-report', { params: { from: r.from, to: r.to }, responseType: 'blob' });
       const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
       if (tab) tab.location.replace(url);
       else window.location.href = url;
@@ -98,101 +203,61 @@ export default function AdminReports() {
   };
 
   return (
+    <ReportLayout
+      icon="📄"
+      title="Quantity And Quality Reconciliation Report"
+      description="What each BMC sent on every tanker, what the union received and what was acknowledged back to each BMC."
+      info={
+        <>
+          <h3>What is in the report</h3>
+          <ul>
+            <li>One block per tanker with its vehicle number and DC number</li>
+            <li>Send details: litres, fat and SNF per BMC and cell (FC / MC / BC)</li>
+            <li>Ack at union: litres, fat, SNF, temperature and MBRT per cell</li>
+            <li>Ack to BMC: litres, fat and SNF acknowledged back to each BMC</li>
+          </ul>
+          <h3 style={{ marginTop: '1rem' }}>Good to know</h3>
+          <ul>
+            <li>The report opens in a new tab. Use the viewer to download or print it.</li>
+            <li>Cancelled trips are left out.</li>
+          </ul>
+        </>
+      }
+    >
+      <DateRangeFields r={r} idPrefix="recon" />
+      <div className="rp-actions">
+        <button type="button" className="rp-pdf" onClick={openPdf} disabled={r.invalid || busy}>
+          {busy ? 'Preparing…' : 'Open PDF'}
+        </button>
+        {!r.invalid && <span className="rp-range">{rangeText(r)}</span>}
+      </div>
+      {error && <div className="rp-error">{error}</div>}
+    </ReportLayout>
+  );
+}
+
+const TABS = [
+  { id: 'ack', label: 'Milk ACK Report' },
+  { id: 'recon', label: 'Quantity & Quality Reconciliation' },
+] as const;
+
+export default function AdminReports() {
+  const [tab, setTab] = useState<(typeof TABS)[number]['id']>('ack');
+  return (
     <div>
       <div className="rp-head">
         <h1 style={{ margin: 0 }}>Milk Bill Union Reports</h1>
       </div>
-
-      <div className="card rp-report">
-        <span className="rp-label">Date range (applies to every report below)</span>
-        <div className="rp-chips">
-          {PRESETS.map((p) => (
-            <button key={p.id} type="button" className={`rp-chip${preset === p.id ? ' active' : ''}`} onClick={() => pick(p.id)}>
-              {p.label}
-            </button>
-          ))}
-          <button type="button" className={`rp-chip${preset === 'custom' ? ' active' : ''}`} onClick={() => setPreset('custom')}>
-            Custom
+      <div className="rp-tabs" role="tablist">
+        {TABS.map((t) => (
+          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={`rp-tab${tab === t.id ? ' active' : ''}`} onClick={() => setTab(t.id)}>
+            {t.label}
           </button>
-        </div>
-        <div className="rp-dates" style={{ marginBottom: 0 }}>
-          <div>
-            <label className="rp-label" htmlFor="rp-from">From date</label>
-            <input id="rp-from" type="date" value={from} max={to || undefined} onChange={(e) => { setFrom(e.target.value); setPreset('custom'); }} />
-          </div>
-          <div>
-            <label className="rp-label" htmlFor="rp-to">To date</label>
-            <input id="rp-to" type="date" value={to} min={from || undefined} onChange={(e) => { setTo(e.target.value); setPreset('custom'); }} />
-          </div>
-        </div>
-        {from > to && to && <div className="rp-error">From date must be on or before To date.</div>}
-        {error && <div className="rp-error">{error}</div>}
+        ))}
       </div>
-
-      <div className="rp-grid">
-        <div>
-          <div className="card rp-report">
-            <div className="rp-report-top">
-              <div className="rp-icon">📊</div>
-              <div>
-                <h2>Milk ACK Report</h2>
-                <p>Milk disposal and acknowledgement statement as an Excel file. Choose how it is grouped.</p>
-              </div>
-            </div>
-            <span className="rp-label">Report by</span>
-            <div className="rp-chips" style={{ marginBottom: '0.5rem' }}>
-              {ACK_GROUPS.map((g) => (
-                <button key={g.id} type="button" className={`rp-chip${ackGroup === g.id ? ' active' : ''}`} onClick={() => setAckGroup(g.id)}>
-                  {g.label}
-                </button>
-              ))}
-            </div>
-            <p className="rp-range" style={{ marginTop: 0, marginBottom: '1.1rem' }}>{ACK_GROUPS.find((g) => g.id === ackGroup)?.hint}</p>
-            <div className="rp-actions">
-              <button type="button" className="rp-pdf" onClick={downloadAck} disabled={invalid || ackBusy}>
-                {ackBusy ? 'Preparing…' : 'Download Excel'}
-              </button>
-              {!invalid && (
-                <span className="rp-range">
-                  {from === to ? formatDateDDMMYYYY(from) : `${formatDateDDMMYYYY(from)} to ${formatDateDDMMYYYY(to)}`}
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="card rp-report">
-            <div className="rp-report-top">
-              <div className="rp-icon">📄</div>
-              <div>
-                <h2>Quantity And Quality Reconciliation Report</h2>
-                <p>What each BMC sent on every tanker, what the union received and what was acknowledged back to each BMC.</p>
-              </div>
-            </div>
-            <div className="rp-actions">
-              <button type="button" className="rp-pdf" onClick={openPdf} disabled={invalid || busy}>
-                {busy ? 'Preparing…' : 'Open PDF'}
-              </button>
-              <span className="rp-range">Opens in a new tab</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="card rp-info">
-          <h3>Milk ACK Report options</h3>
-          <ul>
-            <li><b>Date-wise:</b> every entry by date, with a total after each tanker</li>
-            <li><b>Team-wise:</b> grouped by team, with a total per team</li>
-            <li><b>BMC-wise:</b> grouped by BMC, with a total per BMC</li>
-            <li><b>Tanker-wise:</b> grouped by tanker, with a total per tanker</li>
-          </ul>
-          <h3 style={{ marginTop: '1rem' }}>Good to know</h3>
-          <ul>
-            <li>Team, BMC and tanker reports also have a Summary sheet with one line per group.</li>
-            <li>Total rows are highlighted.</li>
-            <li>Cancelled trips are left out.</li>
-          </ul>
-        </div>
-      </div>
+      {/* Both stay mounted so each report keeps its own date range while you switch tabs */}
+      <div style={{ display: tab === 'ack' ? 'block' : 'none' }}><MilkAckReport /></div>
+      <div style={{ display: tab === 'recon' ? 'block' : 'none' }}><ReconciliationReport /></div>
     </div>
   );
 }
