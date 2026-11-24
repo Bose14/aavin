@@ -3,6 +3,8 @@ import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { getLocalTodayIso } from '../../lib/format';
 import { ErrorBanner, StatusBadge, TableSkeleton } from '../../components/UiPrimitives';
+import { DataTable } from '../../components/DataTable';
+import type { DataColumn } from '../../components/DataTable';
 
 interface BmcOption { id: string; name: string; kind?: string }
 interface Entry {
@@ -16,7 +18,7 @@ interface Entry {
   bmcs?: { name: string } | null;
 }
 
-const PAGE_SIZES = [25, 50, 100];
+interface Row { id: string; bmc: string; shift: 'AM' | 'PM'; litres: number; fat: number; snf: number; ltFat: number; ltSnf: number }
 const nf = (v: number, d = 2) => v.toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
 const trim = (v: number) => String(Math.round(v * 100) / 100);
 
@@ -30,8 +32,6 @@ export default function AdminBmcReport() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [pageSize, setPageSize] = useState(100);
-  const [page, setPage] = useState(1);
 
   useEffect(() => {
     api.get<BmcOption[]>('/bmcs')
@@ -54,9 +54,9 @@ export default function AdminBmcReport() {
     }
   }, [date, bmcId]);
 
-  useEffect(() => { void load(); setPage(1); }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
-  const rows = useMemo(
+  const rows = useMemo<Row[]>(
     () => [...entries]
       .map(e => {
         const litres = Number(e.quantity_litres);
@@ -75,22 +75,28 @@ export default function AdminBmcReport() {
     [entries],
   );
 
-  const pages = Math.max(1, Math.ceil(rows.length / pageSize));
-  const current = Math.min(page, pages);
-  const shown = rows.slice((current - 1) * pageSize, current * pageSize);
   const sum = (list: typeof rows) => ({
-    litres: list.reduce((s, r) => s + r.litres, 0),
-    ltFat: list.reduce((s, r) => s + r.ltFat, 0),
-    ltSnf: list.reduce((s, r) => s + r.ltSnf, 0),
+    litres: list.reduce((acc, r) => acc + r.litres, 0),
+    ltFat: list.reduce((acc, r) => acc + r.ltFat, 0),
+    ltSnf: list.reduce((acc, r) => acc + r.ltSnf, 0),
   });
-  const pageTotal = sum(shown);
-  const netTotal = sum(rows);
+  const net = sum(rows);
   const avg = (t: { litres: number; ltFat: number; ltSnf: number }) =>
     t.litres > 0 ? { fat: (t.ltFat / t.litres) * 100, snf: (t.ltSnf / t.litres) * 100 } : null;
+  const netAvg = avg(net);
 
-  const th: React.CSSProperties = { padding: '10px 12px', textAlign: 'right', fontWeight: 700, borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0', background: '#f8fafc', whiteSpace: 'nowrap' };
-  const td: React.CSSProperties = { padding: '10px 12px', textAlign: 'right', borderBottom: '1px solid #eef2f7', borderRight: '1px solid #eef2f7', whiteSpace: 'nowrap' };
-  const tl: React.CSSProperties = { textAlign: 'left' };
+  const columns: DataColumn<Row>[] = [
+    { key: 'bmc', header: 'BMC', render: r => r.bmc, sortValue: r => r.bmc, footerCell: <strong>Net Total</strong>, pageFooterCell: () => <strong>Page Total</strong> },
+    {
+      key: 'shift', header: 'Shift', align: 'center', sortValue: r => r.shift,
+      render: r => <StatusBadge tone={r.shift === 'AM' ? 'green' : 'amber'}>{r.shift === 'AM' ? 'Morning' : 'Evening'}</StatusBadge>,
+    },
+    { key: 'litres', header: 'Litres', align: 'right', sortValue: r => r.litres, render: r => nf(r.litres), footerCell: <strong>{nf(net.litres)}</strong>, pageFooterCell: p => <strong>{nf(sum(p as Row[]).litres)}</strong> },
+    { key: 'fat', header: 'Fat %', align: 'right', sortValue: r => r.fat, render: r => trim(r.fat), footerCell: <strong>{netAvg ? trim(netAvg.fat) : '–'}</strong>, pageFooterCell: p => { const a = avg(sum(p as Row[])); return <strong>{a ? trim(a.fat) : '–'}</strong>; } },
+    { key: 'snf', header: 'SNF %', align: 'right', sortValue: r => r.snf, render: r => trim(r.snf), footerCell: <strong>{netAvg ? trim(netAvg.snf) : '–'}</strong>, pageFooterCell: p => { const a = avg(sum(p as Row[])); return <strong>{a ? trim(a.snf) : '–'}</strong>; } },
+    { key: 'ltFat', header: 'Lt Fat', align: 'right', sortValue: r => r.ltFat, render: r => nf(r.ltFat), footerCell: <strong>{nf(net.ltFat)}</strong>, pageFooterCell: p => <strong>{nf(sum(p as Row[]).ltFat)}</strong> },
+    { key: 'ltSnf', header: 'Lt SNF', align: 'right', sortValue: r => r.ltSnf, render: r => nf(r.ltSnf), footerCell: <strong>{nf(net.ltSnf)}</strong>, pageFooterCell: p => <strong>{nf(sum(p as Row[]).ltSnf)}</strong> },
+  ];
 
   return (
     <div className="page">
@@ -119,76 +125,17 @@ export default function AdminBmcReport() {
       {loading ? (
         <TableSkeleton rows={6} cols={7} />
       ) : (
-        <div className="bmcr-wrap">
-          <table className="bmcr-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.92rem' }}>
-            <thead>
-              <tr>
-                <th style={{ ...th, ...tl }}>BMC</th>
-                <th style={{ ...th, textAlign: 'center' }}>Shift</th>
-                <th style={th}>Litres</th>
-                <th style={th}>Fat %</th>
-                <th style={th}>SNF %</th>
-                <th style={th}>Lt Fat</th>
-                <th style={th}>Lt SNF</th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.length === 0 && (
-                <tr><td colSpan={7} style={{ ...td, ...tl, textAlign: 'center', padding: 28, color: '#64748b' }}>No milk entries for this date.</td></tr>
-              )}
-              {shown.map(r => (
-                <tr key={r.id}>
-                  <td style={{ ...td, ...tl }}>{r.bmc}</td>
-                  <td style={{ ...td, textAlign: 'center' }}>
-                    <StatusBadge tone={r.shift === 'AM' ? 'green' : 'amber'}>{r.shift === 'AM' ? 'Morning' : 'Evening'}</StatusBadge>
-                  </td>
-                  <td style={td}>{nf(r.litres)}</td>
-                  <td style={td}>{trim(r.fat)}</td>
-                  <td style={td}>{trim(r.snf)}</td>
-                  <td style={td}>{nf(r.ltFat)}</td>
-                  <td style={td}>{nf(r.ltSnf)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              {[{ label: 'Page Total', t: pageTotal }, { label: 'Net Total', t: netTotal }].map(({ label, t }) => {
-                const a = avg(t);
-                return (
-                  <tr key={label} style={{ background: '#f8fafc', fontWeight: 700 }}>
-                    <td colSpan={2} style={{ ...td, background: '#f8fafc' }}>{label}</td>
-                    <td style={{ ...td, background: '#f8fafc' }}>{nf(t.litres)}</td>
-                    <td style={{ ...td, background: '#f8fafc' }}>{a ? trim(a.fat) : '–'}</td>
-                    <td style={{ ...td, background: '#f8fafc' }}>{a ? trim(a.snf) : '–'}</td>
-                    <td style={{ ...td, background: '#f8fafc' }}>{nf(t.ltFat)}</td>
-                    <td style={{ ...td, background: '#f8fafc' }}>{nf(t.ltSnf)}</td>
-                  </tr>
-                );
-              })}
-            </tfoot>
-          </table>
-        </div>
+        <DataTable
+          rows={rows}
+          columns={columns}
+          getRowKey={r => r.id}
+          searchable={false}
+          pageSize={100}
+          pageSizeOptions={[25, 50, 100]}
+          showTotalsRow
+          emptyMessage="No milk entries for this date."
+        />
       )}
-
-      <div className="bmcr-pager">
-        <div className="bmcr-pager-nav">
-          <button type="button" disabled={current <= 1} onClick={() => setPage(1)} aria-label="First page">«</button>
-          <button type="button" disabled={current <= 1} onClick={() => setPage(current - 1)} aria-label="Previous page">‹</button>
-          <span>Go to:</span>
-          <input type="number" min={1} max={pages} value={current} onChange={e => setPage(Math.min(pages, Math.max(1, Number(e.target.value) || 1)))} />
-          <span>/ {pages}</span>
-          <button type="button" disabled={current >= pages} onClick={() => setPage(current + 1)} aria-label="Next page">›</button>
-          <button type="button" disabled={current >= pages} onClick={() => setPage(pages)} aria-label="Last page">»</button>
-        </div>
-        <label className="bmcr-show">
-          <span>Show</span>
-          <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}>
-            {PAGE_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </label>
-        <span className="bmcr-count">
-          {rows.length === 0 ? 'No records' : `Showing ${(current - 1) * pageSize + 1}–${Math.min(current * pageSize, rows.length)} of ${rows.length} records`}
-        </span>
-      </div>
     </div>
   );
 }
