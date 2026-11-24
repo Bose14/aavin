@@ -805,7 +805,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                                 openEntryModal(t);
                               }}
                               className="btn btn-primary btn-sm"
-                              style={{ backgroundColor: '#16a34a', borderColor: '#15803d', fontWeight: 700, padding: '4px 12px' }}
+                              style={{ fontWeight: 700, padding: '4px 12px' }}
                             >
                               📝 Milk Receipt Entry
                             </button>
@@ -892,7 +892,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                                 openGrossModal(t);
                               }}
                               className="btn btn-primary btn-sm"
-                              style={{ backgroundColor: '#65a30d', borderColor: '#4d7c0f', fontWeight: 700, padding: '4px 12px' }}
+                              style={{ fontWeight: 700, padding: '4px 12px' }}
                             >
                               ⚖️ Gross Weight Entry
                             </button>
@@ -978,7 +978,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                                 openTareModal(t);
                               }}
                               className="btn btn-primary btn-sm"
-                              style={{ backgroundColor: '#0284c7', borderColor: '#0369a1', fontWeight: 700, padding: '4px 12px' }}
+                              style={{ fontWeight: 700, padding: '4px 12px' }}
                             >
                               ⚖️ Tare Weight Entry
                             </button>
@@ -1070,7 +1070,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                                 openExitModal(t);
                               }}
                               className="btn btn-primary btn-sm"
-                              style={{ backgroundColor: '#0f766e', borderColor: '#115e59', fontWeight: 700, padding: '4px 12px' }}
+                              style={{ fontWeight: 700, padding: '4px 12px' }}
                             >
                               🚪 Tanker Out Entry
                             </button>
@@ -1863,7 +1863,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                     type="submit"
                     disabled={submitting || !grossWeightKg}
                     style={{
-                      backgroundColor: '#65a30d',
+                      backgroundColor: 'var(--primary)',
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: 3,
@@ -2194,7 +2194,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                     type="submit"
                     disabled={submitting || !tareWeightKg}
                     style={{
-                      backgroundColor: '#65a30d',
+                      backgroundColor: 'var(--primary)',
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: 3,
@@ -2210,7 +2210,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                     type="button"
                     onClick={() => setShowTareReportModal(true)}
                     style={{
-                      backgroundColor: '#65a30d',
+                      backgroundColor: 'var(--primary)',
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: 3,
@@ -2226,7 +2226,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                     type="button"
                     onClick={() => setShowTareReportModal(true)}
                     style={{
-                      backgroundColor: '#65a30d',
+                      backgroundColor: 'var(--primary)',
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: 3,
@@ -2462,7 +2462,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                     type="submit"
                     disabled={submitting}
                     style={{
-                      backgroundColor: '#65a30d',
+                      backgroundColor: 'var(--primary)',
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: 3,

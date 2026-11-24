@@ -569,7 +569,7 @@ export default function AdminDashboard() {
               <button
                 type="button"
                 className="btn-link btn-sm"
-                style={{ color: '#15803d', fontWeight: 600 }}
+                style={{ color: 'var(--primary)', fontWeight: 600 }}
                 onClick={() => navigate('/admin/tanker')}
               >
                 Open Tanker Register &rarr;

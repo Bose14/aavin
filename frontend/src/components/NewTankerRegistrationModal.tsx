@@ -462,7 +462,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
               type="submit"
               disabled={submitting}
               style={{
-                backgroundColor: '#65a30d',
+                backgroundColor: 'var(--primary)',
                 color: '#ffffff',
                 border: 'none',
                 borderRadius: 3,

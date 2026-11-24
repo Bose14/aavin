@@ -602,7 +602,7 @@ export default function UnloadingBay() {
                             openUnloadModal(t);
                           }}
                           className="btn btn-primary btn-sm"
-                          style={{ backgroundColor: '#65a30d', borderColor: '#4d7c0f', fontWeight: 700, padding: '4px 12px' }}
+                          style={{ fontWeight: 700, padding: '4px 12px' }}
                         >
                           🥛 Unload Tanker
                         </button>
@@ -1087,7 +1087,7 @@ export default function UnloadingBay() {
                     type="submit"
                     disabled={submitting}
                     style={{
-                      backgroundColor: '#65a30d',
+                      backgroundColor: 'var(--primary)',
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: 3,

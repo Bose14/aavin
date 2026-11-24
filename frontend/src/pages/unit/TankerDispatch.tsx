@@ -479,9 +479,6 @@ export default function TankerDispatch() {
               setShowDispatchModal(true);
             }}
             style={{
-              backgroundColor: '#16a34a',
-              borderColor: '#15803d',
-              color: '#ffffff',
               fontWeight: 700,
               fontSize: '13px',
               padding: '8px 16px',
@@ -563,9 +560,6 @@ export default function TankerDispatch() {
               setShowDispatchModal(true);
             }}
             style={{
-              backgroundColor: '#16a34a',
-              borderColor: '#15803d',
-              color: '#ffffff',
               fontWeight: 700,
               fontSize: '12px',
               padding: '6px 14px',
@@ -1091,8 +1085,8 @@ export default function TankerDispatch() {
                     padding: '12px',
                     fontSize: '15px',
                     fontWeight: 800,
-                    backgroundColor: '#16a34a',
-                    borderColor: '#15803d',
+                    backgroundColor: 'var(--primary)',
+                    borderColor: 'var(--primary-dark)',
                     cursor: loading || totalCompartmentLitres <= 0 || exceedsStock ? 'not-allowed' : 'pointer',
                   }}
                 >

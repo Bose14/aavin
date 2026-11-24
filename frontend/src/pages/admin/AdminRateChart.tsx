@@ -339,7 +339,7 @@ export default function AdminRateChart() {
                   type="button"
                   onClick={() => void publish()}
                   disabled={!upGrid || !upDate || upSaving}
-                  style={{ background: '#65a30d', color: '#fff', border: 'none', borderRadius: 3, padding: '6px 18px', fontWeight: 700, fontSize: '0.86rem', cursor: !upGrid || upSaving ? 'not-allowed' : 'pointer', opacity: !upGrid || upSaving ? 0.6 : 1 }}
+                  style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 3, padding: '6px 18px', fontWeight: 700, fontSize: '0.86rem', cursor: !upGrid || upSaving ? 'not-allowed' : 'pointer', opacity: !upGrid || upSaving ? 0.6 : 1 }}
                 >
                   {upSaving ? 'Saving…' : 'Save Chart'}
                 </button>

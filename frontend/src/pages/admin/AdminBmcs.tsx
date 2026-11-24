@@ -442,7 +442,7 @@ export default function AdminBmcs() {
                     height: '42px',
                     borderRadius: '8px',
                     border: 'none',
-                    backgroundColor: '#3b82f6',
+                    backgroundColor: 'var(--primary)',
                     color: '#ffffff',
                     fontSize: '14px',
                     fontWeight: 600,

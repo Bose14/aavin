@@ -1371,7 +1371,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                                 openQcModal(t);
                               }}
                               className="btn btn-primary btn-sm"
-                              style={{ backgroundColor: '#65a30d', borderColor: '#4d7c0f', fontWeight: 700, padding: '4px 12px' }}
+                              style={{ fontWeight: 700, padding: '4px 12px' }}
                             >
                               🔬 Conduct QC
                             </button>
@@ -1450,7 +1450,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                                 openCipModal(t);
                               }}
                               className="btn btn-primary btn-sm"
-                              style={{ backgroundColor: '#0284c7', borderColor: '#0369a1', fontWeight: 700, padding: '4px 12px' }}
+                              style={{ fontWeight: 700, padding: '4px 12px' }}
                             >
                               🧼 CIP Inspection
                             </button>
@@ -1552,7 +1552,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                                   openGatePassModal(t);
                                 }}
                                 className="btn btn-primary btn-sm"
-                                style={{ backgroundColor: '#d97706', borderColor: '#b45309', fontWeight: 700, padding: '4px 12px' }}
+                                style={{ fontWeight: 700, padding: '4px 12px' }}
                               >
                                 📋 Issue Gate Pass
                               </button>
@@ -2821,7 +2821,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                     type="submit"
                     disabled={submitting}
                     style={{
-                      backgroundColor: '#65a30d',
+                      backgroundColor: 'var(--primary)',
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: 3,
@@ -3115,7 +3115,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                     type="submit"
                     disabled={submitting}
                     style={{
-                      backgroundColor: '#65a30d',
+                      backgroundColor: 'var(--primary)',
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: 3,
@@ -3611,7 +3611,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                       type="submit"
                       disabled={submitting}
                       style={{
-                        backgroundColor: '#16a34a',
+                        backgroundColor: 'var(--primary)',
                         color: '#ffffff',
                         border: 'none',
                         borderRadius: 4,

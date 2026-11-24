@@ -640,8 +640,8 @@ export default function AdminTeams() {
               padding: '0 1.15rem',
               height: '38px',
               fontSize: '0.9rem',
-              background: '#2563eb',
-              boxShadow: '0 2px 4px rgba(37,99,235,0.25)',
+              background: 'var(--primary)',
+              boxShadow: '0 2px 4px rgba(37, 139, 214, 0.25)',
               width: 'auto',
             }}
           >
