@@ -18,7 +18,7 @@ export interface DataColumn<T> {
 export interface TableFilter {
   key: string;
   label: string;
-  type: 'select' | 'date' | 'text';
+  type: 'select' | 'date' | 'text' | 'checkbox';
   value: string;
   onChange: (value: string) => void;
   /** select: the choices (the first one is usually the "All" option). */
@@ -139,6 +139,8 @@ export function DataTable<T>({
                 <select value={f.value} disabled={f.disabled} onChange={e => { f.onChange(e.target.value); setPage(1); }}>
                   {(f.options ?? []).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
+              ) : f.type === 'checkbox' ? (
+                <input type="checkbox" className="dt-check" checked={f.value === 'true'} disabled={f.disabled} onChange={e => { f.onChange(e.target.checked ? 'true' : ''); setPage(1); }} />
               ) : f.type === 'date' ? (
                 <input type="date" value={f.value} min={f.min} max={f.max} disabled={f.disabled} onChange={e => { f.onChange(e.target.value); setPage(1); }} />
               ) : (
