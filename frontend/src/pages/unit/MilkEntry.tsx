@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type React from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
@@ -21,12 +20,6 @@ import {
 } from '../../lib/offlineQueue';
 import { ConfirmDialog, StatusBadge } from '../../components/UiPrimitives';
 
-interface Society {
-  id: string;
-  code: string;
-  name: string;
-}
-
 interface ExistingEntry {
   id: string;
   date: string;
@@ -38,7 +31,7 @@ interface RecentEntry {
   date: string;
   shift: 'AM' | 'PM';
   dispatch_date?: string | null;
-  cans?: number | null;
+  temperature?: number | null;
   quantity_litres: number;
   fat_pct: number;
   snf_pct: number;
@@ -48,13 +41,12 @@ interface RecentEntry {
 }
 
 interface RowInput {
-  cans: string;
   litres: string;
   fat: string;
   snf: string;
 }
 
-const EMPTY_ROW: RowInput = { cans: '', litres: '', fat: '', snf: '' };
+const EMPTY_ROW: RowInput = { litres: '', fat: '', snf: '' };
 
 function addDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00`);
@@ -72,36 +64,31 @@ const fmt = (n: number, d = 2) => n.toLocaleString('en-IN', { minimumFractionDig
 /** The rate chart for the BMC's milk on the entry date: undefined while loading, null when none is set. */
 type ChartState = RateChartGrid | null | undefined;
 
-/** Validates one society entry and works out LR, rate, amount, Lt Fat and Lt SNF. */
+/** Validates the shift's litres / fat / SNF and works out LR, rate, amount, Lt Fat and Lt SNF. */
 function evaluateRow(r: RowInput, chart: ChartState) {
   const litres = num(r.litres);
   const fat = num(r.fat);
   const snf = num(r.snf);
-  const cans = r.cans.trim() === '' ? 0 : Number(r.cans);
-  const touched = r.cans.trim() !== '' || r.litres.trim() !== '' || r.fat.trim() !== '' || r.snf.trim() !== '';
+  const touched = r.litres.trim() !== '' || r.fat.trim() !== '' || r.snf.trim() !== '';
   let problem = '';
   let rate = 0;
-  if (touched) {
-    if (!(litres > 0)) problem = 'Enter litres';
-    else if (!Number.isFinite(fat)) problem = 'Enter fat %';
-    else if (!Number.isFinite(snf)) problem = 'Enter SNF %';
-    else if (chart === undefined) problem = 'Loading rate chart…';
-    else if (chart === null) problem = 'No rate chart for this date. Ask the admin to add one.';
-    else {
-      const found = lookupRate(chart, fat, snf);
-      if (found == null) {
-        const g = chartRange(chart);
-        problem = `No rate for this Fat/SNF. Chart covers Fat ${formatFatSnf(g.fatMin)}–${formatFatSnf(g.fatMax)}, SNF ${formatFatSnf(g.snfMin)}–${formatFatSnf(g.snfMax)}`;
-      } else rate = found;
-    }
-    if (!problem && (!Number.isInteger(cans) || cans < 0)) problem = 'Cans must be a whole number';
+  if (!(litres > 0)) problem = 'Enter litres';
+  else if (!Number.isFinite(fat)) problem = 'Enter fat %';
+  else if (!Number.isFinite(snf)) problem = 'Enter SNF %';
+  else if (chart === undefined) problem = 'Loading rate chart…';
+  else if (chart === null) problem = 'No rate chart for this date. Ask the admin to add one.';
+  else {
+    const found = lookupRate(chart, fat, snf);
+    if (found == null) {
+      const g = chartRange(chart);
+      problem = `No rate for this Fat/SNF. Chart covers Fat ${formatFatSnf(g.fatMin)}–${formatFatSnf(g.fatMax)}, SNF ${formatFatSnf(g.snfMin)}–${formatFatSnf(g.snfMax)}`;
+    } else rate = found;
   }
-  const ok = touched && !problem;
+  const ok = !problem;
   return {
     touched,
     ok,
     problem,
-    cans: ok ? cans : 0,
     litres: ok ? litres : 0,
     fat: ok ? fat : 0,
     snf: ok ? snf : 0,
@@ -129,21 +116,13 @@ export default function MilkEntry() {
 
   const [chart, setChart] = useState<ChartState>(undefined);
   const [milkType, setMilkType] = useState<string>('COW');
-  const [societies, setSocieties] = useState<Society[]>([]);
-  const [societiesLoading, setSocietiesLoading] = useState(true);
-  const [rows, setRows] = useState<Record<string, RowInput>>({});
-  const [addedIds, setAddedIds] = useState<string[]>([]);
-  const [draftSociety, setDraftSociety] = useState('');
-  const [draft, setDraft] = useState<RowInput>(EMPTY_ROW);
-  const [draftError, setDraftError] = useState('');
-  const [showAdd, setShowAdd] = useState(false);
-  const [newCode, setNewCode] = useState('');
-  const [newName, setNewName] = useState('');
-  const [addError, setAddError] = useState('');
+  const [row, setRow] = useState<RowInput>(EMPTY_ROW);
 
   const [showModal, setShowModal] = useState(() => Boolean(searchParams.get('editId')));
   const [recent, setRecent] = useState<RecentEntry[]>([]);
   const [listLoading, setListLoading] = useState(true);
+  const recentRef = useRef<RecentEntry[]>([]);
+  recentRef.current = recent;
   const [search, setSearch] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<RecentEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -191,17 +170,6 @@ export default function MilkEntry() {
     return () => { cancelled = true; };
   }, [date, bmcId]);
 
-  // The BMC's societies, in the order they are collected
-  useEffect(() => {
-    let cancelled = false;
-    setSocietiesLoading(true);
-    api.get<Society[]>('/societies')
-      .then(res => { if (!cancelled) setSocieties(res.data || []); })
-      .catch(() => { if (!cancelled) setError('Could not load the society list. Please refresh.'); })
-      .finally(() => { if (!cancelled) setSocietiesLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
-
   const fetchRecent = useCallback(async () => {
     try {
       const from = addDays(getLocalTodayIso(), -60);
@@ -219,38 +187,27 @@ export default function MilkEntry() {
     void fetchRecent();
   }, [fetchRecent]);
 
-  // Load an entry for editing
-  const loadForEdit = useCallback((entryId: string) => {
+  // Open an entry for editing (taken from the register; fetched when it is not in the list yet)
+  const loadForEdit = useCallback(async (entryId: string) => {
     setError('');
-    api.get<{
-      entry: { id: string; date: string; shift: 'AM' | 'PM'; dispatch_date: string | null; temperature: number | null };
-      lines: Array<{ society_id: string; cans: number; litres: number; fat_pct: number; snf_pct: number }>;
-    }>(`/milk/${entryId}/lines`)
-      .then(res => {
-        const { entry, lines } = res.data;
-        setEditingId(entry.id);
-        setDate(entry.date);
-        setShift(entry.shift);
-        setDispatchTouched(true);
-        setDispatchDate(entry.dispatch_date ?? entry.date);
-        setTemperature(entry.temperature != null ? String(entry.temperature) : '');
-        const next: Record<string, RowInput> = {};
-        for (const l of lines) {
-          next[String(l.society_id)] = {
-            cans: l.cans ? String(l.cans) : '',
-            litres: String(l.litres),
-            fat: String(l.fat_pct),
-            snf: String(l.snf_pct),
-          };
-        }
-        setRows(next);
-        setAddedIds(lines.map(l => String(l.society_id)));
-        setShowModal(true);
-        if (lines.length === 0) {
-          setError('This entry was saved before society-wise entry existed. Enter the societies again and save to replace it.');
-        }
-      })
-      .catch(() => setError('Could not load this entry.'));
+    try {
+      let entry = recentRef.current.find(r => String(r.id) === String(entryId));
+      if (!entry) {
+        const res = await api.get<RecentEntry[]>('/milk', { params: { from: addDays(getLocalTodayIso(), -400), to: addDays(getLocalTodayIso(), 2) } });
+        entry = (res.data || []).find(r => String(r.id) === String(entryId));
+      }
+      if (!entry) { setError('Could not find this entry.'); return; }
+      setEditingId(String(entry.id));
+      setDate(entry.date);
+      setShift(entry.shift);
+      setDispatchTouched(true);
+      setDispatchDate(entry.dispatch_date ?? entry.date);
+      setTemperature(entry.temperature != null ? String(entry.temperature) : '');
+      setRow({ litres: String(entry.quantity_litres), fat: String(entry.fat_pct), snf: String(entry.snf_pct) });
+      setShowModal(true);
+    } catch {
+      setError('Could not load this entry.');
+    }
   }, []);
 
   useEffect(() => {
@@ -274,51 +231,19 @@ export default function MilkEntry() {
     return () => { cancelled = true; };
   }, [date, shift, editingId]);
 
-  // Per-row calculations and checks
-  const computed = useMemo(() => {
-    const byId = new Map(societies.map(s => [s.id, s]));
-    const shown = addedIds.map(id => byId.get(id)).filter((s): s is Society => Boolean(s));
-    return shown.map(s => ({ society: s, ...evaluateRow(rows[s.id] ?? EMPTY_ROW, chart) }));
-  }, [societies, addedIds, rows, chart]);
-
-  const totals = useMemo(() => {
-    const ok = computed.filter(c => c.ok);
-    const litres = ok.reduce((s, c) => s + c.litres, 0);
-    const ltFat = ok.reduce((s, c) => s + (c.litres * c.fat) / 100, 0);
-    const ltSnf = ok.reduce((s, c) => s + (c.litres * c.snf) / 100, 0);
-    return {
-      societies: ok.length,
-      cans: ok.reduce((s, c) => s + c.cans, 0),
-      litres,
-      ltFat,
-      ltSnf,
-      fat: litres > 0 ? (ltFat / litres) * 100 : 0,
-      snf: litres > 0 ? (ltSnf / litres) * 100 : 0,
-      amount: ok.reduce((s, c) => s + c.amount, 0),
-    };
-  }, [computed]);
-
-  const problemRows = computed.filter(c => c.problem);
-  const draftEval = useMemo(() => evaluateRow(draft, chart), [draft, chart]);
-  const draftPending = Boolean(draftSociety) || draftEval.touched;
+  // Calculations and checks for this shift's entry
+  const calc = useMemo(() => evaluateRow(row, chart), [row, chart]);
   const tempNum = temperature.trim() === '' ? null : Number(temperature);
   const isFormValid =
     Boolean(date) &&
-    totals.societies > 0 &&
-    problemRows.length === 0 &&
-    !draftPending &&
+    calc.ok &&
     (tempNum === null || Number.isFinite(tempNum)) &&
-    !existingForSlot &&
-    !societiesLoading;
+    !existingForSlot;
 
   const resetForNext = (flipShift = false) => {
     setEditingId(null);
     setExistingForSlot(null);
-    setRows({});
-    setAddedIds([]);
-    setDraftSociety('');
-    setDraft(EMPTY_ROW);
-    setDraftError('');
+    setRow(EMPTY_ROW);
     setTemperature('');
     setDispatchTouched(false);
     if (flipShift) {
@@ -340,15 +265,9 @@ export default function MilkEntry() {
       shift,
       dispatch_date: dispatchDate || undefined,
       temperature: tempNum ?? undefined,
-      lines: computed
-        .filter(c => c.ok)
-        .map(c => ({
-          society_id: c.society.id,
-          cans: c.cans,
-          litres: round2(c.litres),
-          fat_pct: round2(c.fat),
-          snf_pct: round2(c.snf),
-        })),
+      quantity_litres: round2(calc.litres),
+      fat_pct: round2(calc.fat),
+      snf_pct: round2(calc.snf),
     };
 
     try {
@@ -421,66 +340,6 @@ export default function MilkEntry() {
     if (res.failed.length > 0) setError(res.failed.map(f => f.error).join('; '));
   };
 
-  const availableSocieties = useMemo(
-    () => societies.filter(s => !addedIds.includes(s.id)),
-    [societies, addedIds],
-  );
-
-  const addDraftEntry = () => {
-    if (!draftSociety) { setDraftError('Select a society first'); return; }
-    if (!draftEval.touched) { setDraftError('Enter litres, fat and SNF'); return; }
-    if (draftEval.problem) { setDraftError(draftEval.problem); return; }
-    setRows(prev => ({ ...prev, [draftSociety]: draft }));
-    setAddedIds(prev => (prev.includes(draftSociety) ? prev : [...prev, draftSociety]));
-    setDraftSociety('');
-    setDraft(EMPTY_ROW);
-    setDraftError('');
-    window.setTimeout(() => document.getElementById('draft-society')?.focus(), 50);
-  };
-
-  // Put an added entry back into the entry box to change it
-  const editAddedEntry = (id: string) => {
-    if (draftPending && draftSociety && draftSociety !== id) {
-      setDraftError('Add or clear the entry you are typing first');
-      return;
-    }
-    setDraftSociety(id);
-    setDraft(rows[id] ?? EMPTY_ROW);
-    setDraftError('');
-    setAddedIds(prev => prev.filter(x => x !== id));
-    window.setTimeout(() => document.getElementById('draft-litres')?.focus(), 50);
-  };
-
-  const onDraftKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addDraftEntry();
-    }
-  };
-
-  const removeSocietyRow = (id: string) => {
-    setAddedIds(prev => prev.filter(x => x !== id));
-    setRows(prev => {
-      const { [id]: _removed, ...rest } = prev;
-      return rest;
-    });
-  };
-
-  const handleAddSociety = async () => {
-    setAddError('');
-    try {
-      const res = await api.post<Society>('/societies', { code: newCode.trim(), name: newName.trim() });
-      setSocieties(prev => [...prev, res.data]);
-      setAddedIds(prev => [...prev, res.data.id]);
-      setNewCode('');
-      setNewName('');
-      setShowAdd(false);
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } }; message?: string };
-      setAddError(e.response?.data?.error || e.message || 'Could not add society');
-    }
-  };
-
   const openCreate = () => {
     resetForNext(false);
     setError('');
@@ -527,8 +386,6 @@ export default function MilkEntry() {
   const smallInput = {
     height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3,
   } as const;
-  const sh = { padding: '8px 10px', whiteSpace: 'nowrap' as const, textAlign: 'right' as const };
-  const sd = { padding: '6px 10px', whiteSpace: 'nowrap' as const, textAlign: 'right' as const, color: '#475569' };
 
   return (
     <div className="page" style={{ maxWidth: '1180px', margin: '0 auto', padding: '1.25rem' }}>
@@ -628,9 +485,9 @@ export default function MilkEntry() {
                   <th style={th}>COLLECTION DATE</th>
                   <th style={th}>SHIFT</th>
                   <th style={th}>DISPATCH DATE</th>
-                  <th style={th}>CANS</th>
                   <th style={th}>LITRES</th>
                   <th style={th}>FAT / SNF</th>
+                  <th style={th}>RATE</th>
                   <th style={th}>AMOUNT</th>
                   <th style={th}>STATUS</th>
                   <th style={{ ...th, textAlign: 'right' }}>ACTION</th>
@@ -652,9 +509,9 @@ export default function MilkEntry() {
                     </td>
                     <td style={{ ...td, color: '#334155' }}>{r.shift === 'AM' ? 'Morning' : 'Evening'}</td>
                     <td style={{ ...td, color: '#475569' }}>{r.dispatch_date ? formatDateDDMMYYYY(r.dispatch_date) : '—'}</td>
-                    <td style={{ ...td, color: '#475569' }}>{r.cans != null ? r.cans : '—'}</td>
                     <td style={{ ...td, fontWeight: 700, color: '#0f172a' }}>{formatLitres(Number(r.quantity_litres), 1)}</td>
                     <td style={{ ...td, color: '#475569' }}>{formatFatSnf(Number(r.fat_pct))}% / {formatFatSnf(Number(r.snf_pct))}%</td>
+                    <td style={{ ...td, color: '#475569' }}>₹{Number(r.rate_per_litre).toFixed(2)}</td>
                     <td style={{ ...td, fontWeight: 700, color: '#0f172a' }}>{formatINR(Number(r.quantity_litres) * Number(r.rate_per_litre))}</td>
                     <td style={td}>
                       <StatusBadge tone={r.status === 'verified' ? 'green' : 'amber'}>{r.status === 'verified' ? 'Verified' : 'Submitted'}</StatusBadge>
@@ -698,7 +555,7 @@ export default function MilkEntry() {
         >
           <div
             style={{
-              backgroundColor: '#ffffff', borderRadius: 8, width: '100%', maxWidth: 1000, maxHeight: '92vh',
+              backgroundColor: '#ffffff', borderRadius: 8, width: '100%', maxWidth: 820, maxHeight: '92vh',
               display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', overflow: 'hidden',
             }}
             onClick={e => e.stopPropagation()}
@@ -780,203 +637,65 @@ export default function MilkEntry() {
 
                 <div style={{ marginTop: '1.5rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
                   <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#334155', marginBottom: '0.75rem' }}>
-                    Society Wise Collection
+                    Milk Collected
                     <span style={{ fontWeight: 400, fontSize: '0.8rem', color: '#64748b', marginLeft: 10 }}>
                       {milkTypeLabel(milkType)} milk
-                      {chart ? (() => { const g = chartRange(chart); return ` · Fat ${formatFatSnf(g.fatMin)}–${formatFatSnf(g.fatMax)}, SNF ${formatFatSnf(g.snfMin)}–${formatFatSnf(g.snfMax)}`; })() : chart === null ? ' · no rate chart for this date' : ''}
+                      {chart ? (() => { const g = chartRange(chart); return ` · Rate chart: Fat ${formatFatSnf(g.fatMin)}–${formatFatSnf(g.fatMax)}, SNF ${formatFatSnf(g.snfMin)}–${formatFatSnf(g.snfMax)}`; })() : chart === null ? ' · no rate chart for this date' : ''}
                     </span>
                   </div>
 
-                  <div style={{ border: '1px solid #e2e8f0', borderRadius: 4, padding: '10px 12px', background: '#fafafa', marginBottom: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.82rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ color: '#475569', fontWeight: 600 }}>Society</span>
-                        <select
-                          id="draft-society"
-                          value={draftSociety}
-                          onChange={e => { setDraftSociety(e.target.value); setDraftError(''); window.setTimeout(() => document.getElementById('draft-cans')?.focus(), 50); }}
-                          disabled={societiesLoading || (availableSocieties.length === 0 && !draftSociety)}
-                          style={{ ...smallInput, height: 28, minWidth: 220, backgroundColor: '#ffffff' }}
-                        >
-                          <option value="">
-                            {availableSocieties.length > 0
-                              ? 'Select society…'
-                              : societies.length === 0
-                                ? 'No societies for this BMC yet'
-                                : 'All societies added'}
-                          </option>
-                          {societies.filter(sc => sc.id === draftSociety || !addedIds.includes(sc.id)).map(sc => (
-                            <option key={sc.id} value={sc.id}>{sc.name} ({sc.code})</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ color: '#475569' }}>Cans</span>
-                        <input id="draft-cans" type="number" inputMode="numeric" min="0" step="1" value={draft.cans} onKeyDown={onDraftKey}
-                          onChange={e => setDraft(d => ({ ...d, cans: e.target.value }))}
-                          style={{ ...smallInput, height: 26, width: 55, padding: '2px 6px' }} />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ color: '#475569' }}>Litres</span>
-                        <input id="draft-litres" type="number" inputMode="decimal" min="0" step="0.1" value={draft.litres} onKeyDown={onDraftKey}
-                          onChange={e => setDraft(d => ({ ...d, litres: e.target.value }))}
-                          style={{ ...smallInput, height: 26, width: 80, padding: '2px 6px' }} />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ color: '#475569' }}>Fat</span>
-                        <input type="number" inputMode="decimal" step="0.1" value={draft.fat} onKeyDown={onDraftKey}
-                          onChange={e => setDraft(d => ({ ...d, fat: e.target.value }))}
-                          style={{ ...smallInput, height: 26, width: 60, padding: '2px 6px' }} />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ color: '#475569' }}>SNF</span>
-                        <input type="number" inputMode="decimal" step="0.1" value={draft.snf} onKeyDown={onDraftKey}
-                          onChange={e => setDraft(d => ({ ...d, snf: e.target.value }))}
-                          style={{ ...smallInput, height: 26, width: 60, padding: '2px 6px' }} />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={addDraftEntry}
-                        className="btn btn-primary btn-sm"
-                        style={{ backgroundColor: '#16a34a', borderColor: '#15803d', fontWeight: 700, padding: '4px 14px' }}
-                      >
-                        + Add Entry
-                      </button>
-                      {draftPending && (
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => { setDraftSociety(''); setDraft(EMPTY_ROW); setDraftError(''); }}
-                        >
-                          Clear
-                        </button>
-                      )}
-                    </div>
-                    <div style={{ marginTop: 6, fontSize: '0.8rem', color: draftError ? '#b91c1c' : '#64748b', minHeight: 18 }}>
-                      {draftError
-                        ? draftError
-                        : draftEval.ok
-                          ? `LR ${fmt(draftEval.lr, 1)} · Rate ₹${fmt(draftEval.rate)}/L · Amount ${formatINR(draftEval.amount)} · Lt Fat ${fmt(draftEval.ltFat, 3)} · Lt SNF ${fmt(draftEval.ltSnf, 3)}`
-                          : 'Pick a society, fill the values and click Add Entry. Repeat for each society, then Submit once at the end.'}
-                    </div>
+                  <div className="milk-entry-grid">
+                    <label>
+                      <span className="milk-entry-label">Litres <span style={{ color: '#ef4444' }}>*</span></span>
+                      <input
+                        id="entry-litres" type="number" inputMode="decimal" min="0" step="0.1" required
+                        value={row.litres} onChange={e => setRow(r => ({ ...r, litres: e.target.value }))}
+                        style={{ ...smallInput, width: '100%', height: 34 }}
+                      />
+                    </label>
+                    <label>
+                      <span className="milk-entry-label">LR</span>
+                      <input readOnly tabIndex={-1} value={calc.ok ? fmt(calc.lr, 1) : ''} style={{ ...smallInput, width: '100%', height: 34, background: '#f1f5f9' }} />
+                    </label>
+                    <label>
+                      <span className="milk-entry-label">Fat % <span style={{ color: '#ef4444' }}>*</span></span>
+                      <input
+                        type="number" inputMode="decimal" min="0" step="0.1" required
+                        value={row.fat} onChange={e => setRow(r => ({ ...r, fat: e.target.value }))}
+                        style={{ ...smallInput, width: '100%', height: 34 }}
+                      />
+                    </label>
+                    <label>
+                      <span className="milk-entry-label">SNF % <span style={{ color: '#ef4444' }}>*</span></span>
+                      <input
+                        type="number" inputMode="decimal" min="0" step="0.1" required
+                        value={row.snf} onChange={e => setRow(r => ({ ...r, snf: e.target.value }))}
+                        style={{ ...smallInput, width: '100%', height: 34 }}
+                      />
+                    </label>
+                    <label>
+                      <span className="milk-entry-label">Rate (₹/L)</span>
+                      <input readOnly tabIndex={-1} value={calc.ok ? fmt(calc.rate) : ''} style={{ ...smallInput, width: '100%', height: 34, background: '#f1f5f9' }} />
+                    </label>
+                    <label>
+                      <span className="milk-entry-label">Amount (₹)</span>
+                      <input readOnly tabIndex={-1} value={calc.ok ? fmt(calc.amount) : ''} style={{ ...smallInput, width: '100%', height: 34, background: '#f1f5f9', fontWeight: 700 }} />
+                    </label>
+                    <label>
+                      <span className="milk-entry-label">Lt. Fat</span>
+                      <input readOnly tabIndex={-1} value={calc.ok ? fmt(calc.ltFat, 3) : ''} style={{ ...smallInput, width: '100%', height: 34, background: '#f1f5f9' }} />
+                    </label>
+                    <label>
+                      <span className="milk-entry-label">Lt. SNF</span>
+                      <input readOnly tabIndex={-1} value={calc.ok ? fmt(calc.ltSnf, 3) : ''} style={{ ...smallInput, width: '100%', height: 34, background: '#f1f5f9' }} />
+                    </label>
                   </div>
-
-                  <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 4 }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860, fontSize: '13px' }}>
-                      <thead>
-                        <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}>
-                          <th style={{ ...sh, textAlign: 'left', position: 'sticky', left: 0, background: '#f8fafc' }}>SOCIETY NAME</th>
-                          <th style={{ ...sh, width: 70 }}>CANS</th>
-                          <th style={{ ...sh, width: 90 }}>LITRES</th>
-                          <th style={sh}>LR</th>
-                          <th style={{ ...sh, width: 70 }}>FAT</th>
-                          <th style={{ ...sh, width: 70 }}>SNF</th>
-                          <th style={sh}>RATE</th>
-                          <th style={sh}>AMOUNT</th>
-                          <th style={sh}>LT.FAT</th>
-                          <th style={sh}>LT.SNF</th>
-                          <th style={{ ...sh, width: 90 }} />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {societiesLoading && (
-                          <tr><td colSpan={11} style={{ ...sd, textAlign: 'center', padding: 16 }}>Loading societies…</td></tr>
-                        )}
-                        {!societiesLoading && computed.length === 0 && (
-                          <tr>
-                            <td colSpan={11} style={{ ...sd, textAlign: 'center', padding: 16 }}>
-                              {societies.length === 0
-                                ? 'This BMC has no societies yet. Click “Society not in the list? Add new” below to add the first one.'
-                                : 'No entries added yet. Select a society above and click “+ Add Entry”.'}
-                            </td>
-                          </tr>
-                        )}
-                        {computed.map(c => {
-                          const bg = c.problem ? '#fef2f2' : c.ok ? '#f0fdf4' : '#ffffff';
-                          return (
-                            <tr key={c.society.id} style={{ borderBottom: '1px solid #f1f5f9', background: bg }}>
-                              <td style={{ ...sd, textAlign: 'left', position: 'sticky', left: 0, background: bg, fontWeight: 600, color: '#0f172a' }}>
-                                {c.society.name}
-                                <div style={{ fontSize: 11, color: c.problem ? '#b91c1c' : '#94a3b8', fontWeight: 400 }}>
-                                  {c.problem || `Code: ${c.society.code}`}
-                                </div>
-                              </td>
-                              <td style={sd}>{c.cans}</td>
-                              <td style={{ ...sd, fontWeight: 600, color: '#0f172a' }}>{fmt(c.litres, 1)}</td>
-                              <td style={sd}>{c.ok ? fmt(c.lr, 1) : '–'}</td>
-                              <td style={sd}>{fmt(c.fat)}</td>
-                              <td style={sd}>{fmt(c.snf)}</td>
-                              <td style={sd}>{c.ok ? fmt(c.rate) : '–'}</td>
-                              <td style={{ ...sd, fontWeight: 700, color: '#0f172a' }}>{c.ok ? formatINR(c.amount) : '–'}</td>
-                              <td style={sd}>{c.ok ? fmt(c.ltFat, 3) : '–'}</td>
-                              <td style={sd}>{c.ok ? fmt(c.ltSnf, 3) : '–'}</td>
-                              <td style={{ ...sd, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => editAddedEntry(c.society.id)}
-                                  title="Change this entry"
-                                  style={{ border: 'none', background: 'transparent', color: '#0284c7', cursor: 'pointer', fontSize: 13, fontWeight: 700, marginRight: 6 }}
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => removeSocietyRow(c.society.id)}
-                                  aria-label={`Remove ${c.society.name}`}
-                                  title="Remove this society"
-                                  style={{ border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', fontSize: 16, fontWeight: 700 }}
-                                >
-                                  ✕
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot>
-                        <tr style={{ background: '#f1f5f9', fontWeight: 700, borderTop: '2px solid #cbd5e1', color: '#0f172a' }}>
-                          <td style={{ ...sd, textAlign: 'left', position: 'sticky', left: 0, background: '#f1f5f9', color: '#0f172a' }}>
-                            TOTAL ({totals.societies})
-                          </td>
-                          <td style={{ ...sd, color: '#0f172a' }}>{totals.cans}</td>
-                          <td style={{ ...sd, color: '#0f172a' }}>{fmt(totals.litres, 1)}</td>
-                          <td style={sd} />
-                          <td style={{ ...sd, color: '#0f172a' }}>{totals.litres > 0 ? fmt(totals.fat) : '–'}</td>
-                          <td style={{ ...sd, color: '#0f172a' }}>{totals.litres > 0 ? fmt(totals.snf) : '–'}</td>
-                          <td style={{ ...sd, color: '#0f172a' }}>{totals.litres > 0 ? fmt(totals.amount / totals.litres) : '–'}</td>
-                          <td style={{ ...sd, color: '#0f172a' }}>{formatINR(totals.amount)}</td>
-                          <td style={{ ...sd, color: '#0f172a' }}>{fmt(totals.ltFat, 3)}</td>
-                          <td style={{ ...sd, color: '#0f172a' }}>{fmt(totals.ltSnf, 3)}</td>
-                          <td style={sd} />
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-
-                  <div style={{ marginTop: 10 }}>
-                    {!showAdd ? (
-                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowAdd(true)}>Society not in the list? Add new</button>
-                    ) : (
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <input style={{ ...smallInput, width: 120 }} placeholder="Code" value={newCode} onChange={e => setNewCode(e.target.value)} />
-                        <input style={{ ...smallInput, width: 220 }} placeholder="Society name" value={newName} onChange={e => setNewName(e.target.value)} />
-                        <button type="button" className="btn btn-primary btn-sm" style={{ width: 'auto' }} disabled={!newCode.trim() || !newName.trim()} onClick={() => void handleAddSociety()}>
-                          Add
-                        </button>
-                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setShowAdd(false); setAddError(''); }}>Cancel</button>
-                        {addError && <span style={{ color: '#b91c1c', fontSize: 13 }}>{addError}</span>}
-                      </div>
-                    )}
+                  <div style={{ marginTop: 6, fontSize: '0.8rem', color: calc.touched && calc.problem ? '#b91c1c' : '#64748b', minHeight: 18 }}>
+                    {calc.touched && calc.problem ? calc.problem : 'LR, Rate, Amount, Lt. Fat and Lt. SNF are calculated from the litres, fat and SNF.'}
                   </div>
                 </div>
 
                 {error && <p className="auth-error" style={{ marginTop: '12px' }}>{error}</p>}
-
-                {draftPending && (
-                  <p style={{ margin: '12px 0 0', fontSize: '0.82rem', color: '#b45309' }}>
-                    You have a society entry that is not added yet. Click “+ Add Entry” (or Clear) before submitting.
-                  </p>
-                )}
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px', marginTop: '1.5rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0' }}>
                   <button type="button" onClick={closeModal} className="btn btn-secondary" style={{ padding: '6px 16px' }}>
