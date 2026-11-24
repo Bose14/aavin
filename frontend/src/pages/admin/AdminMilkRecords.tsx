@@ -15,6 +15,7 @@ import { summarizeMilkEntries } from '../../lib/procurement';
 import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
 import { ErrorBanner, InfoTooltip, StatusBadge } from '../../components/UiPrimitives';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 interface Unit {
   id: string;
@@ -389,11 +390,8 @@ export default function AdminMilkRecords() {
   ];
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <div>
-          <h1 style={{ margin: 0 }}>Milk Collection Records</h1>
-        </div>
+    <Page>
+      <PageHeader title={<>Milk Collection Records</>}>
         <div className="header-actions">
           <button type="button" onClick={() => void handleDownload('/export/milk', 'csv')} className="btn-secondary">
             {t('exportCsv')}
@@ -404,8 +402,7 @@ export default function AdminMilkRecords() {
           <button type="button" onClick={() => void handleDownload('/export/milk/pdf', 'pdf')} className="btn-primary" style={{ width: 'auto' }}>
             {t('exportPdf')}
           </button>
-        </div>
-      </div>
+        </div></PageHeader>
 
       {error && <ErrorBanner message={error} onRetry={fetchAll} />}
       {actionMsg && <div className="success-banner"><span>{actionMsg}</span></div>}
@@ -563,6 +560,6 @@ export default function AdminMilkRecords() {
           </div>
         </div>
       )}
-    </div>
+    </Page>
   );
 }

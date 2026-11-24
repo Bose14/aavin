@@ -4,6 +4,7 @@ import { formatLitres, getLocalTodayIso } from '../../lib/format';
 import { ErrorBanner } from '../../components/UiPrimitives';
 import { useTranslation } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 export interface GrossQualityRow {
   id: string;
@@ -671,34 +672,15 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
   const filteredExitWaiters = exitWaiters.filter(matchesSearch);
 
   return (
-    <div className="page" style={{ maxWidth: '1180px', margin: '0 auto', padding: '1.25rem' }}>
+    <Page>
       {/* 1. Header */}
-      <div
-        className="page-header"
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '1rem',
-          marginBottom: '1rem',
-          borderBottom: '1px solid #e2e8f0',
-          paddingBottom: '0.75rem',
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
-            {gateSubTab === 'receipt'
+      <PageHeader title={gateSubTab === 'receipt'
               ? (lang === 'ta' ? 'பால் வரவு பதிவு (Milk Receipt Entry)' : 'Milk Receipt Entry (Gate Reception)')
               : gateSubTab === 'gross'
               ? (lang === 'ta' ? 'மொத்த எடை பதிவு (Gross Weight Entry)' : 'Vehicle Gross Weight Entry (Weighbridge)')
               : gateSubTab === 'tare'
               ? (lang === 'ta' ? 'வெற்று எடை பதிவு (Tare Weight Entry)' : 'Vehicle Tare Weight Entry (Weighbridge)')
-              : (lang === 'ta' ? 'டேங்கர் வெளியேறுதல் (Tanker Out)' : 'Tanker Out & Exit Pass')}
-          </h1>
-        </div>
-
-      </div>
+              : (lang === 'ta' ? 'டேங்கர் வெளியேறுதல் (Tanker Out)' : 'Tanker Out & Exit Pass')} />
 
       {error && <ErrorBanner message={error} onRetry={fetchTankers} />}
       {successMsg && (
@@ -710,15 +692,7 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
 
       {/* Main Vehicle Sheet Container */}
       <div
-        className="card"
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '8px',
-          border: '1px solid #cbd5e1',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-          padding: '1.25rem',
-          minHeight: '350px',
-        }}
+        className="card card-body" style={{ minHeight: '350px' }}
       >
         {/* Card Header & Title */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -2679,6 +2653,6 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
           </div>
         </div>
       )}
-    </div>
+    </Page>
   );
 }

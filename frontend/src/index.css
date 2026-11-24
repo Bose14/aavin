@@ -151,10 +151,11 @@ input[type="checkbox"], input[type="radio"] {
 .main-content { margin-left: var(--sidebar-w); flex: 1; min-width: 0; max-width: 100%; min-height: 100vh; overflow-x: hidden; }
 
 /* ── Page ── */
-.page { width: 100%; padding: 1.75rem 2rem; max-width: 1280px; margin: 0 auto; }
+.page { width: 100%; padding: 1.75rem 2rem; max-width: 1400px; margin: 0 auto; }
+.page--narrow { max-width: 880px; }
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
 .page-header > div:first-child { min-width: 0; flex: 1 1 260px; }
-.page-header h1 { font-size: 1.55rem; line-height: 1.25; }
+.page-header h1 { font-size: 1.55rem; line-height: 1.25; font-weight: 700; color: #0f172a; margin: 0; }
 .page-subtitle { color: var(--text-muted); font-size: 0.9rem; margin-top: 0.25rem; }
 .header-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; max-width: 100%; }
 .header-actions input[type="date"],
@@ -663,3 +664,10 @@ input[type="checkbox"], input[type="radio"] {
   .dt-filter select, .dt-filter input, .dt-filter input[type="search"] { flex: 1; min-width: 0; min-height: 44px; }
   .dt-filter-actions { margin-left: 0; width: 100%; }
 }
+
+/* Common card spacing: every card uses the same radius, border, padding and gap */
+.card { border-radius: var(--radius); border: 1px solid var(--border); background: var(--white); margin-bottom: 1.25rem; }
+.card-body { padding: 1.25rem; }
+.card-toolbar { padding: 0.75rem 1rem; }
+.stats-grid { margin-bottom: 1.25rem; }
+@media (max-width: 720px) { .card-body { padding: 0.95rem; } .card-toolbar { padding: 0.7rem 0.75rem; } }

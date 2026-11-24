@@ -19,6 +19,7 @@ import {
   syncOfflineMilkEntries,
 } from '../../lib/offlineQueue';
 import { ConfirmDialog, StatusBadge } from '../../components/UiPrimitives';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 interface ExistingEntry {
   id: string;
@@ -388,22 +389,10 @@ export default function MilkEntry() {
   } as const;
 
   return (
-    <div className="page" style={{ maxWidth: '1180px', margin: '0 auto', padding: '1.25rem' }}>
-      <div
-        className="page-header"
-        style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem',
-          marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem',
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
-            Milk Collection Entry (BMC Collection)
-          </h1>
-          {unitLabel && (
+    <Page>
+      <PageHeader title={<>Milk Collection Entry (BMC Collection)</>} subtitle={<>{unitLabel && (
             <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>{unitLabel}</div>
-          )}
-        </div>
+          )}</>}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           {offlineCount > 0 && (
             <>
@@ -419,8 +408,7 @@ export default function MilkEntry() {
           >
             + New Milk Entry
           </button>
-        </div>
-      </div>
+        </div></PageHeader>
 
       {!showModal && error && <p className="auth-error" style={{ marginBottom: '1rem' }}>{error}</p>}
       {savedBanner && (
@@ -439,11 +427,7 @@ export default function MilkEntry() {
       )}
 
       <div
-        className="card"
-        style={{
-          backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #cbd5e1',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.06)', padding: '1.25rem', minHeight: '350px',
-        }}
+        className="card card-body" style={{ minHeight: '350px' }}
       >
         <div style={{ marginBottom: '0.75rem' }}>
           <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
@@ -733,6 +717,6 @@ export default function MilkEntry() {
         onConfirm={() => void confirmDelete()}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
+    </Page>
   );
 }

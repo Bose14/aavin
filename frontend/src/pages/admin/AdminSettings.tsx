@@ -5,6 +5,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from '../../context/LanguageContext';
 import { ErrorBanner, StatusBadge } from '../../components/UiPrimitives';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 export default function AdminSettings() {
   const { user, profile, refreshProfile, signOut } = useAuth();
@@ -102,27 +103,13 @@ export default function AdminSettings() {
   };
 
   return (
-    <div className="page" style={{ maxWidth: '880px', margin: '0 auto' }}>
+    <Page width="narrow">
       {/* Page Header */}
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '1.6rem', color: '#0f172a' }}>
-            {lang === 'ta' ? 'அமைப்புகள் (Settings)' : 'Settings'}
-          </h1>
-        </div>
-      </div>
+      <PageHeader title={lang === 'ta' ? 'அமைப்புகள் (Settings)' : 'Settings'} />
 
       {/* 1. PASSWORD & SECURITY */}
       <div
-        className="card"
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-          padding: '24px',
-          marginBottom: '20px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-        }}
+        className="card card-body"
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
           <span style={{ fontSize: '20px' }}>🔒</span>
@@ -280,15 +267,7 @@ export default function AdminSettings() {
 
       {/* 2. PROFILE & ACCOUNT DETAILS */}
       <div
-        className="card"
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-          padding: '24px',
-          marginBottom: '20px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-        }}
+        className="card card-body"
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
           <span style={{ fontSize: '20px' }}>👤</span>
@@ -442,15 +421,7 @@ export default function AdminSettings() {
 
       {/* 3. APPLICATION & LANGUAGE PREFERENCES */}
       <div
-        className="card"
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-          padding: '24px',
-          marginBottom: '20px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-        }}
+        className="card card-body"
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
           <span style={{ fontSize: '20px' }}>🌐</span>
@@ -526,6 +497,6 @@ export default function AdminSettings() {
           </button>
         </div>
       </div>
-    </div>
+    </Page>
   );
 }

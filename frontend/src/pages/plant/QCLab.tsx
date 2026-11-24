@@ -6,6 +6,7 @@ import { useTranslation } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { parseDispatchTime } from './GateOperations';
 import aavinLogo from '../../assets/aavin-logo.png';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 export interface QcDispatchQuality {
   cell: string; // 'FC' | 'BC' | 'MC'
@@ -1234,31 +1235,13 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
   const filteredIssuedGatePasses = issuedGatePasses.filter(matchesSearch);
 
   return (
-    <div className="page" style={{ maxWidth: '1180px', margin: '0 auto', padding: '1.25rem' }}>
+    <Page>
       {/* 1. Header */}
-      <div
-        className="page-header"
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '1rem',
-          marginBottom: '1rem',
-          borderBottom: '1px solid #e2e8f0',
-          paddingBottom: '0.75rem',
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
-            {qcSubTab === 'gate-pass'
+      <PageHeader title={qcSubTab === 'gate-pass'
               ? (lang === 'ta' ? 'வாயில் அனுமதிச் சீட்டு (Gate Pass Details)' : 'Gate Pass Issuance (After CIP)')
               : qcSubTab === 'cip'
               ? (lang === 'ta' ? 'சி.ஐ.பி சுத்தம் செய்தல் (CIP Details)' : 'Tanker CIP Sanitization Details')
-              : (lang === 'ta' ? 'தரக்கட்டுப்பாட்டு ஆய்வகம் (QC Laboratory)' : 'QC Laboratory Milk Inspection')}
-          </h1>
-        </div>
-      </div>
+              : (lang === 'ta' ? 'தரக்கட்டுப்பாட்டு ஆய்வகம் (QC Laboratory)' : 'QC Laboratory Milk Inspection')} />
 
       {error && <ErrorBanner message={error} onRetry={fetchTankers} />}
       {successMsg && (
@@ -1270,15 +1253,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
 
       {/* Main Vehicle Sheet Container */}
       <div
-        className="card"
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '8px',
-          border: '1px solid #cbd5e1',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-          padding: '1.25rem',
-          minHeight: '350px',
-        }}
+        className="card card-body" style={{ minHeight: '350px' }}
       >
         {/* Search & Filter Toolbar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '10px' }}>
@@ -3717,6 +3692,6 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
           </div>
         </div>
       )}
-    </div>
+    </Page>
   );
 }

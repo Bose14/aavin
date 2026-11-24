@@ -5,6 +5,7 @@ import { ErrorBanner, StatusBadge, ConfirmDialog } from '../../components/UiPrim
 import { DataTable } from '../../components/DataTable';
 import type { DataColumn } from '../../components/DataTable';
 import { normalizeIndianPhone } from '../../lib/format';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 type TeamCode = 'ADMIN' | 'GATE' | 'QC' | 'UNLOADING' | 'BMC';
 
@@ -621,24 +622,9 @@ export default function AdminTeams() {
   ];
 
   return (
-    <div className="page" style={{ padding: '1.5rem', maxWidth: 1400, margin: '0 auto' }}>
+    <Page>
       {/* 1. PAGE HEADER WITH TOP "ADD USER" BUTTON */}
-      <div
-        className="page-header"
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          flexWrap: 'wrap',
-          gap: '1rem',
-          marginBottom: '1.5rem',
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
-            {lang === 'ta' ? 'குழுக்கள் & பயனர்கள்' : 'Teams & Users'}
-          </h1>
-        </div>
+      <PageHeader title={lang === 'ta' ? 'குழுக்கள் & பயனர்கள்' : 'Teams & Users'}>
 
         <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {/* Prominent "Add User" button */}
@@ -661,23 +647,14 @@ export default function AdminTeams() {
           >
             ➕ {lang === 'ta' ? 'பயனர் சேர் (Add User)' : 'Add User'}
           </button>
-        </div>
-      </div>
+        </div></PageHeader>
 
       {error && <ErrorBanner message={error} onRetry={fetchAllUsers} />}
 
       {/* User Created Credentials Notice Banner */}
       {userCreatedAlert && (
         <div
-          className="card"
-          style={{
-            marginBottom: '1.25rem',
-            padding: '1rem 1.25rem',
-            background: '#ecfdf5',
-            border: '1px solid #10b981',
-            borderRadius: 8,
-            color: '#065f46',
-          }}
+          className="card card-body" style={{ background: '#ecfdf5', border: '1px solid #10b981', color: '#065f46' }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
@@ -734,7 +711,7 @@ export default function AdminTeams() {
 
 
       {/* 3. SHOW ENTIRE USER DIRECTORY & INTERNAL TEAM USERS MANAGEMENT */}
-      <div id="team-users-section" className="card" style={{ padding: '1.5rem', background: '#ffffff', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+      <div id="team-users-section" className="card form-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
           <div>
             <h2 style={{ fontSize: '1.3rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
@@ -1189,6 +1166,6 @@ export default function AdminTeams() {
       />
 
 
-    </div>
+    </Page>
   );
 }

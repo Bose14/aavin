@@ -5,6 +5,7 @@ import { getLocalTodayIso } from '../../lib/format';
 import { ErrorBanner, StatusBadge } from '../../components/UiPrimitives';
 import { DataTable } from '../../components/DataTable';
 import type { DataColumn, TableFilter } from '../../components/DataTable';
+import { Page, PageHeader } from '../../components/PageLayout';
 
 interface BmcOption { id: string; name: string; kind?: string }
 interface Entry {
@@ -105,8 +106,8 @@ export default function AdminBmcReport() {
   ];
 
   return (
-    <div className="page">
-      <div className="page-header"><h1>Detailed BMC Report</h1></div>
+    <Page>
+      <PageHeader title={<>Detailed BMC Report</>} />
 
       {error && <ErrorBanner message={error} onRetry={() => void load()} />}
 
@@ -123,6 +124,6 @@ export default function AdminBmcReport() {
           emptyMessage={loading ? 'Loading…' : 'No milk entries for this date.'}
         />
       )}
-    </div>
+    </Page>
   );
 }
