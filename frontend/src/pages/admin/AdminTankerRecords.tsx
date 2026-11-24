@@ -137,15 +137,6 @@ export default function AdminTankerRecords() {
     }
   });
 
-  const [delayedOnly, setDelayedOnly] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_FILTERS);
-      return saved ? Boolean(JSON.parse(saved).delayedOnly) : false;
-    } catch {
-      return false;
-    }
-  });
-
   // One date filter drives both the table and the Milk ACK report. Default is today; only a custom range is remembered.
   const [datePreset, setDatePreset] = useState<DatePreset>(() => {
     try {
@@ -186,7 +177,6 @@ export default function AdminTankerRecords() {
       stage: selectedStageChip,
       unitId: selectedUnitId,
       waitingTeam: waitingTeamFilter,
-      delayedOnly,
       preset: datePreset,
       from: customFrom,
       to: customTo,
@@ -194,7 +184,7 @@ export default function AdminTankerRecords() {
     try {
       localStorage.setItem(LOCAL_STORAGE_KEY_FILTERS, JSON.stringify(filters));
     } catch {}
-  }, [activeTab, selectedStageChip, selectedUnitId, waitingTeamFilter, delayedOnly, fromDate, toDate]);
+  }, [activeTab, selectedStageChip, selectedUnitId, waitingTeamFilter, fromDate, toDate]);
 
   const unitsLoadedRef = useRef(false);
 
@@ -227,7 +217,6 @@ export default function AdminTankerRecords() {
         if (selectedStageChip) params.stage = selectedStageChip;
         if (selectedUnitId) params.bmc_id = selectedUnitId;
         if (waitingTeamFilter) params.waiting_team = waitingTeamFilter;
-        if (delayedOnly) params.delayed_only = 'true';
         if (fromDate) params.from = fromDate;
         if (toDate) params.to = toDate;
         if (searchQuery.trim()) params.search = searchQuery.trim();
@@ -311,13 +300,13 @@ export default function AdminTankerRecords() {
         if (!silent) setLoading(false);
       }
     },
-    [activeTab, selectedStageChip, selectedUnitId, waitingTeamFilter, delayedOnly, fromDate, toDate, searchQuery, selectedTrip],
+    [activeTab, selectedStageChip, selectedUnitId, waitingTeamFilter, fromDate, toDate, searchQuery, selectedTrip],
   );
 
   // Initial fetch
   useEffect(() => {
     void fetchData();
-  }, [activeTab, selectedStageChip, selectedUnitId, waitingTeamFilter, delayedOnly, fromDate, toDate]);
+  }, [activeTab, selectedStageChip, selectedUnitId, waitingTeamFilter, fromDate, toDate]);
 
   // Configurable Auto-Refresh (30-60s)
   useEffect(() => {
@@ -747,6 +736,7 @@ export default function AdminTankerRecords() {
 
       {/* Tanker table with its filters (common DataTable pattern) */}
       <DataTable
+        singleLine
         filters={[
           { key: 'search', label: 'Search', type: 'text', value: searchQuery, onChange: setSearchQuery, placeholder: 'Tanker, seal, driver, gate pass…' },
           { key: 'bmc', label: 'BMC', type: 'select', value: selectedUnitId, onChange: setSelectedUnitId,
@@ -754,7 +744,6 @@ export default function AdminTankerRecords() {
           { key: 'team', label: 'Team', type: 'select', value: waitingTeamFilter, onChange: setWaitingTeamFilter, options: [
             { value: '', label: 'All Teams' }, { value: 'gate', label: 'Gate' }, { value: 'qc', label: 'QC' },
             { value: 'unloading', label: 'Unloading' }, { value: 'transit', label: 'Transit' } ] },
-          { key: 'delayed', label: 'Delayed only', type: 'checkbox', value: delayedOnly ? 'true' : '', onChange: (v) => setDelayedOnly(v === 'true') },
           { key: 'period', label: 'Period', type: 'select', value: datePreset, onChange: (v) => setDatePreset(v as DatePreset), options: [
             { value: 'today', label: 'Today' }, { value: 'yesterday', label: 'Yesterday' }, { value: 'this_week', label: 'This Week' },
             { value: 'last_week', label: 'Last Week' }, { value: 'last_month', label: 'Last Month' }, { value: 'all', label: 'All Dates' },
