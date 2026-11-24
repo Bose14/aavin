@@ -521,7 +521,7 @@ export default function TankerDispatch() {
             <p className="stat-sub">{t('collectedMinusDispatched')}</p>
           </div>
           <div className="stat-card" style={{ borderLeft: '4px solid #0284c7' }}>
-            <p className="stat-label">Total Net Collected at BMC</p>
+            <p className="stat-label">Total Litres Collected</p>
             <p className="stat-value" style={{ fontSize: '20px', fontWeight: 800 }}>
               {formatLitres(stock.collected_net_qty, 1)}
             </p>
@@ -680,7 +680,7 @@ export default function TankerDispatch() {
                     Available milk to dispatch: <span style={{ fontSize: '17px' }}>{formatLitres(stock.available_stock_qty, 1)}</span>
                   </div>
                   <div style={{ fontSize: '12px', color: '#475569' }}>
-                    Collected {formatLitres(stock.collected_net_qty, 1)} − Dispatched {formatLitres(stock.dispatched_qty, 1)}
+                    Total Litres Collected {formatLitres(stock.collected_net_qty, 1)} − Dispatched {formatLitres(stock.dispatched_qty, 1)}
                   </div>
                 </div>
               )}
