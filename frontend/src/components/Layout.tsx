@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
 import { listOfflineMilkEntries, syncOfflineMilkEntries } from '../lib/offlineQueue';
@@ -10,13 +10,20 @@ interface NavItem {
   to: string;
   labelKey?: TranslationKey;
   fallbackLabel: string;
+  children?: NavItem[];
 }
 
 const adminNav: NavItem[] = [
   { to: '/admin/tanker', labelKey: 'navTankerRecords', fallbackLabel: 'Tanker Records' },
   { to: '/admin/reports', fallbackLabel: 'Reports' },
   { to: '/admin/tankers', labelKey: 'navTankers', fallbackLabel: 'Tankers' },
-  { to: '/admin/bmcs', labelKey: 'navUnits', fallbackLabel: 'BMCs' },
+  {
+    to: '/admin/bmcs', labelKey: 'navUnits', fallbackLabel: 'BMC',
+    children: [
+      { to: '/admin/bmcs', labelKey: 'navUnits', fallbackLabel: 'BMCs' },
+      { to: '/admin/bmc-report', fallbackLabel: 'Detailed BMC Report' },
+    ],
+  },
   { to: '/admin/users', labelKey: 'navTeamsAndUsers', fallbackLabel: 'Teams & Users' },
   { to: '/admin/rates', labelKey: 'navRateChart', fallbackLabel: 'Rate Chart' },
   { to: '/admin/analytics', labelKey: 'navAnalytics', fallbackLabel: 'Analytics' },
@@ -54,6 +61,8 @@ export default function Layout({ children }: { children: ReactNode }) {
   const { profile, signOut } = useAuth();
   const { lang, setLang, t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [online, setOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
@@ -159,17 +168,52 @@ export default function Layout({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="sidebar-nav">
-          {nav.map(item => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end
-              onClick={() => setDrawerOpen(false)}
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-            >
-              {item.labelKey ? t(item.labelKey) : item.fallbackLabel}
-            </NavLink>
-          ))}
+          {nav.map(item => {
+            const label = item.labelKey ? t(item.labelKey) : item.fallbackLabel;
+            if (!item.children) {
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end
+                  onClick={() => setDrawerOpen(false)}
+                  className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                >
+                  {label}
+                </NavLink>
+              );
+            }
+            const childActive = item.children.some(c => location.pathname === c.to);
+            const open = openGroups[item.to] ?? childActive;
+            return (
+              <div key={item.to} className="nav-group">
+                <button
+                  type="button"
+                  className={`nav-item nav-group-head ${childActive ? 'active-parent' : ''}`}
+                  aria-expanded={open}
+                  onClick={() => setOpenGroups(g => ({ ...g, [item.to]: !open }))}
+                >
+                  <span>{label}</span>
+                  <span className={`nav-chevron ${open ? 'open' : ''}`} aria-hidden="true">⌃</span>
+                </button>
+                {open && (
+                  <div className="nav-sub">
+                    {item.children.map(c => (
+                      <NavLink
+                        key={c.to}
+                        to={c.to}
+                        end
+                        onClick={() => setDrawerOpen(false)}
+                        className={({ isActive }) => `nav-item nav-sub-item ${isActive ? 'active' : ''}`}
+                      >
+                        {c.labelKey ? t(c.labelKey) : c.fallbackLabel}
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="sidebar-footer">
