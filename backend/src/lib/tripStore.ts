@@ -11,6 +11,7 @@
 import { supabase } from '../supabase';
 import { idLookup } from './ids';
 import type { PlantTeam, StageRecordItem, TankerStageKey } from './tankerJourney';
+import { getGatePassFallback } from './gatePassStore';
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -492,7 +493,12 @@ export function shapeTrip(trip: Record<string, any>, loadings: LoadingRow[], sta
     qc_status: trip.qc_status ?? null,
     cip_status: trip.cip_status ?? null,
     trip_status: trip.status,
-    stage_data: stageData,
+    gate_pass: trip.gate_pass || stageData.gate_pass || (stageData.cip_completed as any)?.gate_pass || getGatePassFallback(String(trip.id)) || null,
+    gate_pass_no: trip.gate_pass_no || stageData.gate_pass?.gate_pass_no || (stageData.cip_completed as any)?.gate_pass?.gate_pass_no || getGatePassFallback(String(trip.id))?.gate_pass_no || null,
+    stage_data: {
+      ...stageData,
+      gate_pass: stageData.gate_pass || trip.gate_pass || (stageData.cip_completed as any)?.gate_pass || getGatePassFallback(String(trip.id)) || undefined,
+    },
     created_at: trip.created_at,
   };
 }
@@ -532,8 +538,21 @@ export async function fetchTrips(q: TripQuery): Promise<TripsResult> {
 
   let query = supabase.from('tanker_trips').select(TRIP_SELECT).eq('dairy_unit_id', q.dairyUnitId).neq('status', 'cancelled');
   if (tripIds) query = query.in('id', tripIds);
-  if (q.from) query = query.gte('trip_date', q.from);
-  if (q.to) query = query.lte('trip_date', q.to);
+  if (q.from && q.to) {
+    const fromIso = new Date(`${q.from}T00:00:00+05:30`).toISOString();
+    const toIso = new Date(`${q.to}T23:59:59.999+05:30`).toISOString();
+    query = query.or(
+      `and(trip_date.gte.${q.from},trip_date.lte.${q.to}),and(entered_at.gte.${fromIso},entered_at.lte.${toIso}),and(exited_at.gte.${fromIso},exited_at.lte.${toIso}),and(created_at.gte.${fromIso},created_at.lte.${toIso}),and(status.neq.exited,status.neq.cancelled)`,
+    );
+  } else if (q.from) {
+    const fromIso = new Date(`${q.from}T00:00:00+05:30`).toISOString();
+    query = query.or(
+      `trip_date.gte.${q.from},entered_at.gte.${fromIso},exited_at.gte.${fromIso},created_at.gte.${fromIso},and(status.neq.exited,status.neq.cancelled)`,
+    );
+  } else if (q.to) {
+    const toIso = new Date(`${q.to}T23:59:59.999+05:30`).toISOString();
+    query = query.or(`trip_date.lte.${q.to},entered_at.lte.${toIso},exited_at.lte.${toIso},created_at.lte.${toIso}`);
+  }
   if (q.openOnly) query = query.is('exited_at', null);
   if (q.tripKey) {
     const key = idLookup(q.tripKey);
@@ -651,7 +670,7 @@ export async function dispatchToTanker(input: DispatchInput): Promise<string> {
 
 export interface StageWrite {
   tripId: string;
-  stageKey: TankerStageKey;
+  stageKey: TankerStageKey | string;
   team: PlantTeam;
   status: 'done' | 'rejected' | 'skipped';
   data: Record<string, unknown>;
@@ -712,7 +731,7 @@ export async function updateStageData(
 const TRIP_COLUMNS = new Set([
   'status', 'driver_name', 'driver_phone', 'gross_weight_kg', 'tare_weight_kg', 'net_weight_kg',
   'received_litres', 'received_fat_pct', 'received_snf_pct', 'qc_status', 'cip_status',
-  'entered_at', 'exited_at',
+  'entered_at', 'exited_at', 'gate_pass', 'gate_pass_no',
 ]);
 
 export async function updateTrip(tripId: string, fields: Record<string, unknown>): Promise<void> {
@@ -722,7 +741,18 @@ export async function updateTrip(tripId: string, fields: Record<string, unknown>
   }
   if (Object.keys(patch).length === 0) return;
   const { error } = await supabase.from('tanker_trips').update(patch).eq('id', tripId);
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === '42703' || error.message.includes('column') || error.message.includes('does not exist')) {
+      const safePatch = { ...patch };
+      delete safePatch.gate_pass;
+      delete safePatch.gate_pass_no;
+      if (Object.keys(safePatch).length > 0) {
+        await supabase.from('tanker_trips').update(safePatch).eq('id', tripId);
+      }
+      return;
+    }
+    throw new Error(error.message);
+  }
 }
 
 /** Admin removes a whole trip; a BMC removes only its own loadings while the trip is still loading. */

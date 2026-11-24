@@ -5,6 +5,7 @@ import { ErrorBanner } from '../../components/UiPrimitives';
 import { useTranslation } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { parseDispatchTime } from './GateOperations';
+import aavinLogo from '../../assets/aavin-logo.png';
 
 export interface QcDispatchQuality {
   cell: string; // 'FC' | 'BC' | 'MC'
@@ -100,7 +101,7 @@ export interface QcReceivedQuality {
 }
 
 export interface QCLabProps {
-  activeView?: 'qc' | 'cip';
+  activeView?: 'qc' | 'cip' | 'gate-pass';
 }
 
 export default function QCLab({ activeView = 'qc' }: QCLabProps) {
@@ -113,8 +114,8 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Sub-navigation tab: Quality Control Details vs CIP Sanitization
-  const [qcSubTab, setQcSubTab] = useState<'qc' | 'cip'>(activeView);
+  // Sub-navigation tab: Quality Control Details vs CIP Sanitization vs Gate Pass
+  const [qcSubTab, setQcSubTab] = useState<'qc' | 'cip' | 'gate-pass'>(activeView);
 
   // Sync prop changes
   useEffect(() => {
@@ -124,6 +125,37 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
   // Dialog Modals
   const [showQcModal, setShowQcModal] = useState(false);
   const [showCipModal, setShowCipModal] = useState(false);
+  const [showGatePassModal, setShowGatePassModal] = useState(false);
+  const [gatePassTanker, setGatePassTanker] = useState<any>(null);
+
+  // Gate Pass Form States (Matching authentic Aavin yellow voucher slip)
+  const [gatePassNo, setGatePassNo] = useState('000001');
+  const [gatePassDate, setGatePassDate] = useState(() => {
+    const d = new Date();
+    const day = String(d.getDate()).padStart(2, '0');
+    const mon = String(d.getMonth() + 1).padStart(2, '0');
+    return `${day}.${mon}.${String(d.getFullYear()).slice(-2)}`;
+  });
+  const [gatePassTime, setGatePassTime] = useState(() => {
+    const d = new Date();
+    let hours = d.getHours();
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    return `${hours}.${mins} ${ampm}`;
+  });
+  const [gatePassSlNo, setGatePassSlNo] = useState('1)');
+  const [gatePassItem, setGatePassItem] = useState('EMPTY TANKER');
+  const [gatePassQty, setGatePassQty] = useState('1');
+  const [gatePassPurpose, setGatePassPurpose] = useState('TO BMC');
+  const [gatePassReturnable, setGatePassReturnable] = useState('Returnable');
+  const [gatePassToWhom, setGatePassToWhom] = useState('');
+  const [gatePassIssuedBy, setGatePassIssuedBy] = useState('Lab');
+  const [gatePassVehicleNo, setGatePassVehicleNo] = useState('');
+  const [gatePassIssuingOfficer, setGatePassIssuingOfficer] = useState('');
+  const [gatePassReceivedBy, setGatePassReceivedBy] = useState('');
+  const [gatePassSecurity, setGatePassSecurity] = useState('Security Incharge');
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   // Quality Control Form States (Matching authentic Aavin IDMS QC photo)
   const [qcVehicleNo, setQcVehicleNo] = useState('');
@@ -297,23 +329,55 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     );
   }, [tankers]);
 
+  // Condition 6: Gate Pass queue displays vehicles that completed CIP sanitization with pass/satisfied and need Gate Pass before exit
+  const gatePassWaiters = useMemo(() => {
+    return tankers.filter((t) => {
+      const cipPassed = Boolean(
+        t.stage_data?.cip_completed?.cip_status === 'pass' ||
+        t.stage_data?.cip_completed?.qc_inspection === 'SATISFIED' ||
+        (t.journey?.completedStageKeys?.includes('cip_completed') && t.cip_status !== 'unsatisfied' && t.stage_data?.cip_completed?.cip_status !== 'unsatisfied')
+      );
+      const hasGatePass = Boolean(
+        t.gate_pass != null ||
+        t.stage_data?.gate_pass != null ||
+        (t.journey as any)?.hasGatePass ||
+        t.journey?.completedStageKeys?.includes('gate_pass')
+      );
+      const exited = t.journey?.tripStatus === 'exited' || t.stage_data?.vehicle_exit != null;
+      return cipPassed && !hasGatePass && !exited;
+    });
+  }, [tankers]);
+
+  // Issued Gate Passes: All tankers that have gate pass data recorded
+  const issuedGatePasses = useMemo(() => {
+    return tankers.filter((t) => {
+      return Boolean(
+        t.gate_pass != null ||
+        t.stage_data?.gate_pass != null ||
+        (t.journey as any)?.hasGatePass ||
+        t.journey?.completedStageKeys?.includes('gate_pass')
+      );
+    });
+  }, [tankers]);
+
   // Active tanker for modal form editing
   const activeTanker = useMemo(() => {
     if (selectedTankerId) {
       const found = tankers.find((t) => t.id === selectedTankerId);
       if (found) return found;
     }
+    if (qcSubTab === 'gate-pass' && gatePassWaiters.length > 0) return gatePassWaiters[0];
     if (qcSubTab === 'cip' && cipEligibleTankers.length > 0) return cipEligibleTankers[0];
     if (qcSubTab === 'qc' && qcEligibleTankers.length > 0) return qcEligibleTankers[0];
     return tankers[0] || null;
-  }, [selectedTankerId, tankers, qcSubTab, qcEligibleTankers, cipEligibleTankers]);
+  }, [selectedTankerId, tankers, qcSubTab, qcEligibleTankers, cipEligibleTankers, gatePassWaiters]);
 
 
 
   // Pre-fill form when active tanker changes (guarded to avoid wiping active edits or polling reset)
   useEffect(() => {
     if (!activeTanker) return;
-    const isAnyModalOpen = showQcModal || showCipModal || showRejectModal;
+    const isAnyModalOpen = showQcModal || showCipModal || showRejectModal || showGatePassModal;
     if (isAnyModalOpen) return;
     if (activeTanker.id === lastLoadedTankerIdRef.current) return;
     lastLoadedTankerIdRef.current = activeTanker.id;
@@ -480,6 +544,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     showQcModal,
     showCipModal,
     showRejectModal,
+    showGatePassModal,
     userChemist,
   ]);
 
@@ -511,6 +576,135 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     const resolvedDc = t.dc_number || t.stage_data?.dc_number || t.stage_data?.dc_no || t.stage_data?.gross_weight?.dc_number || t.stage_data?.vehicle_entered?.dc_number || '';
     setCipDcNo(resolvedDc);
     setShowCipModal(true);
+  };
+
+  const openGatePassModal = (t: any) => {
+    setGatePassTanker(t);
+    setSelectedTankerId(t.id);
+    lastLoadedTankerIdRef.current = t.id;
+    const existing = t.gate_pass || t.stage_data?.gate_pass || {};
+    const vNo = t.tanker_number || '';
+    setGatePassVehicleNo(existing.vehicle_no || vNo);
+
+    // Auto-generate or reuse serial number
+    const existingNo = existing.gate_pass_no || t.gate_pass_no;
+    if (existingNo) {
+      setGatePassNo(existingNo);
+    } else {
+      const issuedNumbers = tankers
+        .map((tanker) => {
+          const gp = tanker.gate_pass || tanker.stage_data?.gate_pass || (tanker.stage_data?.cip_completed as any)?.gate_pass;
+          const numStr = gp?.gate_pass_no || gp?.gate_pass_number || tanker.gate_pass_no;
+          if (!numStr) return null;
+          const n = parseInt(String(numStr).replace(/\D/g, ''), 10);
+          return isNaN(n) ? null : n;
+        })
+        .filter((n): n is number => n !== null && n < 900000);
+
+      const normalizedNumbers = issuedNumbers.map((n) => (n === 5616 ? 1 : n));
+      const maxIssued = normalizedNumbers.length > 0 ? Math.max(...normalizedNumbers) : 0;
+      const nextNum = maxIssued + 1;
+      setGatePassNo(String(nextNum).padStart(6, '0'));
+
+      // Also query server for next sequential number to stay strictly in sync
+      api.get<{ next_gate_pass_no: string }>('/tanker/next-gate-pass-no')
+        .then((res) => {
+          if (res.data?.next_gate_pass_no) {
+            setGatePassNo(res.data.next_gate_pass_no);
+          }
+        })
+        .catch(() => {});
+    }
+
+    const d = new Date();
+    const defaultDate = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getFullYear()).slice(-2)}`;
+    setGatePassDate(existing.date || defaultDate);
+
+    let hours = d.getHours();
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    const defaultTime = `${hours}.${mins} ${ampm}`;
+    setGatePassTime(existing.time || defaultTime);
+
+    setGatePassSlNo(existing.sl_no || '1)');
+    setGatePassItem(existing.item || 'EMPTY TANKER');
+    setGatePassQty(existing.quantity || '1');
+    const bmcName = t.bmcs?.name ? `TO ${t.bmcs.name.toUpperCase()}` : 'TO BMC';
+    setGatePassPurpose(existing.purpose || bmcName);
+    setGatePassReturnable(existing.whether_returnable || 'Returnable');
+
+    const driver = t.driver_name || t.stage_data?.vehicle_entered?.driver_name || 'S. PERIYASAMY';
+    setGatePassToWhom(existing.to_whom_issued || driver);
+    setGatePassReceivedBy(existing.received_by || driver);
+    setGatePassIssuedBy(existing.issued_by || 'Lab');
+    setGatePassIssuingOfficer(existing.issuing_officer || userChemist || 'P. Sathiya');
+    setGatePassSecurity(existing.security_officer || 'Security Incharge');
+
+    setShowGatePassModal(true);
+  };
+
+  const handleSaveGatePass = async () => {
+    const targetTanker = gatePassTanker || activeTanker;
+    if (!targetTanker) return;
+    setSubmitting(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const payload = {
+        gate_pass_no: gatePassNo,
+        date: gatePassDate,
+        time: gatePassTime,
+        sl_no: gatePassSlNo,
+        item: gatePassItem,
+        quantity: gatePassQty,
+        purpose: gatePassPurpose,
+        whether_returnable: gatePassReturnable,
+        to_whom_issued: gatePassToWhom,
+        issued_by: gatePassIssuedBy,
+        vehicle_no: gatePassVehicleNo,
+        issuing_officer: gatePassIssuingOfficer,
+        received_by: gatePassReceivedBy,
+        security_officer: gatePassSecurity,
+      };
+
+      const res = await api.post(`/tanker/${targetTanker.id}/gate-pass`, payload);
+      setSuccessMsg(
+        lang === 'ta'
+          ? `வாயில் அனுமதிச் சீட்டு (Gate Pass № ${gatePassNo}) வெற்றிகரமாக வழங்கப்பட்டது!`
+          : `Gate Pass № ${gatePassNo} issued successfully for Tanker ${gatePassVehicleNo}!`
+      );
+      if (res.data?.gate_pass) {
+        setGatePassTanker((prev: any) => ({ ...prev, gate_pass: res.data.gate_pass, gate_pass_no: gatePassNo }));
+      }
+      setShowGatePassModal(false);
+      await fetchTankers();
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message || 'Failed to issue Gate Pass');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleExportGatePassPdf = async (tankerId: string, vehicleNo?: string) => {
+    setExportingPdf(true);
+    setError('');
+    try {
+      const res = await api.get(`/export/gate-pass/${tankerId}`, { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const fileUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = fileUrl;
+      link.download = `Gate_Pass_${(vehicleNo || 'tanker').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(fileUrl), 5000);
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message || 'Failed to export Gate Pass PDF');
+    } finally {
+      setExportingPdf(false);
+    }
   };
 
   const updateReceivedQuality = (idx: number, field: keyof QcReceivedQuality, val: any) => {
@@ -686,11 +880,14 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     const dc = (t.dc_number || t.stage_data?.dc_number || '').toLowerCase();
     const bmc = (t.bmcs?.name || '').toLowerCase();
     const driver = (t.driver_name || '').toLowerCase();
-    return v.includes(q) || dc.includes(q) || bmc.includes(q) || driver.includes(q);
+    const gpNo = (t.gate_pass?.gate_pass_no || t.gate_pass_no || t.stage_data?.gate_pass?.gate_pass_no || '').toLowerCase();
+    return v.includes(q) || dc.includes(q) || bmc.includes(q) || driver.includes(q) || gpNo.includes(q);
   };
 
   const filteredQcWaiters = qcEligibleTankers.filter(matchesSearch);
   const filteredCipWaiters = cipEligibleTankers.filter(matchesSearch);
+  const filteredGatePassWaiters = gatePassWaiters.filter(matchesSearch);
+  const filteredIssuedGatePasses = issuedGatePasses.filter(matchesSearch);
 
   return (
     <div className="page" style={{ maxWidth: '1180px', margin: '0 auto', padding: '1.25rem' }}>
@@ -710,7 +907,9 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
       >
         <div>
           <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
-            {qcSubTab === 'cip'
+            {qcSubTab === 'gate-pass'
+              ? (lang === 'ta' ? 'வாயில் அனுமதிச் சீட்டு (Gate Pass Details)' : 'Gate Pass Issuance (After CIP)')
+              : qcSubTab === 'cip'
               ? (lang === 'ta' ? 'சி.ஐ.பி சுத்தம் செய்தல் (CIP Details)' : 'Tanker CIP Sanitization Details')
               : (lang === 'ta' ? 'தரக்கட்டுப்பாட்டு ஆய்வகம் (QC Laboratory)' : 'QC Laboratory Milk Inspection')}
           </h1>
@@ -729,7 +928,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
           gap: '12px',
           marginBottom: '1.25rem',
         }}
@@ -737,25 +936,33 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
         <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #fed7aa', borderLeft: '4px solid #ea580c', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#c2410c', textTransform: 'uppercase' }}>Waiting for QC</div>
           <div style={{ fontSize: '24px', fontWeight: 800, color: '#9a3412', marginTop: '2px' }}>{waitingQcCount}</div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>Condition: Gross Weight done</div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Gross Weight done</div>
         </div>
 
         <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #bae6fd', borderLeft: '4px solid #0284c7', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase' }}>Awaiting CIP</div>
           <div style={{ fontSize: '24px', fontWeight: 800, color: '#075985', marginTop: '2px' }}>{waitingCipCount}</div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>Condition: Tare Weight done</div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Tare Weight done</div>
+        </div>
+
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #fef08a', borderLeft: '4px solid #d97706', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#b45309', textTransform: 'uppercase' }}>Awaiting Gate Pass</div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#92400e', marginTop: '2px' }}>{gatePassWaiters.length}</div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>CIP passed, ready for exit</div>
         </div>
 
         <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #bbf7d0', borderLeft: '4px solid #16a34a', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>QC Accepted Today</div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#14532d', marginTop: '2px' }}>{passedCount}</div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>Approved for unloading bay</div>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>Gate Passes Issued</div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#14532d', marginTop: '2px' }}>{issuedGatePasses.length}</div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Stored with PDF export</div>
         </div>
 
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #fecaca', borderLeft: '4px solid #dc2626', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase' }}>QC Rejected Today</div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#7f1d1d', marginTop: '2px' }}>{rejectedCount}</div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>Direct to tare weighbridge</div>
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #475569', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#334155', textTransform: 'uppercase' }}>QC Accepted / Rej</div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+            <span style={{ color: '#16a34a' }}>{passedCount}</span> / <span style={{ color: '#dc2626' }}>{rejectedCount}</span>
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Lab decisions</div>
         </div>
       </div>
 
@@ -806,7 +1013,11 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
           <div>
             <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
-              📋 Today's QC Laboratory Register ({qcSubTab === 'cip' ? cipEligibleTankers.length : qcEligibleTankers.length} Vehicles)
+              📋 {qcSubTab === 'gate-pass'
+                ? `Today's Gate Pass Register (${gatePassWaiters.length} Awaiting / ${issuedGatePasses.length} Issued)`
+                : qcSubTab === 'cip'
+                ? `Today's CIP Sanitization Register (${cipEligibleTankers.length} Vehicles)`
+                : `Today's QC Laboratory Register (${qcEligibleTankers.length} Vehicles)`}
             </h3>
           </div>
         </div>
@@ -974,6 +1185,265 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                 </table>
               </div>
             )}
+          </div>
+        )}
+
+        {/* SHEET 3: Gate Pass (After CIP Completed) */}
+        {qcSubTab === 'gate-pass' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            {/* Section A: Vehicles Waiting for Gate Pass */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
+                    🚚 Vehicles Awaiting Gate Pass ({filteredGatePassWaiters.length})
+                  </h4>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Condition: Tankers that passed CIP inspection and require an authentic Gate Pass before exiting through the gate.
+                  </p>
+                </div>
+              </div>
+
+              {filteredGatePassWaiters.length === 0 ? (
+                <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: 6, border: '1px dashed #cbd5e1' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '0.35rem' }}>🚚</div>
+                  <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.95rem' }}>
+                    No vehicles currently waiting for Gate Pass
+                  </div>
+                  <p style={{ fontSize: '0.8rem', margin: '0.25rem 0' }}>
+                    Vehicles will automatically appear here once CIP Sanitization is completed with SATISFIED status.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 6 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', textAlign: 'left', color: '#475569' }}>
+                        <th style={{ padding: '10px 12px' }}>VEHICLE / TANKER NO</th>
+                        <th style={{ padding: '10px 12px' }}>DC # / DC NO</th>
+                        <th style={{ padding: '10px 12px' }}>RECEIVED FROM (BMC)</th>
+                        <th style={{ padding: '10px 12px' }}>DRIVER NAME</th>
+                        <th style={{ padding: '10px 12px' }}>CIP STATUS</th>
+                        <th style={{ padding: '10px 12px' }}>CIP TIME</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>ACTION</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredGatePassWaiters.map((t) => {
+                        const dc = t.dc_number || t.stage_data?.dc_number || '—';
+                        const cipTimeStr = t.stage_data?.cip_completed?.cip_time || t.stage_data?.cip_completed?.cip_date || 'Completed';
+                        return (
+                          <tr
+                            key={t.id}
+                            onClick={() => openGatePassModal(t)}
+                            style={{
+                              borderBottom: '1px solid #f1f5f9',
+                              cursor: 'pointer',
+                              backgroundColor: selectedTankerId === t.id ? '#fefce8' : '#ffffff',
+                              transition: 'background-color 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fefce8')}
+                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = selectedTankerId === t.id ? '#fefce8' : '#ffffff')}
+                          >
+                            <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0f172a' }}>
+                              <span style={{ backgroundColor: '#fef9c3', border: '1px solid #fde047', padding: '2px 8px', borderRadius: 3 }}>
+                                {t.tanker_number}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0284c7' }}>
+                              #{dc}
+                            </td>
+                            <td style={{ padding: '10px 12px', color: '#334155' }}>
+                              {t.bmcs?.name || 'BMC'}
+                            </td>
+                            <td style={{ padding: '10px 12px', color: '#475569' }}>
+                              {t.driver_name || '—'}
+                            </td>
+                            <td style={{ padding: '10px 12px' }}>
+                              <span style={{ backgroundColor: '#dcfce7', color: '#15803d', border: '1px solid #86efac', padding: '2px 8px', borderRadius: 4, fontWeight: 700, fontSize: '11px' }}>
+                                ✓ CIP PASSED
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 12px', color: '#64748b', fontSize: '12px' }}>
+                              {cipTimeStr}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openGatePassModal(t);
+                                }}
+                                className="btn btn-primary btn-sm"
+                                style={{ backgroundColor: '#d97706', borderColor: '#b45309', fontWeight: 700, padding: '4px 12px' }}
+                              >
+                                📋 Issue Gate Pass
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Section B: Issued Gate Passes Register */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
+                    📄 Issued Gate Passes Register ({filteredIssuedGatePasses.length})
+                  </h4>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Official Gate Pass vouchers stored for tankers. Click "Export PDF" to generate the yellow receipt voucher.
+                  </p>
+                </div>
+              </div>
+
+              {filteredIssuedGatePasses.length === 0 ? (
+                <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: 6, border: '1px dashed #cbd5e1' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '0.35rem' }}>📄</div>
+                  <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.95rem' }}>
+                    No Gate Passes issued yet
+                  </div>
+                  <p style={{ fontSize: '0.8rem', margin: '0.25rem 0' }}>
+                    Once you issue a Gate Pass for a vehicle above, it will be catalogued in this register.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 6 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', textAlign: 'left', color: '#475569' }}>
+                        <th style={{ padding: '10px 12px' }}>GATE PASS №</th>
+                        <th style={{ padding: '10px 12px' }}>VEHICLE / TANKER NO</th>
+                        <th style={{ padding: '10px 12px' }}>ISSUED TO (DRIVER)</th>
+                        <th style={{ padding: '10px 12px' }}>PURPOSE</th>
+                        <th style={{ padding: '10px 12px' }}>ISSUED BY</th>
+                        <th style={{ padding: '10px 12px' }}>DATE & TIME</th>
+                        <th style={{ padding: '10px 12px' }}>EXIT STATUS</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>ACTIONS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredIssuedGatePasses.map((t) => {
+                        const gp = t.gate_pass || t.stage_data?.gate_pass || {};
+                        const gpNo = gp.gate_pass_no || t.gate_pass_no || '000001';
+                        const driver = gp.to_whom_issued || t.driver_name || '—';
+                        const purpose = gp.purpose || (t.bmcs?.name ? `TO ${t.bmcs.name.toUpperCase()}` : 'TO BMC');
+                        const isExited = t.journey?.tripStatus === 'exited' || t.stage_data?.vehicle_exit != null;
+
+                        return (
+                          <tr
+                            key={t.id}
+                            style={{
+                              borderBottom: '1px solid #f1f5f9',
+                              backgroundColor: '#ffffff',
+                            }}
+                          >
+                            <td style={{ padding: '10px 12px' }}>
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '2px',
+                                  border: '1.5px solid #991b1b',
+                                  backgroundColor: '#fffbeb',
+                                  color: '#991b1b',
+                                  fontFamily: 'monospace',
+                                  fontWeight: 800,
+                                  fontSize: '12px',
+                                  padding: '2px 8px',
+                                  borderRadius: 4,
+                                }}
+                              >
+                                № {gpNo}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0f172a' }}>
+                              <span style={{ backgroundColor: '#fef9c3', border: '1px solid #fde047', padding: '2px 8px', borderRadius: 3 }}>
+                                {t.tanker_number}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 12px', fontWeight: 600, color: '#1e3a8a' }}>
+                              {driver}
+                            </td>
+                            <td style={{ padding: '10px 12px', color: '#334155' }}>
+                              {purpose}
+                            </td>
+                            <td style={{ padding: '10px 12px', color: '#475569' }}>
+                              <span style={{ backgroundColor: '#f1f5f9', padding: '2px 6px', borderRadius: 3, fontSize: '11px', fontWeight: 700 }}>
+                                {gp.issued_by || 'Lab'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 12px', color: '#64748b', fontSize: '12px' }}>
+                              {gp.date || '—'} {gp.time || ''}
+                            </td>
+                            <td style={{ padding: '10px 12px' }}>
+                              {isExited ? (
+                                <span style={{ backgroundColor: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: 4, fontSize: '11px', fontWeight: 700 }}>
+                                  EXITED
+                                </span>
+                              ) : (
+                                <span style={{ backgroundColor: '#dcfce7', color: '#166534', border: '1px solid #86efac', padding: '2px 8px', borderRadius: 4, fontSize: '11px', fontWeight: 700 }}>
+                                  READY FOR EXIT
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                              <div style={{ display: 'inline-flex', gap: '6px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleExportGatePassPdf(t.id, t.tanker_number)}
+                                  disabled={exportingPdf}
+                                  className="btn btn-sm"
+                                  style={{
+                                    backgroundColor: '#fef08a',
+                                    border: '1px solid #ca8a04',
+                                    color: '#854d0e',
+                                    fontWeight: 700,
+                                    padding: '3px 10px',
+                                    borderRadius: 4,
+                                    fontSize: '12px',
+                                    cursor: exportingPdf ? 'not-allowed' : 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                  }}
+                                  title="Export authentic yellow receipt PDF"
+                                >
+                                  📄 Export PDF
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openGatePassModal(t)}
+                                  className="btn btn-sm"
+                                  style={{
+                                    backgroundColor: '#f1f5f9',
+                                    border: '1px solid #cbd5e1',
+                                    color: '#334155',
+                                    fontWeight: 600,
+                                    padding: '3px 10px',
+                                    borderRadius: 4,
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                  }}
+                                  title="View or modify Gate Pass voucher"
+                                >
+                                  ✏️ View
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -2380,6 +2850,503 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                   >
                     {submitting ? 'Updating…' : 'Update'}
                   </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DIALOG BOX MODAL 3: GATE PASS (Authentic Yellow Voucher Slip) */}
+      {showGatePassModal && (gatePassTanker || activeTanker) && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1100,
+            padding: '1rem',
+          }}
+          onClick={() => setShowGatePassModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: '#fef9c3',
+              border: '2px solid #ca8a04',
+              borderRadius: 8,
+              width: '100%',
+              maxWidth: 780,
+              maxHeight: '94vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top Bar with Close button */}
+            <div
+              style={{
+                backgroundColor: '#ca8a04',
+                color: '#ffffff',
+                padding: '0.45rem 1rem',
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <span>📋 AAVIN GATE PASS VOUCHER — (CIP COMPLETED VEHICLE)</span>
+              <button
+                type="button"
+                onClick={() => setShowGatePassModal(false)}
+                style={{ background: 'none', border: 'none', color: '#ffffff', fontSize: '1.2rem', cursor: 'pointer', fontWeight: 800 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: '1.25rem 1.5rem', overflowY: 'auto' }}>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void handleSaveGatePass();
+                }}
+              >
+                {/* 1. Header: Aavin logo, Union title, Gate Pass, Serial Number */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1.5px solid #ca8a04', paddingBottom: '0.75rem', marginBottom: '0.75rem', gap: '8px' }}>
+                  {/* Left: Aavin Logo */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <img
+                      src={aavinLogo}
+                      alt="AAVIN"
+                      style={{
+                        height: '44px',
+                        width: 'auto',
+                        objectFit: 'contain',
+                        borderRadius: '4px',
+                        display: 'block',
+                      }}
+                    />
+                  </div>
+
+                  {/* Center: Union Title & Gate Pass heading */}
+                  <div style={{ textAlign: 'center', flex: 1, padding: '0 8px' }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.25 }}>
+                      Namakkal District Co-operative Milk Producers' Union Limited,
+                    </div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b', marginTop: '2px' }}>
+                      NAMAKKAL MILK UNION
+                    </div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a', textDecoration: 'underline', marginTop: '4px', letterSpacing: '0.05em' }}>
+                      GATE PASS
+                    </div>
+                  </div>
+
+                  {/* Right: Boxed Red Serial Number */}
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px' }}>
+                      <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#991b1b', marginRight: '2px' }}>№</span>
+                      {gatePassNo.padStart(6, '0').slice(-6).split('').map((digit, i) => (
+                        <span
+                          key={i}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '20px',
+                            height: '26px',
+                            border: '1.5px solid #991b1b',
+                            backgroundColor: '#ffffff',
+                            color: '#991b1b',
+                            fontFamily: 'monospace',
+                            fontWeight: 800,
+                            fontSize: '14px',
+                            borderRadius: '2px',
+                          }}
+                        >
+                          {digit}
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: '3px' }}>
+                      <span style={{ fontSize: '9px', color: '#991b1b', fontWeight: 700, letterSpacing: '0.4px' }}>
+                        AUTO-GENERATED
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Date and Time Row */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>Time:</span>
+                    <input
+                      type="text"
+                      value={gatePassTime}
+                      onChange={(e) => setGatePassTime(e.target.value)}
+                      placeholder="e.g. 3.08 PM"
+                      style={{
+                        backgroundColor: '#fffbeb',
+                        border: 'none',
+                        borderBottom: '1.5px dashed #b45309',
+                        padding: '2px 6px',
+                        fontWeight: 700,
+                        fontSize: '0.88rem',
+                        width: '100px',
+                        color: '#0f172a',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>Date:</span>
+                    <input
+                      type="text"
+                      value={gatePassDate}
+                      onChange={(e) => setGatePassDate(e.target.value)}
+                      placeholder="e.g. 23.11.26"
+                      style={{
+                        backgroundColor: '#fffbeb',
+                        border: 'none',
+                        borderBottom: '1.5px dashed #b45309',
+                        padding: '2px 6px',
+                        fontWeight: 700,
+                        fontSize: '0.88rem',
+                        width: '100px',
+                        color: '#0f172a',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* 3. 5-Column Grid Table */}
+                <div style={{ marginBottom: '1rem', border: '1.5px solid #1e293b', borderRadius: 4, overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#fef08a', borderBottom: '1.5px solid #1e293b', textAlign: 'center', fontWeight: 800, color: '#0f172a' }}>
+                        <th style={{ width: '60px', padding: '6px 8px', borderRight: '1.5px solid #1e293b' }}>Sl. No.</th>
+                        <th style={{ padding: '6px 8px', borderRight: '1.5px solid #1e293b' }}>Item</th>
+                        <th style={{ width: '60px', padding: '6px 8px', borderRight: '1.5px solid #1e293b' }}>Qty.</th>
+                        <th style={{ padding: '6px 8px', borderRight: '1.5px solid #1e293b' }}>Purpose</th>
+                        <th style={{ padding: '6px 8px' }}>Whether returnable</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr style={{ backgroundColor: '#ffffff' }}>
+                        <td style={{ padding: '6px', borderRight: '1.5px solid #1e293b', textAlign: 'center' }}>
+                          <input
+                            type="text"
+                            value={gatePassSlNo}
+                            onChange={(e) => setGatePassSlNo(e.target.value)}
+                            style={{
+                              width: '100%',
+                              textAlign: 'center',
+                              fontWeight: 700,
+                              border: '1px solid #cbd5e1',
+                              borderRadius: 2,
+                              padding: '4px 2px',
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: '6px', borderRight: '1.5px solid #1e293b' }}>
+                          <input
+                            type="text"
+                            value={gatePassItem}
+                            onChange={(e) => setGatePassItem(e.target.value)}
+                            style={{
+                              width: '100%',
+                              fontWeight: 700,
+                              border: '1px solid #cbd5e1',
+                              borderRadius: 2,
+                              padding: '4px 8px',
+                              color: '#0f172a',
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: '6px', borderRight: '1.5px solid #1e293b', textAlign: 'center' }}>
+                          <input
+                            type="text"
+                            value={gatePassQty}
+                            onChange={(e) => setGatePassQty(e.target.value)}
+                            style={{
+                              width: '100%',
+                              textAlign: 'center',
+                              fontWeight: 700,
+                              border: '1px solid #cbd5e1',
+                              borderRadius: 2,
+                              padding: '4px 2px',
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: '6px', borderRight: '1.5px solid #1e293b' }}>
+                          <input
+                            type="text"
+                            value={gatePassPurpose}
+                            onChange={(e) => setGatePassPurpose(e.target.value)}
+                            style={{
+                              width: '100%',
+                              fontWeight: 700,
+                              border: '1px solid #cbd5e1',
+                              borderRadius: 2,
+                              padding: '4px 8px',
+                              color: '#0f172a',
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: '6px' }}>
+                          <input
+                            type="text"
+                            value={gatePassReturnable}
+                            onChange={(e) => setGatePassReturnable(e.target.value)}
+                            style={{
+                              width: '100%',
+                              fontWeight: 700,
+                              border: '1px solid #cbd5e1',
+                              borderRadius: 2,
+                              padding: '4px 8px',
+                              color: '#0f172a',
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 4. Bottom Fields */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '1.25rem', fontSize: '0.88rem' }}>
+                  {/* To whom issued */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <label style={{ width: '130px', fontWeight: 700, color: '#0f172a' }}>
+                      To whom issued :
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={gatePassToWhom}
+                      onChange={(e) => setGatePassToWhom(e.target.value)}
+                      placeholder="Driver name (e.g. S. PERIYASAMY)"
+                      style={{
+                        flex: 1,
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #b45309',
+                        borderRadius: 3,
+                        padding: '5px 10px',
+                        fontWeight: 700,
+                        color: '#1e3a8a',
+                        fontSize: '0.9rem',
+                      }}
+                    />
+                  </div>
+
+                  {/* Issued by */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <label style={{ width: '130px', fontWeight: 700, color: '#0f172a' }}>
+                      Issued by :
+                    </label>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      {['Stores', 'CC', 'TPT', 'ADM', 'Lab', 'P&I'].map((dept) => {
+                        const isSelected = gatePassIssuedBy === dept;
+                        return (
+                          <button
+                            key={dept}
+                            type="button"
+                            onClick={() => setGatePassIssuedBy(dept)}
+                            style={{
+                              padding: '3px 10px',
+                              borderRadius: 4,
+                              fontSize: '0.8rem',
+                              fontWeight: isSelected ? 800 : 600,
+                              cursor: 'pointer',
+                              border: isSelected ? '1.5px solid #1e3a8a' : '1px solid #cbd5e1',
+                              backgroundColor: isSelected ? '#1e3a8a' : '#ffffff',
+                              color: isSelected ? '#ffffff' : '#475569',
+                            }}
+                          >
+                            {dept}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Vehicle No */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <label style={{ width: '130px', fontWeight: 700, color: '#0f172a' }}>
+                      Vehicle No. if any :
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={gatePassVehicleNo}
+                      onChange={(e) => setGatePassVehicleNo(e.target.value)}
+                      placeholder="Tanker No (e.g. TN 18 AF 3000)"
+                      style={{
+                        flex: 1,
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #b45309',
+                        borderRadius: 3,
+                        padding: '5px 10px',
+                        fontWeight: 700,
+                        color: '#b45309',
+                        fontSize: '0.9rem',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* 5. Signatures Row */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: '12px',
+                    paddingTop: '0.75rem',
+                    borderTop: '1px dashed #b45309',
+                    marginBottom: '1.25rem',
+                  }}
+                >
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+                      Issuing Officer.
+                    </label>
+                    <input
+                      type="text"
+                      value={gatePassIssuingOfficer}
+                      onChange={(e) => setGatePassIssuingOfficer(e.target.value)}
+                      placeholder="QC Officer name"
+                      style={{
+                        width: '100%',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: 3,
+                        padding: '4px 8px',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        color: '#1e3a8a',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+                      Received.
+                    </label>
+                    <input
+                      type="text"
+                      value={gatePassReceivedBy}
+                      onChange={(e) => setGatePassReceivedBy(e.target.value)}
+                      placeholder="Driver Signature / Name"
+                      style={{
+                        width: '100%',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: 3,
+                        padding: '4px 8px',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        color: '#334155',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+                      Security.
+                    </label>
+                    <input
+                      type="text"
+                      value={gatePassSecurity}
+                      onChange={(e) => setGatePassSecurity(e.target.value)}
+                      placeholder="Security Incharge"
+                      style={{
+                        width: '100%',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: 3,
+                        padding: '4px 8px',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        color: '#334155',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* 6. Form Footer Actions */}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingTop: '0.75rem',
+                    borderTop: '1.5px solid #ca8a04',
+                    flexWrap: 'wrap',
+                    gap: '8px',
+                  }}
+                >
+                  <div>
+                    {(gatePassTanker?.id || activeTanker?.id) && (
+                      <button
+                        type="button"
+                        onClick={() => handleExportGatePassPdf(gatePassTanker?.id || activeTanker.id, gatePassVehicleNo)}
+                        disabled={exportingPdf}
+                        style={{
+                          backgroundColor: '#fde047',
+                          color: '#713f12',
+                          border: '1.5px solid #ca8a04',
+                          borderRadius: 4,
+                          padding: '6px 14px',
+                          fontWeight: 700,
+                          fontSize: '0.85rem',
+                          cursor: exportingPdf ? 'not-allowed' : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <span>📄 Export PDF</span>
+                        {exportingPdf && <span style={{ fontSize: '11px' }}>(Generating...)</span>}
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowGatePassModal(false)}
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 16px', fontSize: '0.85rem' }}
+                    >
+                      Close
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      style={{
+                        backgroundColor: '#16a34a',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: 4,
+                        padding: '6px 20px',
+                        fontWeight: 700,
+                        fontSize: '0.88rem',
+                        cursor: submitting ? 'not-allowed' : 'pointer',
+                        boxShadow: '0 2px 4px rgba(22, 163, 74, 0.3)',
+                      }}
+                    >
+                      {submitting ? 'Issuing…' : '💾 Save & Issue Gate Pass'}
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>

@@ -21,6 +21,8 @@ import { buildDailyPdfReport } from '../utils/pdfReport';
 import { buildReconciliation } from '../lib/reconReport';
 import type { ReconTripInput } from '../lib/reconReport';
 import { buildReconPdf } from '../lib/reconPdf';
+import { buildGatePassPdf } from '../lib/gatePassPdf';
+import { getGatePassFallback } from '../lib/gatePassStore';
 
 const router = Router();
 router.use(authMiddleware);
@@ -342,6 +344,62 @@ router.get('/milk-ack', requireRole('admin'), async (req, res) => {
   } catch (err) {
     console.error('[api]', req.method, req.originalUrl, (err as Error).message);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /export/gate-pass/:id — Export Gate Pass as authentic yellow receipt PDF
+router.get('/gate-pass/:id', async (req, res) => {
+  const dairyUnitId = req.profile.dairy_unit_id;
+  const tripIdParam = req.params.id;
+  try {
+    const found = await fetchTrip(dairyUnitId, tripIdParam);
+    if (!found) {
+      res.status(404).json({ error: 'Tanker trip record not found' });
+      return;
+    }
+    const trip = found.row;
+    const stageData = (trip.stage_data as Record<string, any>) || {};
+    const gp =
+      (trip.gate_pass as Record<string, any>) ||
+      stageData.gate_pass ||
+      (stageData.cip_completed as any)?.gate_pass ||
+      getGatePassFallback(String(trip.id)) ||
+      {};
+
+    // Get dairy unit union details
+    const { data: du } = await supabase
+      .from('dairy_units')
+      .select('name, report_title')
+      .eq('id', dairyUnitId)
+      .maybeSingle();
+
+    const pdfBuffer = await buildGatePassPdf({
+      gate_pass_no: gp.gate_pass_no || gp.gate_pass_number || trip.gate_pass_no || '000001',
+      union_name: du?.report_title || "Namakkal District Co-operative Milk Producers' Union Limited,",
+      union_sub_name: du?.name ? `${du.name.toUpperCase()} MILK UNION` : 'NAMAKKAL MILK UNION',
+      date: gp.date || trip.date || new Date().toISOString().slice(0, 10),
+      time: gp.time || trip.dispatch_time || '12:00 PM',
+      sl_no: gp.sl_no || '1)',
+      item: gp.item || 'EMPTY TANKER',
+      quantity: gp.quantity != null ? String(gp.quantity) : '1',
+      purpose: gp.purpose || (trip.destination ? `TO ${trip.destination.toUpperCase()}` : 'TO BMC'),
+      whether_returnable: gp.whether_returnable || 'Returnable',
+      to_whom_issued: gp.to_whom_issued || trip.driver_name || 'Driver',
+      issued_by: gp.issued_by || 'Lab',
+      vehicle_no: gp.vehicle_no || trip.tanker_number || '',
+      issuing_officer: gp.issuing_officer || (req.profile as any).name || req.profile.email || 'QC Officer',
+      received_by: gp.received_by || trip.driver_name || '',
+      security_officer: gp.security_officer || '',
+    });
+
+    const passDigits = String(gp.gate_pass_no || '000001').replace(/\D/g, '') || 'slip';
+    const vNum = sanitizeFilenamePart(String(trip.tanker_number || 'tanker'));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="Gate_Pass_${passDigits}_${vNum}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('[export/gate-pass]', err);
+    res.status(500).json({ error: 'Failed to generate Gate Pass PDF' });
   }
 });
 

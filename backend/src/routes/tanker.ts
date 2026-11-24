@@ -35,6 +35,7 @@ import {
   updateStageData,
   updateTrip,
 } from '../lib/tripStore';
+import { saveGatePassFallback, getGatePassFallback, getNextGatePassNo } from '../lib/gatePassStore';
 import type { LegacyTripRow } from '../lib/tripStore';
 import { supabase } from '../supabase';
 import { computeActiveUsersPerTeam } from '../lib/teamCounts';
@@ -776,6 +777,138 @@ router.post('/', requireRole('admin', 'bmc'), async (req, res) => {
   }
 });
 
+// POST /tanker/:id/gate-pass — Issue Gate Pass for tanker that completed CIP
+router.post('/:id/gate-pass', async (req, res) => {
+  try {
+    const userRole = (req.profile.role || '').toLowerCase();
+    if (userRole !== 'qc' && userRole !== 'admin') {
+      res.status(403).json({ error: 'Only QC team or ADMIN can issue a Gate Pass' });
+      return;
+    }
+    const idParam = String(req.params.id);
+    const dairyUnitId = req.profile.dairy_unit_id;
+    const found = await fetchTrip(dairyUnitId, idParam);
+    if (!found) {
+      res.status(404).json({ error: 'Tanker trip record not found' });
+      return;
+    }
+    const trip = found.row;
+    const stages = found.stages;
+    const isQcRej = trip.qc_status === 'rejected' || (trip.stage_data as any)?.qc_completed?.qc_status === 'rejected';
+    const isCipUnsatisfied = trip.cip_status === 'unsatisfied' || (trip.stage_data as any)?.cip_completed?.cip_status === 'unsatisfied';
+    const cipDone = stages.some((s) => s.stage_name === 'cip_completed' && s.status === 'done') && !isCipUnsatisfied;
+
+    if (!cipDone && !isQcRej) {
+      res.status(400).json({ error: 'Cannot issue Gate Pass: CIP cleaning must be successfully completed first' });
+      return;
+    }
+
+    const payload = req.body || {};
+    const existingGp = getGatePassFallback(String(trip.id));
+    const gpNumber =
+      existingGp?.gate_pass_no ||
+      payload.gate_pass_no ||
+      payload.gate_pass_number ||
+      getNextGatePassNo();
+    const nowIso = new Date().toISOString();
+    const gatePassData = {
+      gate_pass_no: String(gpNumber).padStart(6, '0'),
+      gate_pass_number: String(gpNumber).padStart(6, '0'),
+      date: payload.date || nowIso.slice(0, 10),
+      time: payload.time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      sl_no: payload.sl_no || '1)',
+      item: payload.item || 'EMPTY TANKER',
+      quantity: payload.quantity != null ? String(payload.quantity) : '1',
+      purpose: payload.purpose || (trip.destination ? `TO ${trip.destination.toUpperCase()}` : 'TO BMC'),
+      whether_returnable: payload.whether_returnable || 'Returnable',
+      to_whom_issued: payload.to_whom_issued || trip.driver_name || 'Driver',
+      issued_by: payload.issued_by || 'Lab',
+      vehicle_no: payload.vehicle_no || trip.tanker_number || '',
+      issuing_officer: payload.issuing_officer || actorName(req, 'QC Officer'),
+      security_officer: payload.security_officer || '',
+      received_by: payload.received_by || trip.driver_name || '',
+      remarks: payload.remarks || '',
+      created_at: nowIso,
+    };
+
+    // Save to local persistent store so data is guaranteed safe immediately
+    saveGatePassFallback(String(trip.id), gatePassData);
+
+    // Save as stage record 'gate_pass' if schema allows, otherwise attach to cip_completed stage in trip_stages
+    try {
+      await recordStage({
+        tripId: String(trip.id),
+        stageKey: 'gate_pass' as any,
+        team: 'qc',
+        status: 'done',
+        data: gatePassData,
+        userId: req.profile.id,
+        userName: actorName(req, 'QC Staff'),
+        doneAt: nowIso,
+      });
+    } catch (stageErr: any) {
+      console.warn('[gate-pass] recordStage fallback to cip_completed:', stageErr?.message || stageErr);
+      try {
+        const cipStage = stages.find((s) => s.stage_name === 'cip_completed');
+        const prevData = ((cipStage as any)?.stage_data || (cipStage as any)?.data || {}) as Record<string, unknown>;
+        await updateStageData(String(trip.id), 'cip_completed', {
+          data: { ...prevData, gate_pass: gatePassData },
+        });
+      } catch (attachErr) {
+        console.warn('[gate-pass] attaching to cip_completed stage failed:', attachErr);
+      }
+    }
+
+    // Update trip row (safely stripped if remote columns gate_pass / gate_pass_no do not exist yet)
+    try {
+      await updateTrip(String(trip.id), {
+        gate_pass: gatePassData,
+        gate_pass_no: gatePassData.gate_pass_no,
+      });
+    } catch (updateErr) {
+      console.warn('[gate-pass] updateTrip warning:', updateErr);
+    }
+
+    res.status(200).json({ success: true, gate_pass: gatePassData });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// GET /tanker/next-gate-pass-no — Retrieve next sequential gate pass number
+router.get('/next-gate-pass-no', async (_req, res) => {
+  try {
+    const nextNo = getNextGatePassNo();
+    res.json({ next_gate_pass_no: nextNo });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// GET /tanker/:id/gate-pass — Fetch Gate Pass for a tanker
+router.get('/:id/gate-pass', async (req, res) => {
+  try {
+    const idParam = String(req.params.id);
+    const dairyUnitId = req.profile.dairy_unit_id;
+    const found = await fetchTrip(dairyUnitId, idParam);
+    if (!found) {
+      res.status(404).json({ error: 'Tanker trip record not found' });
+      return;
+    }
+    const trip = found.row;
+    const stageData = (trip.stage_data as Record<string, any>) || {};
+    const gp =
+      trip.gate_pass ||
+      stageData.gate_pass ||
+      (stageData.cip_completed as any)?.gate_pass ||
+      getGatePassFallback(String(trip.id)) ||
+      null;
+    res.json({ gate_pass: gp });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 // POST /tanker/:id/stages/:stageKey — Operator records stage completion
 router.post('/:id/stages/:stageKey', async (req, res) => {
   try {
@@ -910,12 +1043,22 @@ async function recordStageHandler(req: import('express').Request, res: import('e
         return;
       }
       break;
-    case 'vehicle_exit':
-      if (!existingDoneKeys.has('cip_completed')) {
+    case 'vehicle_exit': {
+      const hasGatePass =
+        (existingDoneKeys as Set<string>).has('gate_pass') ||
+        Boolean(trip.gate_pass) ||
+        Boolean((trip.stage_data as any)?.gate_pass) ||
+        Boolean(getGatePassFallback(String(trip.id)));
+      if (!isQcRejected && !hasGatePass) {
+        res.status(400).json({ error: 'Cannot record Vehicle Exit: Gate pass must be issued first after CIP cleaning' });
+        return;
+      }
+      if (!existingDoneKeys.has('cip_completed') && !isQcRejected) {
         res.status(400).json({ error: 'Cannot record Vehicle Exit: CIP cleaning must be successfully passed (Satisfied) first' });
         return;
       }
       break;
+    }
   }
 
   // 4. Extract and validate stage-specific payloads

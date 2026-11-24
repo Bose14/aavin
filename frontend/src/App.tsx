@@ -73,6 +73,7 @@ export default function App() {
             <Route path="/gate/records" element={<ProtectedRoute role={['gate', 'admin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />
             <Route path="/qc" element={<ProtectedRoute role={['qc', 'admin']}><Layout><QCLab activeView="qc" /></Layout></ProtectedRoute>} />
             <Route path="/qc/cip" element={<ProtectedRoute role={['qc', 'admin']}><Layout><QCLab activeView="cip" /></Layout></ProtectedRoute>} />
+            <Route path="/qc/gate-pass" element={<ProtectedRoute role={['qc', 'admin']}><Layout><QCLab activeView="gate-pass" /></Layout></ProtectedRoute>} />
             <Route path="/qc/records" element={<ProtectedRoute role={['qc', 'admin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />
             <Route path="/unloading" element={<ProtectedRoute role={['unloading', 'admin']}><Layout><UnloadingBay /></Layout></ProtectedRoute>} />
             <Route path="/unloading/records" element={<ProtectedRoute role={['unloading', 'admin']}><Layout><PlantRecords /></Layout></ProtectedRoute>} />

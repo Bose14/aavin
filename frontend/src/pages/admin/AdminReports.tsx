@@ -77,8 +77,7 @@ export default function AdminReports() {
   return (
     <div>
       <div className="rp-head">
-        <h1>Milk Bill Union Reports</h1>
-        <p>Pick a date range and open the report as a PDF.</p>
+        <h1 style={{ margin: 0 }}>Milk Bill Union Reports</h1>
       </div>
 
       <div className="rp-grid">
