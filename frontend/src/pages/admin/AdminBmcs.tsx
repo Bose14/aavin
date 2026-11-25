@@ -246,11 +246,11 @@ export default function AdminBmcs() {
           marginBottom: '16px',
         }}
       >
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #0284c7', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid var(--primary)', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
           <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
             Total Registered BMCs
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#0284c7', marginTop: '4px' }}>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--primary)', marginTop: '4px' }}>
             {totalBMCs}
           </div>
           <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
@@ -442,7 +442,7 @@ export default function AdminBmcs() {
                     height: '42px',
                     borderRadius: '8px',
                     border: 'none',
-                    backgroundColor: '#3b82f6',
+                    backgroundColor: 'var(--primary)',
                     color: '#ffffff',
                     fontSize: '14px',
                     fontWeight: 600,

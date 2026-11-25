@@ -69,7 +69,7 @@ export function buildGatePassPdf(input: GatePassPdfInput): Promise<Buffer> {
     if (logoPath) {
       doc.image(logoPath, logoX, logoY, { width: 62, height: 34 });
     } else {
-      doc.roundedRect(logoX, logoY, 52, 24, 6).fillAndStroke('#0072bc', '#005a96');
+      doc.roundedRect(logoX, logoY, 52, 24, 6).fillAndStroke('#258bd6', '#1b74b5');
       doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(13).text('aavin', logoX + 6, logoY + 5);
     }
 
@@ -163,14 +163,14 @@ export function buildGatePassPdf(input: GatePassPdfInput): Promise<Buffer> {
     // Line 1: To whom issued
     doc.font('Helvetica').fontSize(10.5).fillColor('#0f172a');
     doc.text('To whom issued : ', margin + 14, curY, { continued: true });
-    doc.font('Helvetica-Bold').fontSize(11).fillColor('#1e3a8a').text((input.to_whom_issued || '—').toUpperCase());
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('#1b74b5').text((input.to_whom_issued || '—').toUpperCase());
 
     // Line 2: Issued by
     curY += 18;
     const issuedByVal = (input.issued_by || 'Lab').toUpperCase();
     doc.font('Helvetica').fontSize(10).fillColor('#0f172a');
     doc.text('Issued by : ', margin + 14, curY, { continued: true });
-    doc.font('Helvetica-Bold').fillColor('#1e3a8a').text(issuedByVal);
+    doc.font('Helvetica-Bold').fillColor('#1b74b5').text(issuedByVal);
 
     // Line 3: Vehicle No. if any
     curY += 18;
@@ -184,7 +184,7 @@ export function buildGatePassPdf(input: GatePassPdfInput): Promise<Buffer> {
 
     // Left: Issuing Officer
     doc.text('Issuing Officer:', margin + 14, sigY);
-    doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#1e3a8a').text(input.issuing_officer || 'Officer', margin + 14, sigY + 14);
+    doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#1b74b5').text(input.issuing_officer || 'Officer', margin + 14, sigY + 14);
 
     // Center: Received (Driver)
     doc.font('Helvetica').fontSize(10).fillColor('#0f172a');

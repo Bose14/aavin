@@ -855,7 +855,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
     }
     .val-blue {
       font-weight: 800;
-      color: #1e3a8a !important;
+      color: #1b74b5 !important;
     }
     .val-amber {
       font-weight: 800;
@@ -875,7 +875,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
       margin-bottom: 18px;
     }
     .sig-name {
-      color: #1e3a8a;
+      color: #1b74b5;
       font-weight: 700;
       border-top: 1px dotted #94a3b8;
       padding-top: 3px;
@@ -1348,7 +1348,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                               {t.tanker_number}
                             </span>
                           </td>
-                          <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0284c7' }}>
+                          <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--primary)' }}>
                             #{dc}
                           </td>
                           <td style={{ padding: '10px 12px', color: '#334155' }}>
@@ -1371,7 +1371,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                                 openQcModal(t);
                               }}
                               className="btn btn-primary btn-sm"
-                              style={{ backgroundColor: '#65a30d', borderColor: '#4d7c0f', fontWeight: 700, padding: '4px 12px' }}
+                              style={{ fontWeight: 700, padding: '4px 12px' }}
                             >
                               🔬 Conduct QC
                             </button>
@@ -1433,7 +1433,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                               {t.tanker_number}
                             </span>
                           </td>
-                          <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0284c7' }}>
+                          <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--primary)' }}>
                             #{dc}
                           </td>
                           <td style={{ padding: '10px 12px', color: '#334155' }}>
@@ -1450,7 +1450,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                                 openCipModal(t);
                               }}
                               className="btn btn-primary btn-sm"
-                              style={{ backgroundColor: '#0284c7', borderColor: '#0369a1', fontWeight: 700, padding: '4px 12px' }}
+                              style={{ fontWeight: 700, padding: '4px 12px' }}
                             >
                               🧼 CIP Inspection
                             </button>
@@ -1527,7 +1527,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                                 {t.tanker_number}
                               </span>
                             </td>
-                            <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0284c7' }}>
+                            <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--primary)' }}>
                               #{dc}
                             </td>
                             <td style={{ padding: '10px 12px', color: '#334155' }}>
@@ -1552,7 +1552,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                                   openGatePassModal(t);
                                 }}
                                 className="btn btn-primary btn-sm"
-                                style={{ backgroundColor: '#d97706', borderColor: '#b45309', fontWeight: 700, padding: '4px 12px' }}
+                                style={{ fontWeight: 700, padding: '4px 12px' }}
                               >
                                 📋 Issue Gate Pass
                               </button>
@@ -1644,7 +1644,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                                 {t.tanker_number}
                               </span>
                             </td>
-                            <td style={{ padding: '10px 12px', fontWeight: 600, color: '#1e3a8a' }}>
+                            <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--primary-dark)' }}>
                               {driver}
                             </td>
                             <td style={{ padding: '10px 12px', color: '#334155' }}>
@@ -2269,9 +2269,9 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                               style={{
                                 padding: '3px 10px',
                                 borderRadius: 3,
-                                border: activeCell === cell ? '2px solid #0284c7' : '1px solid #cbd5e1',
-                                backgroundColor: activeCell === cell ? '#e0f2fe' : '#f8fafc',
-                                color: activeCell === cell ? '#0369a1' : '#475569',
+                                border: activeCell === cell ? '2px solid var(--primary)' : '1px solid #cbd5e1',
+                                backgroundColor: activeCell === cell ? 'var(--primary-light)' : '#f8fafc',
+                                color: activeCell === cell ? 'var(--primary-dark)' : '#475569',
                                 fontWeight: 700,
                                 fontSize: '0.8rem',
                                 cursor: 'pointer',
@@ -2795,7 +2795,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                     type="button"
                     onClick={() => setShowRejectModal(true)}
                     style={{
-                      backgroundColor: '#84cc16',
+                      backgroundColor: '#dc2626',
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: 3,
@@ -2821,7 +2821,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                     type="submit"
                     disabled={submitting}
                     style={{
-                      backgroundColor: '#65a30d',
+                      backgroundColor: 'var(--primary)',
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: 3,
@@ -3115,7 +3115,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                     type="submit"
                     disabled={submitting}
                     style={{
-                      backgroundColor: '#65a30d',
+                      backgroundColor: 'var(--primary)',
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: 3,
@@ -3418,7 +3418,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                         borderRadius: 3,
                         padding: '5px 10px',
                         fontWeight: 700,
-                        color: '#1e3a8a',
+                        color: 'var(--primary-dark)',
                         fontSize: '0.9rem',
                       }}
                     />
@@ -3443,8 +3443,8 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                               fontSize: '0.8rem',
                               fontWeight: isSelected ? 800 : 600,
                               cursor: 'pointer',
-                              border: isSelected ? '1.5px solid #1e3a8a' : '1px solid #cbd5e1',
-                              backgroundColor: isSelected ? '#1e3a8a' : '#ffffff',
+                              border: isSelected ? '1.5px solid var(--primary)' : '1px solid #cbd5e1',
+                              backgroundColor: isSelected ? 'var(--primary)' : '#ffffff',
                               color: isSelected ? '#ffffff' : '#475569',
                             }}
                           >
@@ -3508,7 +3508,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                         padding: '4px 8px',
                         fontSize: '0.82rem',
                         fontWeight: 700,
-                        color: '#1e3a8a',
+                        color: 'var(--primary-dark)',
                       }}
                     />
                   </div>
@@ -3611,7 +3611,7 @@ export default function QCLab({ activeView = 'qc' }: QCLabProps) {
                       type="submit"
                       disabled={submitting}
                       style={{
-                        backgroundColor: '#16a34a',
+                        backgroundColor: 'var(--primary)',
                         color: '#ffffff',
                         border: 'none',
                         borderRadius: 4,

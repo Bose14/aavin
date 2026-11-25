@@ -359,7 +359,7 @@ export default function TankerDispatch() {
               )}
             </div>
             {dc && (
-              <div style={{ fontSize: '11px', color: '#0284c7', fontWeight: 600 }}>
+              <div style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600 }}>
                 DC #{dc}
               </div>
             )}
@@ -479,9 +479,6 @@ export default function TankerDispatch() {
               setShowDispatchModal(true);
             }}
             style={{
-              backgroundColor: '#16a34a',
-              borderColor: '#15803d',
-              color: '#ffffff',
               fontWeight: 700,
               fontSize: '13px',
               padding: '8px 16px',
@@ -515,7 +512,7 @@ export default function TankerDispatch() {
             </p>
             <p className="stat-sub">{t('collectedMinusDispatched')}</p>
           </div>
-          <div className="stat-card" style={{ borderLeft: '4px solid #0284c7' }}>
+          <div className="stat-card" style={{ borderLeft: '4px solid var(--primary)' }}>
             <p className="stat-label">Total Litres Collected</p>
             <p className="stat-value" style={{ fontSize: '20px', fontWeight: 800 }}>
               {formatLitres(stock.collected_net_qty, 1)}
@@ -563,9 +560,6 @@ export default function TankerDispatch() {
               setShowDispatchModal(true);
             }}
             style={{
-              backgroundColor: '#16a34a',
-              borderColor: '#15803d',
-              color: '#ffffff',
               fontWeight: 700,
               fontSize: '12px',
               padding: '6px 14px',
@@ -713,7 +707,7 @@ export default function TankerDispatch() {
                 </div>
 
                 <div className="form-group">
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#0284c7' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--primary-dark)' }}>
                     Invoice No (DC No) *
                   </label>
                   <input
@@ -769,7 +763,7 @@ export default function TankerDispatch() {
                   </div>
 
                   {selectedTanker.filled_capacity > 0 && (
-                    <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '6px 10px', fontSize: '12px', color: '#1e40af', marginTop: '6px' }}>
+                    <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '6px 10px', fontSize: '12px', color: 'var(--primary-dark)', marginTop: '6px' }}>
                       ℹ <strong>Multi-BMC Route Active:</strong> This tanker has {(selectedTanker.filled_capacity || 0).toLocaleString('en-IN')} L of milk from prior BMC loading. You can fill remaining empty cell(s) up to {(selectedTanker.available_capacity || 0).toLocaleString('en-IN')} L under your BMC Delivery Challan (DC No).
                     </div>
                   )}
@@ -1045,8 +1039,8 @@ export default function TankerDispatch() {
                   }}
                 >
                   <div>
-                    <span style={{ fontSize: '12px', color: '#1e40af', fontWeight: 600 }}>Total Lorry Dispatched Volume: </span>
-                    <strong style={{ fontSize: '16px', color: '#1e3a8a' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--primary-dark)', fontWeight: 600 }}>Total Lorry Dispatched Volume: </span>
+                    <strong style={{ fontSize: '16px', color: 'var(--primary-dark)' }}>
                       {formatLitres(totalCompartmentLitres)}
                     </strong>
                     <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '6px' }}>
@@ -1054,7 +1048,7 @@ export default function TankerDispatch() {
                     </span>
                   </div>
 
-                  <div style={{ fontSize: '12px', color: '#1e40af', fontWeight: 700 }}>
+                  <div style={{ fontSize: '12px', color: 'var(--primary-dark)', fontWeight: 700 }}>
                     Weighted Average Quality: Fat {weightedFat.toFixed(2)}% · SNF {weightedSnf.toFixed(2)}%
                   </div>
                 </div>
@@ -1091,8 +1085,8 @@ export default function TankerDispatch() {
                     padding: '12px',
                     fontSize: '15px',
                     fontWeight: 800,
-                    backgroundColor: '#16a34a',
-                    borderColor: '#15803d',
+                    backgroundColor: 'var(--primary)',
+                    borderColor: 'var(--primary-dark)',
                     cursor: loading || totalCompartmentLitres <= 0 || exceedsStock ? 'not-allowed' : 'pointer',
                   }}
                 >

@@ -27,11 +27,11 @@ interface PipelineStepDef {
 }
 
 const PIPELINE_STEPS: PipelineStepDef[] = [
-  { key: 'on_the_way', title: 'On the way', team: 'transit', teamLabel: 'Transit', iconBg: '#eff6ff', iconColor: '#2563eb' },
+  { key: 'on_the_way', title: 'On the way', team: 'transit', teamLabel: 'Transit', iconBg: '#eff6ff', iconColor: '#258bd6' },
   { key: 'vehicle_entered', title: 'Vehicle Entered', team: 'gate', teamLabel: 'Gate', iconBg: '#fef3c7', iconColor: '#d97706' },
   { key: 'gross_done', title: 'Gross Done', team: 'gate', teamLabel: 'Gate', iconBg: '#fef9c3', iconColor: '#ca8a04' },
   { key: 'qc_done', title: 'QC Done', team: 'qc', teamLabel: 'QC', iconBg: '#ffedd5', iconColor: '#ea580c' },
-  { key: 'unloaded', title: 'Unloaded', team: 'unloading', teamLabel: 'Unloading', iconBg: '#e0f2fe', iconColor: '#0284c7' },
+  { key: 'unloaded', title: 'Unloaded', team: 'unloading', teamLabel: 'Unloading', iconBg: 'var(--primary-light)', iconColor: 'var(--primary)' },
   { key: 'tare_done', title: 'Tare Done', team: 'gate', teamLabel: 'Gate', iconBg: '#f3e8ff', iconColor: '#9333ea' },
   { key: 'cip_done', title: 'CIP Done', team: 'qc', teamLabel: 'QC', iconBg: '#ccfbf1', iconColor: '#0d9488' },
   { key: 'exited', title: 'Vehicle Exit', team: 'gate', teamLabel: 'Gate', iconBg: '#dcfce7', iconColor: '#16a34a' },
@@ -177,13 +177,13 @@ export function StagePipeline({
             <span>In Plant :</span>
             <span
               style={{
-                backgroundColor: '#2563eb',
+                backgroundColor: 'var(--primary)',
                 color: '#ffffff',
                 padding: '4px 12px',
                 borderRadius: '16px',
                 fontWeight: 700,
                 fontSize: '12px',
-                boxShadow: '0 2px 4px rgba(37,99,235,0.25)',
+                boxShadow: '0 2px 4px rgba(37, 139, 214, 0.25)',
               }}
             >
               {inPlantCount} tankers
@@ -480,7 +480,7 @@ export function StagePipeline({
                     style={{
                       fontSize: '12.5px',
                       fontWeight: isSelected ? 800 : 700,
-                      color: isSelected ? '#1e40af' : '#1e293b',
+                      color: isSelected ? 'var(--primary-dark)' : '#1e293b',
                       lineHeight: 1.25,
                       whiteSpace: 'nowrap',
                     }}

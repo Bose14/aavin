@@ -299,7 +299,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
                   type="button"
                   onClick={() => setNumberOfCells(num)}
                   style={{
-                    backgroundColor: numberOfCells === num ? '#0284c7' : '#f1f5f9',
+                    backgroundColor: numberOfCells === num ? 'var(--primary)' : '#f1f5f9',
                     color: numberOfCells === num ? '#ffffff' : '#334155',
                     border: '1px solid #cbd5e1',
                     borderRadius: 3,
@@ -462,7 +462,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
               type="submit"
               disabled={submitting}
               style={{
-                backgroundColor: '#65a30d',
+                backgroundColor: 'var(--primary)',
                 color: '#ffffff',
                 border: 'none',
                 borderRadius: 3,

@@ -417,7 +417,7 @@ export default function AdminTankerRecords() {
                 )}
               </div>
               {dcNo && (
-                <div style={{ fontSize: '11px', color: '#0284c7', fontWeight: 600 }}>
+                <div style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600 }}>
                   DC #{dcNo}
                 </div>
               )}
@@ -561,7 +561,7 @@ export default function AdminTankerRecords() {
               <div>G: {c?.gross_weight_kg ? `${c.gross_weight_kg.toLocaleString('en-IN')}` : '—'}</div>
               <div>T: {c?.tare_weight_kg ? `${c.tare_weight_kg.toLocaleString('en-IN')}` : '—'}</div>
               {c?.net_weight_kg != null && (
-                <div style={{ fontWeight: 700, color: '#0369a1' }}>
+                <div style={{ fontWeight: 700, color: 'var(--primary-dark)' }}>
                   Net: {c.net_weight_kg.toLocaleString('en-IN')} kg
                 </div>
               )}
@@ -678,8 +678,8 @@ export default function AdminTankerRecords() {
             fontSize: '14px',
             fontWeight: 700,
             cursor: 'pointer',
-            color: activeTab === 'all' ? '#2563eb' : '#64748b',
-            borderBottom: activeTab === 'all' ? '3px solid #2563eb' : '3px solid transparent',
+            color: activeTab === 'all' ? 'var(--primary)' : '#64748b',
+            borderBottom: activeTab === 'all' ? '3px solid var(--primary)' : '3px solid transparent',
           }}
         >
           All ({stats?.tabs.all ?? 0})
@@ -694,8 +694,8 @@ export default function AdminTankerRecords() {
             fontSize: '14px',
             fontWeight: 700,
             cursor: 'pointer',
-            color: activeTab === 'waiting' ? '#2563eb' : '#64748b',
-            borderBottom: activeTab === 'waiting' ? '3px solid #2563eb' : '3px solid transparent',
+            color: activeTab === 'waiting' ? 'var(--primary)' : '#64748b',
+            borderBottom: activeTab === 'waiting' ? '3px solid var(--primary)' : '3px solid transparent',
           }}
         >
           Waiting ({stats?.tabs.waiting ?? 0})
@@ -710,8 +710,8 @@ export default function AdminTankerRecords() {
             fontSize: '14px',
             fontWeight: 700,
             cursor: 'pointer',
-            color: activeTab === 'processed' ? '#2563eb' : '#64748b',
-            borderBottom: activeTab === 'processed' ? '3px solid #2563eb' : '3px solid transparent',
+            color: activeTab === 'processed' ? 'var(--primary)' : '#64748b',
+            borderBottom: activeTab === 'processed' ? '3px solid var(--primary)' : '3px solid transparent',
           }}
         >
           Processed ({stats?.tabs.processed ?? 0})
@@ -726,8 +726,8 @@ export default function AdminTankerRecords() {
             fontSize: '14px',
             fontWeight: 700,
             cursor: 'pointer',
-            color: activeTab === 'rejected' ? '#2563eb' : '#64748b',
-            borderBottom: activeTab === 'rejected' ? '3px solid #2563eb' : '3px solid transparent',
+            color: activeTab === 'rejected' ? 'var(--primary)' : '#64748b',
+            borderBottom: activeTab === 'rejected' ? '3px solid var(--primary)' : '3px solid transparent',
           }}
         >
           QC Rejected ({stats?.tabs.rejected ?? 0})

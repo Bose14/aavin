@@ -370,7 +370,7 @@ export default function AdminSettings() {
                   borderRadius: '8px',
                   border: '1px solid #e2e8f0',
                   backgroundColor: '#f8fafc',
-                  color: '#0369a1',
+                  color: 'var(--primary-dark)',
                   fontWeight: 600,
                   fontSize: '14px',
                 }}

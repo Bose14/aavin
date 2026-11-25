@@ -173,7 +173,7 @@ export default function AdminDashboard() {
                 onClick={() => setPeriod(pr)}
                 style={{
                   border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: '0.82rem', fontWeight: period === pr ? 700 : 500, cursor: 'pointer',
-                  backgroundColor: period === pr ? '#0284c7' : 'transparent', color: period === pr ? '#ffffff' : '#475569',
+                  backgroundColor: period === pr ? 'var(--primary)' : 'transparent', color: period === pr ? '#ffffff' : '#475569',
                 }}
               >
                 {pr === 'today' ? 'Today' : t(pr as any)}

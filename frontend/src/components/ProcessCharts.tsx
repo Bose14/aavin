@@ -49,7 +49,7 @@ function VolumeTooltip({
         <strong style={{ fontSize: '0.88rem', color: '#0f172a' }}>{formatDateDDMMYYYY(item.date)}</strong>
       </div>
       <TooltipRow
-        color="#3b82f6"
+        color="#258bd6"
         label="Dispatched"
         value={`${formatLitres(item.dispatched_litres, 1)} (${item.dispatched_count} ${item.dispatched_count === 1 ? 'trip' : 'trips'})`}
       />
@@ -88,7 +88,7 @@ export function MilkVolumeChart({
   const summaryStrip = !isEmpty ? (
     <div className="chart-summary-strip" style={{ display: 'flex', flexWrap: 'wrap', gap: '1.25rem', paddingBottom: '0.5rem', fontSize: '0.84rem' }}>
       <span>
-        Total Dispatched: <strong style={{ color: '#2563eb' }}>{formatLitres(totalDispatched, 1)}</strong> ({totalTrips} {totalTrips === 1 ? 'trip' : 'trips'})
+        Total Dispatched: <strong style={{ color: 'var(--primary)' }}>{formatLitres(totalDispatched, 1)}</strong> ({totalTrips} {totalTrips === 1 ? 'trip' : 'trips'})
       </span>
       <span>
         Received in Silo: <strong style={{ color: '#059669' }}>{formatLitres(totalReceived, 1)}</strong>
@@ -100,7 +100,7 @@ export function MilkVolumeChart({
   ) : undefined;
 
   const legendItems = [
-    { color: '#3b82f6', label: 'Dispatched Milk (L)' },
+    { color: '#258bd6', label: 'Dispatched Milk (L)' },
     { color: '#10b981', label: 'Silo Received Milk (L)' },
   ];
 
@@ -136,7 +136,7 @@ export function MilkVolumeChart({
             <Bar
               dataKey="dispatched_litres"
               name="Dispatched"
-              fill="#3b82f6"
+              fill="#258bd6"
               radius={[6, 6, 0, 0]}
               maxBarSize={32}
             />

@@ -123,7 +123,7 @@ export function TankerTimeline({
         >
           {/* Left: Order / Tanker ID with green highlight */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="1" y="3" width="15" height="13" rx="1" />
               <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
               <circle cx="5.5" cy="18.5" r="2.5" />
@@ -141,7 +141,7 @@ export function TankerTimeline({
                 <span>Expected Arrival</span>
                 <span
                   style={{
-                    backgroundColor: '#2563eb',
+                    backgroundColor: 'var(--primary)',
                     color: '#ffffff',
                     padding: '3px 10px',
                     borderRadius: '14px',
@@ -547,14 +547,14 @@ export function TankerTimeline({
 
             <div>
               <div style={{ fontSize: '11px', color: '#64748b' }}>Net Weight</div>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: '#0369a1' }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--primary-dark)' }}>
                 {journey.calculated.net_weight_kg != null ? `${journey.calculated.net_weight_kg.toLocaleString('en-IN')} kg` : '—'}
               </div>
             </div>
 
             <div>
               <div style={{ fontSize: '11px', color: '#64748b' }}>Net Litres</div>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: '#0369a1' }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--primary-dark)' }}>
                 {journey.calculated.net_litres != null ? `${formatLitres(journey.calculated.net_litres)}` : '—'}
               </div>
             </div>

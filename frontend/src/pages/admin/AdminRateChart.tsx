@@ -209,7 +209,7 @@ export default function AdminRateChart() {
             onClick={() => { setTab(t); setSelectedId(null); setFatFilter(''); }}
             style={{
               padding: '6px 18px', borderRadius: 3, fontWeight: 700, fontSize: '0.86rem', cursor: 'pointer',
-              border: '1px solid #cbd5e1', background: tab === t ? '#0284c7' : '#f1f5f9', color: tab === t ? '#fff' : '#334155',
+              border: '1px solid #cbd5e1', background: tab === t ? 'var(--primary)' : '#f1f5f9', color: tab === t ? '#fff' : '#334155',
             }}
           >
             {milkTypeLabel(t)} milk
@@ -235,7 +235,7 @@ export default function AdminRateChart() {
                 onClick={() => setSelectedId(v.id)}
                 style={{
                   display: 'block', flex: '0 0 auto', minWidth: 210, textAlign: 'left', padding: '10px 12px', borderRadius: 6, cursor: 'pointer',
-                  border: `1px solid ${v.id === selectedId ? '#0284c7' : '#e2e8f0'}`, background: v.id === selectedId ? '#f0f9ff' : '#fff',
+                  border: `1px solid ${v.id === selectedId ? 'var(--primary)' : '#e2e8f0'}`, background: v.id === selectedId ? 'var(--primary-light)' : '#fff',
                 }}
               >
                 <div style={{ fontWeight: 700, fontSize: '0.86rem' }}>
@@ -339,7 +339,7 @@ export default function AdminRateChart() {
                   type="button"
                   onClick={() => void publish()}
                   disabled={!upGrid || !upDate || upSaving}
-                  style={{ background: '#65a30d', color: '#fff', border: 'none', borderRadius: 3, padding: '6px 18px', fontWeight: 700, fontSize: '0.86rem', cursor: !upGrid || upSaving ? 'not-allowed' : 'pointer', opacity: !upGrid || upSaving ? 0.6 : 1 }}
+                  style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 3, padding: '6px 18px', fontWeight: 700, fontSize: '0.86rem', cursor: !upGrid || upSaving ? 'not-allowed' : 'pointer', opacity: !upGrid || upSaving ? 0.6 : 1 }}
                 >
                   {upSaving ? 'Saving…' : 'Save Chart'}
                 </button>

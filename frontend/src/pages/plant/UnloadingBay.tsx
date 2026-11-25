@@ -413,11 +413,11 @@ export default function UnloadingBay() {
           <div style={{ fontSize: '11px', color: '#64748b' }}>Pumped into plant raw silos</div>
         </div>
 
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #bae6fd', borderLeft: '4px solid #0284c7', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #bae6fd', borderLeft: '4px solid var(--primary)', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
           <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
             Silos in Active Use
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#0369a1', marginTop: '2px' }}>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--primary-dark)', marginTop: '2px' }}>
             {activeSilosCount} <span style={{ fontSize: '13px', fontWeight: 600, color: '#64748b' }}>({activeSilosStr})</span>
           </div>
           <div style={{ fontSize: '11px', color: '#64748b' }}>Receiving lines connected</div>
@@ -574,7 +574,7 @@ export default function UnloadingBay() {
                           {t.tanker_number}
                         </span>
                       </td>
-                      <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0284c7' }}>
+                      <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--primary)' }}>
                         #{dc}
                       </td>
                       <td style={{ padding: '10px 12px', color: '#334155' }}>
@@ -602,7 +602,7 @@ export default function UnloadingBay() {
                             openUnloadModal(t);
                           }}
                           className="btn btn-primary btn-sm"
-                          style={{ backgroundColor: '#65a30d', borderColor: '#4d7c0f', fontWeight: 700, padding: '4px 12px' }}
+                          style={{ fontWeight: 700, padding: '4px 12px' }}
                         >
                           🥛 Unload Tanker
                         </button>
@@ -897,7 +897,7 @@ export default function UnloadingBay() {
                           padding: '2px 10px',
                           fontSize: '0.82rem',
                           fontWeight: 700,
-                          color: '#0369a1',
+                          color: 'var(--primary-dark)',
                           cursor: 'pointer',
                         }}
                       >
@@ -1087,7 +1087,7 @@ export default function UnloadingBay() {
                     type="submit"
                     disabled={submitting}
                     style={{
-                      backgroundColor: '#65a30d',
+                      backgroundColor: 'var(--primary)',
                       color: '#ffffff',
                       border: 'none',
                       borderRadius: 3,
@@ -1136,7 +1136,7 @@ export default function UnloadingBay() {
           >
             <div
               style={{
-                backgroundColor: '#0284c7',
+                backgroundColor: 'var(--primary)',
                 color: '#ffffff',
                 padding: '0.75rem 1rem',
                 display: 'flex',
@@ -1159,7 +1159,7 @@ export default function UnloadingBay() {
                 <tbody>
                   <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={{ padding: '6px', fontWeight: 600, color: '#475569' }}>DC Number:</td>
-                    <td style={{ padding: '6px', fontWeight: 700, color: '#0369a1' }}>#{dcNumber}</td>
+                    <td style={{ padding: '6px', fontWeight: 700, color: 'var(--primary-dark)' }}>#{dcNumber}</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={{ padding: '6px', fontWeight: 600, color: '#475569' }}>Vehicle Number:</td>

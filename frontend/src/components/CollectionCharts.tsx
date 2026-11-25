@@ -267,7 +267,7 @@ export function MilkCollectionTrendChart({
                   key={entry.date}
                   fill="#0ea5e9"
                   opacity={selectedDate ? (selectedDate === entry.date ? 1 : 0.28) : 1}
-                  stroke={selectedDate === entry.date ? '#0369a1' : undefined}
+                  stroke={selectedDate === entry.date ? 'var(--primary-dark)' : undefined}
                   strokeWidth={selectedDate === entry.date ? 2 : 0}
                   cursor="pointer"
                 />

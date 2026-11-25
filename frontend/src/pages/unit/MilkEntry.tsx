@@ -506,7 +506,7 @@ export default function MilkEntry() {
                         disabled={Boolean(r.is_locked)}
                         onClick={e => { e.stopPropagation(); loadForEdit(r.id); }}
                         className="btn btn-primary btn-sm"
-                        style={{ backgroundColor: '#16a34a', borderColor: '#15803d', fontWeight: 700, padding: '4px 12px', marginRight: 6 }}
+                        style={{ fontWeight: 700, padding: '4px 12px', marginRight: 6 }}
                       >
                         📝 Edit
                       </button>
@@ -689,7 +689,7 @@ export default function MilkEntry() {
                     type="submit"
                     disabled={loading || !isFormValid}
                     style={{
-                      backgroundColor: '#65a30d', color: '#ffffff', border: 'none', borderRadius: 3, padding: '6px 20px',
+                      backgroundColor: 'var(--primary)', color: '#ffffff', border: 'none', borderRadius: 3, padding: '6px 20px',
                       fontWeight: 700, fontSize: '0.88rem', cursor: loading || !isFormValid ? 'not-allowed' : 'pointer',
                       opacity: loading || !isFormValid ? 0.7 : 1,
                     }}

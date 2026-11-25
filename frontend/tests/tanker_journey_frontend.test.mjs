@@ -305,8 +305,8 @@ test('Frontend Feature Verification: 8-Feature Suite (User Creation, Gate/QC/Unl
   assert.ok(unloadSrc.includes("Today's Unloading Bay Reception Register"), 'Feature 4: Unload Dashboard has Reception Register table');
 
   // Feature 5: BMC team Dashboard
-  assert.ok(unitDashSrc.includes('Outward Tanker Dispatches & Live Plant Status'), 'Feature 5: BMC Dashboard has Outward Tanker tracking section');
-  assert.ok(unitDashSrc.includes('TankerDetailDrawer'), 'Feature 5: BMC Dashboard mounts TankerDetailDrawer for viewing dossiers');
+  assert.ok(unitDashSrc.includes('Dispatched') && unitDashSrc.includes('MilkVolumeChart'), 'Feature 5: BMC Dashboard has Dispatched KPI and Volume Chart');
+  assert.ok(unitDashSrc.includes('Dispatch Tanker'), 'Feature 5: BMC Dashboard exposes Dispatch Tanker action');
 
   // Feature 6: BMC Admin Dashboard
   assert.ok(adminUnitsSrc.includes('BMC Administration Dashboard'), 'Feature 6: Admin BMC has BMC Administration Dashboard');
