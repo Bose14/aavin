@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { supabase } from '../supabase';
 import { authMiddleware } from '../middleware/auth';
+import { validateBody } from '../middleware/validate';
+import { bmcSchema } from '../schemas';
 import { requireRole } from '../middleware/requireRole';
 import { writeAuditLog } from '../lib/settingsStore';
 import { idLookup } from '../lib/ids';
@@ -76,7 +78,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /bmcs — admin creates a BMC
-router.post('/', requireRole('admin'), async (req, res) => {
+router.post('/', requireRole('admin'), validateBody(bmcSchema), async (req, res) => {
   if (!req.profile.dairy_unit_id) {
     res.status(403).json({ error: 'Admin account is not assigned to a dairy unit' });
     return;
@@ -146,7 +148,7 @@ function optInt(v: unknown): number | null {
 }
 
 // PATCH /bmcs/:id — admin updates BMC details (name, bmc_code, location) or active status. :id is an id or id_token
-router.patch('/:id', requireRole('admin'), async (req, res) => {
+router.patch('/:id', requireRole('admin'), validateBody(bmcSchema), async (req, res) => {
   const lookup = idLookup(req.params.id);
   if (!lookup) { res.status(404).json({ error: 'BMC not found' }); return; }
   const rawBody = req.body as {

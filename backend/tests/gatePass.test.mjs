@@ -40,25 +40,6 @@ test('2. buildGatePassPdf handles missing or partial data with authentic default
   assert.equal(pdfBuffer.subarray(0, 5).toString('utf8'), '%PDF-');
 });
 
-test('3. gatePassStore persists and retrieves gate pass records reliably', async () => {
-  const { saveGatePassFallback, getGatePassFallback } = await import('../dist/lib/gatePassStore.js');
-  const dummyTripId = 'test-trip-9999';
-  const passData = {
-    gate_pass_no: '007788',
-    date: '2026-11-24',
-    time: '04:00 PM',
-    to_whom_issued: 'Driver Testing',
-    vehicle_no: 'TN42AA7226',
-    item: 'EMPTY TANKER',
-  };
-
-  saveGatePassFallback(dummyTripId, passData);
-  const retrieved = getGatePassFallback(dummyTripId);
-  assert.ok(retrieved != null, 'Retrieved gate pass from store');
-  assert.equal(retrieved.gate_pass_no, '007788');
-  assert.equal(retrieved.vehicle_no, 'TN42AA7226');
-});
-
 test('4. shapeTrip resolves gate_pass from fallback store and cip_completed stage data', async () => {
   const { shapeTrip } = await import('../dist/lib/tripStore.js');
   const mockTrip = {
@@ -85,28 +66,4 @@ test('4. shapeTrip resolves gate_pass from fallback store and cip_completed stag
   assert.ok(shaped.gate_pass != null, 'gate_pass field populated');
   assert.equal(shaped.gate_pass_no, '005522');
   assert.equal(shaped.stage_data.gate_pass?.gate_pass_no, '005522');
-});
-
-test('5. getNextGatePassNo formats 6-digit zero-padded sequential serial numbers', async () => {
-  const { getNextGatePassNo, saveGatePassFallback, deleteGatePassFallback } = await import('../dist/lib/gatePassStore.js');
-  const nextNo = getNextGatePassNo();
-  assert.match(nextNo, /^\d{6}$/, 'Must be 6 digits');
-  assert.ok(parseInt(nextNo, 10) >= 1, 'Must be at least 1 (000001)');
-
-  // Test increment
-  const currInt = parseInt(nextNo, 10);
-  const tempTripId = 'temp-seq-verify';
-  try {
-    saveGatePassFallback(tempTripId, {
-      gate_pass_no: nextNo,
-      date: '2026-11-24',
-      time: '10:00 PM',
-      to_whom_issued: 'Seq Test',
-      vehicle_no: 'TN00TEST',
-    });
-    const afterNo = getNextGatePassNo();
-    assert.equal(parseInt(afterNo, 10), currInt + 1, 'Increments by 1');
-  } finally {
-    deleteGatePassFallback(tempTripId);
-  }
 });

@@ -3,6 +3,8 @@ import { Router } from 'express';
 import type { Response } from 'express';
 import { supabase, formatAdminAuthError } from '../supabase';
 import { authMiddleware } from '../middleware/auth';
+import { validateBody } from '../middleware/validate';
+import { createUserSchema, updateUserSchema } from '../schemas';
 import { requireRole } from '../middleware/requireRole';
 import { normalizeIndianPhone } from '../lib/calculations';
 import { writeAuditLog } from '../lib/settingsStore';
@@ -215,7 +217,7 @@ router.get('/', requireRole('admin'), async (req, res) => {
 });
 
 // POST /users — the ONE way to create a user (any team; BMC users also need a BMC)
-router.post('/', requireRole('admin'), async (req, res) => {
+router.post('/', requireRole('admin'), validateBody(createUserSchema), async (req, res) => {
   const body = req.body as {
     full_name?: string;
     email?: string;
@@ -338,7 +340,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
 });
 
 // PATCH /users/:id — edit details, change team / BMC, activate or deactivate. :id is an id or id_token
-router.patch('/:id', requireRole('admin'), async (req, res) => {
+router.patch('/:id', requireRole('admin'), validateBody(updateUserSchema), async (req, res) => {
   const dairyUnitId = req.profile.dairy_unit_id;
   const target = await findUserInDairyUnit(String(req.params.id), dairyUnitId);
   if (!target) {

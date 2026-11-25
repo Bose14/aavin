@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { readFirstSheetRows } from '../lib/spreadsheet';
 import { supabase } from '../supabase';
 import { authMiddleware } from '../middleware/auth';
+import { validateBody } from '../middleware/validate';
+import { milkEntrySchema } from '../schemas';
 import { requireRole } from '../middleware/requireRole';
 import { idLookup } from '../lib/ids';
 import { getBmcMilkType, getChartFor, resolveRate } from '../lib/rateChart';
@@ -144,7 +146,7 @@ router.patch('/correction-requests/:reqId', requireRole('admin'), async (req, re
 });
 
 // POST /milk — submit shift entry (auto chart rate or logged manual override)
-router.post('/', requireRole('admin', 'bmc'), async (req, res) => {
+router.post('/', requireRole('admin', 'bmc'), validateBody(milkEntrySchema), async (req, res) => {
   const {
     date,
     shift,
@@ -329,7 +331,7 @@ router.post('/', requireRole('admin', 'bmc'), async (req, res) => {
 });
 
 // PATCH /milk/:id — edit entry (within edit_lock_hours for unit staff; anytime for admin) + audit diff
-router.patch('/:id', requireRole('admin', 'bmc'), async (req, res) => {
+router.patch('/:id', requireRole('admin', 'bmc'), validateBody(milkEntrySchema), async (req, res) => {
   const entryId = String(req.params.id);
   const dairyUnitId = req.profile.dairy_unit_id;
 

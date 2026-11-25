@@ -35,7 +35,7 @@ import {
   updateStageData,
   updateTrip,
 } from '../lib/tripStore';
-import { saveGatePassFallback, getGatePassFallback, getNextGatePassNo } from '../lib/gatePassStore';
+import { getNextGatePassNo, peekNextGatePassNo } from '../lib/gatePassStore';
 import type { LegacyTripRow } from '../lib/tripStore';
 import { supabase } from '../supabase';
 import { computeActiveUsersPerTeam } from '../lib/teamCounts';
@@ -804,12 +804,12 @@ router.post('/:id/gate-pass', async (req, res) => {
     }
 
     const payload = req.body || {};
-    const existingGp = getGatePassFallback(String(trip.id));
+    const existingGp = ((trip.gate_pass as Record<string, any> | null) ?? (trip.stage_data as any)?.gate_pass ?? null) as { gate_pass_no?: string } | null;
     const gpNumber =
       existingGp?.gate_pass_no ||
       payload.gate_pass_no ||
       payload.gate_pass_number ||
-      getNextGatePassNo();
+      (await getNextGatePassNo());
     const nowIso = new Date().toISOString();
     const gatePassData = {
       gate_pass_no: String(gpNumber).padStart(6, '0'),
@@ -830,9 +830,6 @@ router.post('/:id/gate-pass', async (req, res) => {
       remarks: payload.remarks || '',
       created_at: nowIso,
     };
-
-    // Save to local persistent store so data is guaranteed safe immediately
-    saveGatePassFallback(String(trip.id), gatePassData);
 
     // Save as stage record 'gate_pass' if schema allows, otherwise attach to cip_completed stage in trip_stages
     try {
@@ -878,7 +875,7 @@ router.post('/:id/gate-pass', async (req, res) => {
 // GET /tanker/next-gate-pass-no — Retrieve next sequential gate pass number
 router.get('/next-gate-pass-no', async (_req, res) => {
   try {
-    const nextNo = getNextGatePassNo();
+    const nextNo = await peekNextGatePassNo();
     res.json({ next_gate_pass_no: nextNo });
   } catch (err) {
     sendError(res, err);
@@ -901,7 +898,6 @@ router.get('/:id/gate-pass', async (req, res) => {
       trip.gate_pass ||
       stageData.gate_pass ||
       (stageData.cip_completed as any)?.gate_pass ||
-      getGatePassFallback(String(trip.id)) ||
       null;
     res.json({ gate_pass: gp });
   } catch (err) {
@@ -1047,8 +1043,7 @@ async function recordStageHandler(req: import('express').Request, res: import('e
       const hasGatePass =
         (existingDoneKeys as Set<string>).has('gate_pass') ||
         Boolean(trip.gate_pass) ||
-        Boolean((trip.stage_data as any)?.gate_pass) ||
-        Boolean(getGatePassFallback(String(trip.id)));
+        Boolean((trip.stage_data as any)?.gate_pass);
       if (!isQcRejected && !hasGatePass) {
         res.status(400).json({ error: 'Cannot record Vehicle Exit: Gate pass must be issued first after CIP cleaning' });
         return;
