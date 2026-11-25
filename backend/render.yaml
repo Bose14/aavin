@@ -4,7 +4,10 @@ services:
     env: node
     buildCommand: npm install && npm run build
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: PORT
         value: 4000
       - key: FRONTEND_URL

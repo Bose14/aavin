@@ -68,10 +68,7 @@ export function isMissingSchemaError(err: { code?: string; message?: string } | 
     code === 'PGRST205' ||
     msg.includes('does not exist') ||
     msg.includes('could not find') ||
-    msg.includes('schema cache') ||
-    msg.includes('column') ||
-    msg.includes('relation') ||
-    msg.includes('table')
+    msg.includes('schema cache')
   );
 }
 
@@ -84,8 +81,12 @@ function withDairyUnit<T extends object>(row: T): T {
   return row;
 }
 
+// The server disk is wiped on every deploy, so the JSON fallback is for local development only.
+const FALLBACK_ENABLED = process.env.NODE_ENV !== 'production';
+
 export function readFallback(): FallbackStoreData {
   try {
+    if (!FALLBACK_ENABLED) throw new Error('fallback store disabled in production');
     if (fs.existsSync(FALLBACK_FILE)) {
       const parsed = JSON.parse(fs.readFileSync(FALLBACK_FILE, 'utf8')) as Partial<FallbackStoreData>;
       const sellingRates: Record<string, SellingRateRule[]> = {};
@@ -115,6 +116,9 @@ export function readFallback(): FallbackStoreData {
 }
 
 function writeFallback(data: FallbackStoreData): void {
+  if (!FALLBACK_ENABLED) {
+    throw new Error('The database is missing required tables — apply the latest migrations (local file fallback is disabled in production)');
+  }
   fs.mkdirSync(FALLBACK_DIR, { recursive: true });
   fs.writeFileSync(FALLBACK_FILE, JSON.stringify(data, null, 2), 'utf8');
 }

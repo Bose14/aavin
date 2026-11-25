@@ -11,7 +11,6 @@
 import { supabase } from '../supabase';
 import { idLookup } from './ids';
 import type { PlantTeam, StageRecordItem, TankerStageKey } from './tankerJourney';
-import { getGatePassFallback } from './gatePassStore';
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -493,11 +492,11 @@ export function shapeTrip(trip: Record<string, any>, loadings: LoadingRow[], sta
     qc_status: trip.qc_status ?? null,
     cip_status: trip.cip_status ?? null,
     trip_status: trip.status,
-    gate_pass: trip.gate_pass || stageData.gate_pass || (stageData.cip_completed as any)?.gate_pass || getGatePassFallback(String(trip.id)) || null,
-    gate_pass_no: trip.gate_pass_no || stageData.gate_pass?.gate_pass_no || (stageData.cip_completed as any)?.gate_pass?.gate_pass_no || getGatePassFallback(String(trip.id))?.gate_pass_no || null,
+    gate_pass: trip.gate_pass || stageData.gate_pass || (stageData.cip_completed as any)?.gate_pass || null,
+    gate_pass_no: trip.gate_pass_no || stageData.gate_pass?.gate_pass_no || (stageData.cip_completed as any)?.gate_pass?.gate_pass_no || null,
     stage_data: {
       ...stageData,
-      gate_pass: stageData.gate_pass || trip.gate_pass || (stageData.cip_completed as any)?.gate_pass || getGatePassFallback(String(trip.id)) || undefined,
+      gate_pass: stageData.gate_pass || trip.gate_pass || (stageData.cip_completed as any)?.gate_pass || undefined,
     },
     created_at: trip.created_at,
   };

@@ -12,6 +12,10 @@ import settingsRouter from './routes/settings';
 import ratesRouter from './routes/rates';
 import teamsRouter from './routes/teams';
 import { clearAuthCache } from './middleware/auth';
+import helmet from 'helmet';
+import pinoHttp from 'pino-http';
+import { randomUUID } from 'crypto';
+import { logger } from './lib/logger';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -67,13 +71,23 @@ app.use(cors({
 // Behind Render's proxy: use the real client address for rate limiting
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
-app.use((_req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
-  next();
-});
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' }, hsts: { maxAge: 15552000, includeSubDomains: true } }));
+
+// Request id + one structured log line per request (shown to the client as X-Request-Id for support)
+app.use(pinoHttp({
+  logger,
+  genReqId: (req, res) => {
+    const id = (req.headers['x-request-id'] as string | undefined)?.slice(0, 64) || randomUUID();
+    res.setHeader('X-Request-Id', id);
+    return id;
+  },
+  serializers: {
+    req: (req) => ({ id: req.id, method: req.method, url: req.url }),
+    res: (res) => ({ statusCode: res.statusCode }),
+  },
+  autoLogging: { ignore: (req) => req.url === '/health' },
+  customLogLevel: (_req, res, err) => (err || res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info'),
+}));
 
 // Simple per-client limit (fixed one-minute window) against scripted abuse
 const RATE_LIMIT = 600;
@@ -98,7 +112,30 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json({ limit: '5mb' }));
+// Tighter limit on account-changing routes (create/reset users etc.), per client address
+const SENSITIVE_LIMIT = 60;
+const sensitiveHits = new Map<string, { count: number; reset: number }>();
+app.use(['/users', '/teams'], (req, res, next) => {
+  if (req.method === 'GET') { next(); return; }
+  const now = Date.now();
+  const key = req.ip ?? 'unknown';
+  const entry = sensitiveHits.get(key);
+  if (!entry || entry.reset <= now) {
+    sensitiveHits.set(key, { count: 1, reset: now + 60_000 });
+    if (sensitiveHits.size > 10_000) for (const [k, v] of sensitiveHits) if (v.reset <= now) sensitiveHits.delete(k);
+    next();
+    return;
+  }
+  entry.count += 1;
+  if (entry.count > SENSITIVE_LIMIT) {
+    res.setHeader('Retry-After', String(Math.ceil((entry.reset - now) / 1000)));
+    res.status(429).json({ error: 'Too many requests — please slow down' });
+    return;
+  }
+  next();
+});
+
+app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (_req, res) => { res.json({ status: 'ok' }); });
 
@@ -119,6 +156,32 @@ app.use('/teams', teamsRouter);
 app.use('/settings', settingsRouter);
 app.use('/rates', ratesRouter);
 
-app.listen(PORT, () => {
-  console.log(`Aavin backend running on port ${PORT}`);
+// Unknown routes
+app.use((_req, res) => { res.status(404).json({ error: 'Not found' }); });
+
+// Central error handler: never leak internals to the client, always log with the request id
+app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const e = err as { status?: number; statusCode?: number; type?: string; message?: string };
+  const status = e.status ?? e.statusCode ?? 500;
+  if (e.type === 'entity.too.large') { res.status(413).json({ error: 'Request is too large' }); return; }
+  if (e.type === 'entity.parse.failed') { res.status(400).json({ error: 'Invalid JSON in request body' }); return; }
+  if (status >= 400 && status < 500) { res.status(status).json({ error: e.message || 'Bad request' }); return; }
+  req.log?.error({ err }, 'unhandled error');
+  if (res.headersSent) return;
+  res.status(500).json({ error: 'Something went wrong. Please try again.' });
 });
+
+const server = app.listen(PORT, () => {
+  logger.info({ port: PORT, env: process.env.NODE_ENV ?? 'development' }, 'Aavin backend running');
+});
+
+// Finish in-flight requests on deploy/restart, and never die silently
+function shutdown(signal: string) {
+  logger.info({ signal }, 'shutting down');
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('unhandledRejection', (reason) => logger.error({ reason }, 'unhandled promise rejection'));
+process.on('uncaughtException', (err) => { logger.fatal({ err }, 'uncaught exception'); process.exit(1); });
