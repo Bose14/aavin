@@ -438,11 +438,11 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
     const initialRows: GrossQualityRow[] = [];
     const comps = activeTanker.compartments || activeTanker.stage_data?.compartments;
     if (comps && Array.isArray(comps) && comps.length > 0) {
-      setNumberOfCells(comps.length);
       comps.forEach((c: any, idx: number) => {
+        const rawCell = c.cell ?? c.cell_key;
         let cellLabel = 'FC';
-        if (c.cell && ['FC', 'MC', 'BC'].includes(String(c.cell).toUpperCase())) {
-          cellLabel = String(c.cell).toUpperCase();
+        if (rawCell && ['FC', 'MC', 'BC'].includes(String(rawCell).toUpperCase())) {
+          cellLabel = String(rawCell).toUpperCase();
         } else if (comps.length === 3) {
           cellLabel = idx === 0 ? 'FC' : idx === 1 ? 'MC' : 'BC';
         } else if (comps.length === 2) {
@@ -485,6 +485,10 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
         dcNo: resolvedDc || '',
       });
     }
+    const activeCellsCount = (['FC', 'MC', 'BC'] as const).filter((cellKey) =>
+      initialRows.some((r) => r.cell === cellKey)
+    ).length;
+    setNumberOfCells(Math.min(3, Math.max(1, activeCellsCount)));
     setGrossQualityRows(initialRows);
 
     // Tare Weight Form pre-fills
@@ -623,34 +627,8 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
     }
   };
 
-  const handleNumberOfCellsChange = (newCount: number) => {
-    const count = Math.max(1, Math.min(4, newCount || 1));
-    setNumberOfCells(count);
-    const cellLabels = count === 1 ? ['FC'] : count === 2 ? ['FC', 'BC'] : count === 3 ? ['FC', 'MC', 'BC'] : ['FC', 'MC 1', 'MC 2', 'BC'];
-    const defaultQty = grossDispatchQty ? String(Math.round(Number(grossDispatchQty) / count)) : '';
-    const defaultBmc = (activeTanker?.bmcs?.name || activeTanker?.unit_name || '').toUpperCase();
-    const defaultFat = activeTanker?.dispatch_fat_pct != null ? String(activeTanker.dispatch_fat_pct) : '';
-    const defaultSnf = activeTanker?.dispatch_snf_pct != null ? String(activeTanker.dispatch_snf_pct) : '';
-
-    const newRows: GrossQualityRow[] = cellLabels.map((lbl, idx) => ({
-      id: `cell_${lbl}_${Date.now()}_${idx}`,
-      cell: lbl,
-      bmc: defaultBmc,
-      fat: defaultFat,
-      snf: defaultSnf,
-      temp: '4.0',
-      qty: defaultQty,
-      dcNo: grossDcNo || '',
-    }));
-    setGrossQualityRows(newRows);
-  };
-
   const updateQualityRow = (id: string, field: keyof GrossQualityRow, val: string) => {
     setGrossQualityRows((rows) => rows.map((r) => (r.id === id ? { ...r, [field]: val } : r)));
-  };
-
-  const deleteQualityRow = (id: string) => {
-    setGrossQualityRows((rows) => rows.filter((r) => r.id !== id));
   };
 
 
@@ -1627,16 +1605,19 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                   </label>
                   <input
                     type="number"
-                    min={1}
-                    max={4}
                     value={numberOfCells}
-                    onChange={(e) => handleNumberOfCellsChange(parseInt(e.target.value, 10))}
+                    readOnly
+                    disabled
                     style={{
                       width: 150,
                       height: 28,
                       padding: '2px 8px',
-                      border: '1px solid #94a3b8',
+                      border: '1px solid #cbd5e1',
                       borderRadius: 3,
+                      backgroundColor: '#f1f5f9',
+                      color: '#334155',
+                      fontWeight: 600,
+                      cursor: 'not-allowed',
                     }}
                   />
                 </div>
@@ -1747,7 +1728,9 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {(numberOfCells === 1 ? ['FC'] : numberOfCells === 2 ? ['FC', 'BC'] : ['FC', 'MC', 'BC']).map((cellKey) => {
+                    {(['FC', 'MC', 'BC'] as const)
+                      .filter((cellKey) => grossQualityRows.some((r) => r.cell === cellKey))
+                      .map((cellKey) => {
                       const cellRows = grossQualityRows.filter((r) => r.cell === cellKey);
                       return (
                         <div key={cellKey} style={{ border: '1px solid #e2e8f0', borderRadius: 4, padding: '8px 12px', background: '#fafafa' }}>
@@ -1829,17 +1812,6 @@ export default function GateOperations({ activeView = 'receipt' }: GateOperation
                                   style={{ width: 75, height: 26, padding: '2px 6px', border: '1px solid #94a3b8', borderRadius: 2 }}
                                 />
                               </div>
-
-                              {cellRows.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => deleteQualityRow(row.id)}
-                                  style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.9rem', padding: '0 4px' }}
-                                  title="Remove entry"
-                                >
-                                  ✕
-                                </button>
-                              )}
                             </div>
                           ))}
                         </div>
