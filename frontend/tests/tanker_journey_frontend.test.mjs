@@ -315,7 +315,7 @@ test('Frontend Feature Verification: 8-Feature Suite (User Creation, Gate/QC/Unl
 
   // Feature 7 & 8: Milk ACK Report export
   assert.ok(adminRecordsSrc.includes('handleExportMilkAck'), 'Feature 7: Admin Tanker Records has handleExportMilkAck');
-  assert.ok(adminRecordsSrc.includes('/export/milk-ack'), 'Feature 8: Admin Tanker Records triggers milk-ack export endpoint');
+  assert.ok(adminRecordsSrc.includes('/receipts/ack/xlsx'), 'Feature 8: Admin Tanker Records triggers milk-ack export endpoint');
   assert.ok(adminRecordsSrc.includes('.xlsx'), 'Feature 8: Admin Tanker Records has Excel download button');
 });
 

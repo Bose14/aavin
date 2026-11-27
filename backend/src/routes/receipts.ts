@@ -4,6 +4,7 @@ import { authMiddleware } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
 import { MAX_DOWNLOAD_DAYS, buildReceiptsWorkbook, loadReceiptDays, validateRange } from '../lib/bmcReceiptsData';
 import { buildAckWorkbook, loadAckDays } from '../lib/milkAckData';
+import { buildDmr, buildDmrWorkbook } from '../lib/bmcDmr';
 
 const router = Router();
 router.use(authMiddleware);
@@ -75,6 +76,38 @@ router.get('/ack/xlsx', async (req, res) => {
     const file = await buildAckWorkbook(days, title, sheet);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="Milk_Ack_${from}_to_${to}.xlsx"`);
+    res.send(file);
+  } catch (err) {
+    fail(res, req, err);
+  }
+});
+
+// GET /receipts/dmr?from=&to= — BMC DMR loss statement (the Milk Ack statement rolled up per BMC)
+router.get('/dmr', async (req, res) => {
+  const { from, to } = req.query as Record<string, string | undefined>;
+  const bad = validateRange(from, to);
+  if (bad) { res.status(400).json({ error: bad }); return; }
+  try {
+    res.json(buildDmr(await loadAckDays(req.profile.dairy_unit_id, from!, to!)));
+  } catch (err) {
+    fail(res, req, err);
+  }
+});
+
+// GET /receipts/dmr/xlsx?from=&to= — the same statement as an Excel file
+router.get('/dmr/xlsx', async (req, res) => {
+  const { from, to } = req.query as Record<string, string | undefined>;
+  const bad = validateRange(from, to, MAX_DOWNLOAD_DAYS);
+  if (bad) { res.status(400).json({ error: bad }); return; }
+  try {
+    const dairyUnitId = req.profile.dairy_unit_id;
+    const [days, unit] = await Promise.all([
+      loadAckDays(dairyUnitId, from!, to!),
+      supabase.from('dairy_units').select('name').eq('id', dairyUnitId).maybeSingle(),
+    ]);
+    const file = await buildDmrWorkbook(buildDmr(days), String(unit.data?.name ?? ''), from!, to!);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="BMC_DMR_Loss_${from}_to_${to}.xlsx"`);
     res.send(file);
   } catch (err) {
     fail(res, req, err);
