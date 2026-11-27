@@ -24,6 +24,11 @@ export interface AckInput {
   fat: number;
   snf: number;
   ack: { qty: number; fat: number; snf: number } | null; // null = not acknowledged yet
+  /**
+   * Separate block of the sheet on the same tanker and day (the extra EVE block at the end of a period).
+   * Each block has its own TOTAL line and its own 30 kg allowance. Leave unset for live data.
+   */
+  block?: string;
 }
 
 export interface AckRow {
@@ -178,7 +183,7 @@ export function totalRow(rows: AckRow[], label: { date: string; route: string; m
   };
 }
 
-const groupKey = (i: { date: string; route: string; tanker: string }) => `${i.date}|${i.route}|${i.tanker}`;
+const groupKey = (i: { date: string; route: string; tanker: string; block?: string }) => `${i.date}|${i.route}|${i.tanker}|${i.block ?? ''}`;
 
 /**
  * Builds the day-by-day statement. Rows keep the order given for the
