@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { supabase } from '../supabase';
 import { authMiddleware } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
-import { buildReceiptsWorkbook, loadReceiptDays, validateRange } from '../lib/bmcReceiptsData';
+import { MAX_DOWNLOAD_DAYS, buildReceiptsWorkbook, loadReceiptDays, validateRange } from '../lib/bmcReceiptsData';
 import { buildAckWorkbook, loadAckDays } from '../lib/milkAckData';
 
 const router = Router();
@@ -29,7 +29,7 @@ router.get('/bmc', async (req, res) => {
 // GET /receipts/bmc/xlsx?from=&to= — the same report as an Excel file
 router.get('/bmc/xlsx', async (req, res) => {
   const { from, to } = req.query as Record<string, string | undefined>;
-  const bad = validateRange(from, to);
+  const bad = validateRange(from, to, MAX_DOWNLOAD_DAYS);
   if (bad) { res.status(400).json({ error: bad }); return; }
   try {
     const dairyUnitId = req.profile.dairy_unit_id;
@@ -62,7 +62,7 @@ router.get('/ack', async (req, res) => {
 // GET /receipts/ack/xlsx?from=&to= — the same statement as an Excel file (one sheet)
 router.get('/ack/xlsx', async (req, res) => {
   const { from, to } = req.query as Record<string, string | undefined>;
-  const bad = validateRange(from, to);
+  const bad = validateRange(from, to, MAX_DOWNLOAD_DAYS);
   if (bad) { res.status(400).json({ error: bad }); return; }
   try {
     const dairyUnitId = req.profile.dairy_unit_id;

@@ -4,6 +4,8 @@ import * as XLSX from '../lib/spreadsheet';
 import { supabase } from '../supabase';
 import { fetchTrip, fetchTrips } from '../lib/tripStore';
 import { ensureAcknowledgements } from '../lib/ack';
+import { buildAckWorkbook, loadAckDays } from '../lib/milkAckData';
+import { MAX_DOWNLOAD_DAYS } from '../lib/bmcReceiptsData';
 import { buildMilkAckRows, buildGroupedAckRows, buildAckSummary, ackTitle, ACK_COLUMNS } from '../lib/milkAckReport';
 import type { AckViewRow, AckGroup } from '../lib/milkAckReport';
 import { requireRole } from '../middleware/requireRole';
@@ -320,6 +322,30 @@ router.get('/milk-ack', requireRole('admin'), async (req, res) => {
     return;
   }
   const dairyUnitId = req.profile.dairy_unit_id;
+
+  // The date-wise Excel is the MILK ACK statement layout (same file as the BMC > Milk Ack Report page).
+  if (!group && format !== 'csv') {
+    const days = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+    if (days > MAX_DOWNLOAD_DAYS) {
+      res.status(400).json({ error: `Choose at most ${MAX_DOWNLOAD_DAYS} days at a time` });
+      return;
+    }
+    try {
+      const [ackDays, unit] = await Promise.all([
+        loadAckDays(dairyUnitId, from, to),
+        supabase.from('dairy_units').select('name').eq('id', dairyUnitId).maybeSingle(),
+      ]);
+      const title = `${String(unit.data?.name ?? '').toUpperCase()} UNION - MILK DISPOSAL AND ACKNOWLEDGEMENT STATEMENT ${from} TO ${to}`;
+      const file = await buildAckWorkbook(ackDays, title, `${from.slice(8, 10)}-${to.slice(8, 10)}`);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="Milk_ACK_${buildRangeTag(from, to)}.xlsx"`);
+      res.send(file);
+    } catch (err) {
+      console.error('[api]', req.method, req.originalUrl, (err as Error).message);
+      res.status(500).json({ error: 'Something went wrong. Please try again.' });
+    }
+    return;
+  }
 
   try {
     await ensureAcknowledgements(dairyUnitId, from, to);
