@@ -3,6 +3,7 @@ import { supabase } from '../supabase';
 import { chunk, fetchAllPages } from './paging';
 import { ensureAcknowledgements } from './ack';
 import { buildAckDays } from './milkAck';
+import { loadNormsFor } from './normStore';
 import type { AckDay, AckInput, AckRow } from './milkAck';
 
 const one = <T>(v: T | T[] | null | undefined): T | undefined => (Array.isArray(v) ? v[0] : v ?? undefined);
@@ -100,7 +101,7 @@ export async function loadAckDays(dairyUnitId: string, from: string, to: string)
       ack: h.ack_litres != null ? { qty: num(h.ack_litres), fat: num(h.ack_fat_pct), snf: num(h.ack_snf_pct) } : null,
     }));
 
-  return buildAckDays([...historyRows, ...liveRows]);
+  return buildAckDays([...historyRows, ...liveRows], await loadNormsFor(dairyUnitId));
 }
 
 type Col = { header: string; width: number; get: (r: AckRow) => string | number | null; fmt?: string };

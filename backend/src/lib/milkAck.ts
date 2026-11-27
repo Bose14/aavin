@@ -68,6 +68,12 @@ export interface AckDay { date: string; rows: AckRow[] }
 export const ALLOWED_KG_PER_TANKER = 30;
 export const ALLOWED_PCT = 0.00032;
 
+/** Allowed-loss norms in force on a date. The defaults apply when none are configured. */
+export interface AckNorms { kgPerTanker: number; pct: number } // pct as a fraction: 0.032% = 0.00032
+export type NormsFor = (date: string) => AckNorms;
+export const DEFAULT_NORMS: AckNorms = { kgPerTanker: ALLOWED_KG_PER_TANKER, pct: ALLOWED_PCT };
+const defaultNormsFor: NormsFor = () => DEFAULT_NORMS;
+
 const round = (v: number, dp: number) => {
   const f = 10 ** dp;
   return Math.round((v + Number.EPSILON) * f) / f;
@@ -89,7 +95,7 @@ const emptyAck = {
 } as const;
 
 /** `groupQty` = litres sent on the whole tanker that day (the 30 kg allowance is shared by it). */
-export function computeAckRow(i: AckInput, groupQty: number): AckRow {
+export function computeAckRow(i: AckInput, groupQty: number, norms: AckNorms = DEFAULT_NORMS): AckRow {
   const sg = specificGravity(i.fat, i.snf);
   const kg = i.qty * sg;
   const base = {
@@ -112,11 +118,11 @@ export function computeAckRow(i: AckInput, groupQty: number): AckRow {
   const fatLitDiff = ackLitFat - base.lit_fat;
   const snfLitDiff = ackLitSnf - base.lit_snf;
 
-  const kg30 = groupQty > 0 ? (ALLOWED_KG_PER_TANKER * i.qty) / groupQty : 0;
+  const kg30 = groupQty > 0 ? (norms.kgPerTanker * i.qty) / groupQty : 0;
   const kg30Lit = kg30 / sg;
   const kg30LitFat = (kg30Lit * i.fat) / 100;
   const kg30LitSnf = (kg30Lit * i.snf) / 100;
-  const p032 = i.qty * ALLOWED_PCT;
+  const p032 = i.qty * norms.pct;
   const allowedFat = kg30LitFat + p032;
   const allowedSnf = kg30LitSnf + p032;
   const aboveFat = fatLitDiff + allowedFat;
@@ -189,7 +195,7 @@ const groupKey = (i: { date: string; route: string; tanker: string; block?: stri
  * Builds the day-by-day statement. Rows keep the order given for the
  * routes; each route/tanker gets a TOTAL line (CC rows with no route have none).
  */
-export function buildAckDays(inputs: AckInput[]): AckDay[] {
+export function buildAckDays(inputs: AckInput[], normsFor: NormsFor = defaultNormsFor): AckDay[] {
   const groupQty = new Map<string, number>();
   for (const i of inputs) groupQty.set(groupKey(i), (groupQty.get(groupKey(i)) ?? 0) + i.qty);
 
@@ -207,7 +213,7 @@ export function buildAckDays(inputs: AckInput[]): AckDay[] {
   for (const date of [...byDay.keys()].sort()) {
     const rows: AckRow[] = [];
     for (const [k, list] of byDay.get(date)!) {
-      const computed = list.map((i) => computeAckRow(i, groupQty.get(k) ?? 0));
+      const computed = list.map((i) => computeAckRow(i, groupQty.get(k) ?? 0, normsFor(date)));
       rows.push(...computed);
       const first = list[0];
       if (first.route) {
