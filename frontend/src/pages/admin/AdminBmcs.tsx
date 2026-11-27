@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
 import api from '../../lib/api';
 import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
 import { formatDateDDMMYYYY, getLocalTodayIso } from '../../lib/format';
@@ -15,6 +14,7 @@ interface Unit {
   location: string | null;
   milk_type?: 'COW' | 'BUFFALO';
   cc_code?: number | null;
+  team_name?: string | null;
   capacity_litres?: number | null;
   opening_balance?: number | null;
   opening_balance_date?: string | null;
@@ -37,6 +37,13 @@ export default function AdminBmcs() {
   const [name, setName] = useState('');
   const [unitCode, setUnitCode] = useState('');
   const [capacity, setCapacity] = useState('');
+  const [teamName, setTeamName] = useState('');
+  const [step, setStep] = useState<1 | 2>(1);
+  const [userName, setUserName] = useState('');
+  const [userEmail, setUserEmail] = useState('');
+  const [userPhone, setUserPhone] = useState('');
+  const [userShift, setUserShift] = useState<'Morning' | 'Evening' | 'General'>('General');
+  const [createdLogin, setCreatedLogin] = useState<{ bmc: string; full_name: string; email: string; temp_password: string } | null>(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -71,28 +78,50 @@ export default function AdminBmcs() {
     void fetchUnits();
   }, [fetchUnits]);
 
-  const handleCreate = async (e: FormEvent) => {
-    e.preventDefault();
+  const resetCreateForm = () => {
+    setName(''); setUnitCode(''); setCapacity(''); setTeamName('');
+    setStep(1); setUserName(''); setUserEmail(''); setUserPhone(''); setUserShift('General');
+  };
+
+  const closeAddModal = () => {
+    setShowAddModal(false);
+    setCreatedLogin(null);
+    setError('');
+    resetCreateForm();
+  };
+
+  const teamOptions = Array.from(new Set(units.map(u => u.team_name).filter((t): t is string => !!t && t !== 'TEST'))).sort();
+
+  /** Creates the BMC, and its first user too when `withUser` is set (one request: both or neither). */
+  const submitCreate = async (withUser: boolean) => {
     if (!name.trim() || !unitCode.trim()) return;
     setError('');
     setSaving(true);
     try {
-      await api.post('/bmcs', {
+      const res = await api.post<{ first_user?: { full_name: string; email: string; temp_password: string } | null }>('/bmcs', {
         name: name.trim(),
         bmc_code: unitCode.trim().toUpperCase(),
         capacity_litres: capacity.trim() === '' ? null : capacity.trim(),
+        team_name: teamName || null,
+        first_user: withUser
+          ? { full_name: userName.trim(), email: userEmail.trim(), phone: userPhone.trim() || null, shift: userShift }
+          : null,
       });
-      setName('');
-      setUnitCode('');
-      setCapacity('');
-      setShowAddModal(false);
       await fetchUnits();
+      if (res.data.first_user) {
+        setCreatedLogin({ bmc: name.trim(), ...res.data.first_user });
+      } else {
+        closeAddModal();
+      }
     } catch (err: unknown) {
-      setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to create unit');
+      setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to create BMC');
     } finally {
       setSaving(false);
     }
   };
+
+  const step1Valid = name.trim() !== '' && unitCode.trim() !== '';
+  const step2Valid = userName.trim() !== '' && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(userEmail.trim());
 
   const openEdit = (u: Unit) => {
     setEditTarget(u);
@@ -271,217 +300,100 @@ export default function AdminBmcs() {
         </div>
       </div>
 
-      {/* Create New BMC Modal (Matching Uploaded Dialog Style) */}
+      {/* Create New BMC (step 1: BMC details, step 2: first user) */}
       {showAddModal && (
-        <div
-          className="modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setShowAddModal(false)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.45)',
-            backdropFilter: 'blur(3px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1100,
-            padding: '16px',
-          }}
-        >
-          <div
-            className="modal-card"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: '#ffffff',
-              borderRadius: '16px',
-              maxWidth: '430px',
-              width: '100%',
-              padding: '24px',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
-              display: 'flex',
-              flexDirection: 'column',
-              border: '1px solid #e2e8f0',
-            }}
-          >
-            {/* Modal Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
-                  Create New BMC
-                </h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
-                  Fill in the basic BMC details to create a new chilling centre
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAddModal(false)}
-                aria-label="Close"
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: '#94a3b8',
-                  fontSize: '20px',
-                  lineHeight: 1,
-                  padding: '4px',
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Form */}
-            <form onSubmit={handleCreate}>
-              {/* BMC Name Field */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1e293b', marginBottom: '6px' }}>
-                  BMC Name <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <span style={{ position: 'absolute', left: '12px', display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 21h18M3 7v14M21 7v14M6 7V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v3M9 11h2M13 11h2M9 15h2M13 15h2" />
-                    </svg>
-                  </span>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Enter BMC name"
-                    required
-                    style={{
-                      width: '100%',
-                      height: '42px',
-                      paddingLeft: '38px',
-                      paddingRight: '12px',
-                      borderRadius: '8px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '14px',
-                      color: '#0f172a',
-                      outline: 'none',
-                      backgroundColor: '#ffffff',
-                    }}
-                  />
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal-card">
+            {createdLogin ? (
+              <>
+                <h3 className="modal-title">BMC created — {createdLogin.bmc}</h3>
+                <div className="entry-form" style={{ marginTop: '0.75rem' }}>
+                  <p style={{ margin: 0, fontSize: '0.9rem' }}>
+                    Share these login details with <strong>{createdLogin.full_name}</strong>. The password is shown only now and must be changed at first login.
+                  </p>
+                  <div className="form-group"><label>Email</label><input readOnly value={createdLogin.email} /></div>
+                  <div className="form-group"><label>Temporary password</label><input readOnly value={createdLogin.temp_password} /></div>
                 </div>
-              </div>
-
-              {/* BMC Code Field */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1e293b', marginBottom: '6px' }}>
-                  BMC Code (CC Code) <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <span style={{ position: 'absolute', left: '12px', display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="4" y1="9" x2="20" y2="9" />
-                      <line x1="4" y1="15" x2="20" y2="15" />
-                      <line x1="10" y1="3" x2="8" y2="21" />
-                      <line x1="16" y1="3" x2="14" y2="21" />
-                    </svg>
-                  </span>
-                  <input
-                    type="text"
-                    value={unitCode}
-                    onChange={(e) => setUnitCode(e.target.value)}
-                    inputMode="numeric"
-                    placeholder="CC code, e.g. 12"
-                    required
-                    style={{
-                      width: '100%',
-                      height: '42px',
-                      paddingLeft: '38px',
-                      paddingRight: '12px',
-                      borderRadius: '8px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '14px',
-                      color: '#0f172a',
-                      outline: 'none',
-                      backgroundColor: '#ffffff',
-                    }}
-                  />
+                <div className="modal-actions">
+                  <button type="button" className="btn-secondary" onClick={() => void navigator.clipboard?.writeText(`${createdLogin.email} / ${createdLogin.temp_password}`)}>Copy</button>
+                  <button type="button" className="btn-primary" style={{ width: 'auto' }} onClick={closeAddModal}>Done</button>
                 </div>
-              </div>
-
-              {/* Capacity Field */}
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1e293b', marginBottom: '6px' }}>
-                  Capacity (litres)
-                </label>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="1"
-                  value={capacity}
-                  onChange={(e) => setCapacity(e.target.value)}
-                  placeholder="e.g. 5000"
-                  style={{
-                    width: '100%',
-                    height: '42px',
-                    padding: '0 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '14px',
-                    color: '#0f172a',
-                    outline: 'none',
-                    backgroundColor: '#ffffff',
-                  }}
-                />
-              </div>
-
-              {/* Modal Actions Footer (Image 3 Style: Cancel on Left, Create on Right) */}
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '12px',
-                  justifyContent: 'space-between',
-                  paddingTop: '16px',
-                  borderTop: '1px solid #f1f5f9',
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  style={{
-                    flex: 1,
-                    height: '42px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    backgroundColor: '#ffffff',
-                    color: '#334155',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving || !name.trim() || !unitCode.trim()}
-                  style={{
-                    flex: 1,
-                    height: '42px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    backgroundColor: 'var(--primary)',
-                    color: '#ffffff',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    cursor: saving || !name.trim() || !unitCode.trim() ? 'not-allowed' : 'pointer',
-                    opacity: saving || !name.trim() || !unitCode.trim() ? 0.7 : 1,
-                  }}
-                >
-                  {saving ? 'Creating…' : 'Create BMC'}
-                </button>
-              </div>
-            </form>
+              </>
+            ) : (
+              <>
+                <h3 className="modal-title">
+                  {step === 1 ? 'New BMC — Step 1 of 2: BMC details' : `New BMC — Step 2 of 2: First user for ${name.trim()}`}
+                </h3>
+                {error && <div className="alert alert-error" style={{ marginTop: '0.5rem' }}>{error}</div>}
+                {step === 1 ? (
+                  <div className="entry-form" style={{ marginTop: '0.75rem' }}>
+                    <div className="form-group">
+                      <label>BMC Name *</label>
+                      <input value={name} onChange={e => setName(e.target.value)} placeholder="Enter BMC name" autoFocus />
+                    </div>
+                    <div className="form-group">
+                      <label>BMC Code (CC Code) *</label>
+                      <input value={unitCode} onChange={e => setUnitCode(e.target.value)} inputMode="numeric" placeholder="e.g. 12" />
+                    </div>
+                    <div className="form-group">
+                      <label>Capacity (litres)</label>
+                      <input type="number" inputMode="decimal" min="0" step="1" value={capacity} onChange={e => setCapacity(e.target.value)} placeholder="e.g. 5000" />
+                    </div>
+                    <div className="form-group">
+                      <label>Team</label>
+                      <select value={teamName} onChange={e => setTeamName(e.target.value)}>
+                        <option value="">— Select team —</option>
+                        {teamOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="entry-form" style={{ marginTop: '0.75rem' }}>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted, #64748b)' }}>
+                      This user will be able to enter milk for this BMC. You can skip this and add users later from Teams &amp; Users.
+                    </p>
+                    <div className="form-group">
+                      <label>Full name *</label>
+                      <input value={userName} onChange={e => setUserName(e.target.value)} autoFocus />
+                    </div>
+                    <div className="form-group">
+                      <label>Email *</label>
+                      <input type="email" value={userEmail} onChange={e => setUserEmail(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label>Phone</label>
+                      <input value={userPhone} onChange={e => setUserPhone(e.target.value)} inputMode="tel" placeholder="10-digit mobile" />
+                    </div>
+                    <div className="form-group">
+                      <label>Shift</label>
+                      <select value={userShift} onChange={e => setUserShift(e.target.value as 'Morning' | 'Evening' | 'General')}>
+                        <option value="General">General</option>
+                        <option value="Morning">Morning</option>
+                        <option value="Evening">Evening</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+                <div className="modal-actions">
+                  {step === 1 ? (
+                    <>
+                      <button type="button" className="btn-secondary" onClick={closeAddModal}>Cancel</button>
+                      <button type="button" className="btn-primary" style={{ width: 'auto' }} disabled={!step1Valid} onClick={() => { setError(''); setStep(2); }}>Next</button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="btn-secondary" disabled={saving} onClick={() => { setError(''); setStep(1); }}>Back</button>
+                      <button type="button" className="btn-secondary" disabled={saving} onClick={() => void submitCreate(false)}>
+                        {saving ? 'Creating…' : 'Skip & create BMC'}
+                      </button>
+                      <button type="button" className="btn-primary" style={{ width: 'auto' }} disabled={saving || !step2Valid} onClick={() => void submitCreate(true)}>
+                        {saving ? 'Creating…' : 'Create BMC & user'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

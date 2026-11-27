@@ -6,6 +6,7 @@ import { bmcSchema } from '../schemas';
 import { requireRole } from '../middleware/requireRole';
 import { writeAuditLog } from '../lib/settingsStore';
 import { idLookup } from '../lib/ids';
+import { createUserAccount } from '../lib/userAccounts';
 
 const router = Router();
 router.use(authMiddleware);
@@ -89,6 +90,7 @@ router.post('/', requireRole('admin'), validateBody(bmcSchema), async (req, res)
     route_name?: string; team_name?: string; kind?: string; code_no?: number | string; milk_type?: string;
     cc_code?: number | string | null; capacity_litres?: number | string | null;
     opening_balance?: number | string | null; opening_balance_date?: string | null;
+    first_user?: { full_name?: string; email?: string; phone?: string | null; shift?: string } | null;
   };
   const name = typeof rawBody.name === 'string' ? rawBody.name.trim() : '';
   const ccFromBody = optInt(rawBody.cc_code);
@@ -101,12 +103,19 @@ router.post('/', requireRole('admin'), validateBody(bmcSchema), async (req, res)
     res.status(400).json({ error: 'name and bmc_code required' });
     return;
   }
+  const teamName = optText(rawBody.team_name);
+  let bmcTeamId: number | null = null;
+  if (teamName) {
+    const { data: teamRow } = await supabase.from('bmc_teams').select('id')
+      .eq('code', teamName).eq('dairy_unit_id', req.profile.dairy_unit_id).maybeSingle();
+    bmcTeamId = (teamRow?.id as number | undefined) ?? null;
+  }
   const { data, error } = await supabase
     .from('bmcs')
     .insert({
-      name, location, bmc_code: unitCode, dairy_unit_id: req.profile.dairy_unit_id,
+      name, location, bmc_code: unitCode, dairy_unit_id: req.profile.dairy_unit_id, bmc_team_id: bmcTeamId,
       route_name: optText(rawBody.route_name),
-      team_name: optText(rawBody.team_name),
+      team_name: teamName,
       kind: rawBody.kind === 'CC' ? 'CC' : 'BMC',
       code_no: optInt(rawBody.code_no),
       cc_code: numericCode(unitCode) ?? ccFromBody,
@@ -131,6 +140,24 @@ router.post('/', requireRole('admin'), validateBody(bmcSchema), async (req, res)
     await supabase.from('bmc_opening_balances').upsert({ bmc_id: data.id, balance_date: day, quantity_litres: createOpening }, { onConflict: 'bmc_id' });
   }
 
+  // Optional first login for this BMC, created together with it: if it fails, the BMC is removed again
+  let firstUser: { full_name: string; email: string; temp_password: string } | null = null;
+  const fu = rawBody.first_user;
+  if (fu && (fu.full_name?.trim() || fu.email?.trim())) {
+    const created = await createUserAccount({
+      dairyUnitId: req.profile.dairy_unit_id,
+      input: { ...fu, team: 'BMC', bmc_id: String(data.id) },
+      actor: { id: req.user.id, name: req.profile.full_name ?? req.user.email ?? 'Admin' },
+    });
+    if (!created.ok) {
+      await supabase.from('bmc_opening_balances').delete().eq('bmc_id', data.id);
+      await supabase.from('bmcs').delete().eq('id', data.id);
+      res.status(created.status).json({ error: `BMC was not created — ${created.error}` });
+      return;
+    }
+    firstUser = { full_name: created.user.full_name, email: created.user.email, temp_password: created.tempPassword };
+  }
+
   await writeAuditLog({
     dairy_unit_id: req.profile.dairy_unit_id,
     bmc_id: data.id,
@@ -142,7 +169,7 @@ router.post('/', requireRole('admin'), validateBody(bmcSchema), async (req, res)
     actor_name: req.profile.full_name ?? req.user.email ?? 'Admin',
   });
 
-  res.status(201).json(data);
+  res.status(201).json({ ...data, first_user: firstUser });
 });
 
 /** The BMC code and the CC code are one number: a numeric code also fills cc_code (used in stock reports). */
