@@ -340,7 +340,7 @@ export default function AdminTankerRecords() {
   // Milk ACK report for the chosen date range only
   const handleExportMilkAck = () => {
     if (!fromDate || !toDate || fromDate > toDate) return;
-    void triggerBlobDownload('/export/milk-ack', { from: fromDate, to: toDate, format: 'xlsx' }, `Milk_ACK_${fromDate}_to_${toDate}.xlsx`);
+    void triggerBlobDownload('/receipts/ack/xlsx', { from: fromDate, to: toDate }, `Milk_ACK_${fromDate}_to_${toDate}.xlsx`);
   };
 
   // Table Columns Definition

@@ -65,6 +65,10 @@ test('range validation', async () => {
   const { validateRange } = await import('../dist/lib/bmcReceiptsData.js');
   assert.match(validateRange('', '2026-10-01'), /Select/);
   assert.match(validateRange('2026-10-05', '2026-10-01'), /on or before/);
-  assert.match(validateRange('2026-01-01', '2026-12-31'), /at most/);
+  assert.match(validateRange('2026-01-01', '2026-12-31'), /at most 31/);
   assert.equal(validateRange('2026-10-01', '2026-10-31'), null);
+  assert.match(validateRange('2026-10-01', '2026-11-05'), /at most 31/);
+  // Downloads can cover up to a year
+  assert.equal(validateRange('2026-01-01', '2026-12-31', 366), null);
+  assert.match(validateRange('2025-01-01', '2026-12-31', 366), /at most 366/);
 });

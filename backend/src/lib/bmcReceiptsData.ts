@@ -4,7 +4,9 @@ import { fetchAllPages } from './paging';
 import { addDays, buildReceiptDays, figureKey } from './bmcReceipts';
 import type { DayFigures, ReceiptBmc, ReceiptDay } from './bmcReceipts';
 
-export const MAX_RANGE_DAYS = 62;
+/** On-screen view is capped while the tables are being tested; downloads can cover up to a year. */
+export const MAX_VIEW_DAYS = 31;
+export const MAX_DOWNLOAD_DAYS = 366;
 const MAX_CHAIN_DAYS = 800;
 
 function daysBetween(a: string, b: string): number {
@@ -132,11 +134,11 @@ export async function loadReceiptDays(dairyUnitId: string, from: string, to: str
   return buildReceiptDays(bmcs, figures, chainFrom, from, to);
 }
 
-export function validateRange(from?: string, to?: string): string | null {
+export function validateRange(from?: string, to?: string, maxDays: number = MAX_VIEW_DAYS): string | null {
   const ok = (v?: string) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
   if (!ok(from) || !ok(to)) return 'Select a From and To date';
   if (from! > to!) return 'From date must be on or before To date';
-  if (daysBetween(from!, to!) + 1 > MAX_RANGE_DAYS) return `Choose at most ${MAX_RANGE_DAYS} days at a time`;
+  if (daysBetween(from!, to!) + 1 > maxDays) return `Choose at most ${maxDays} days at a time`;
   return null;
 }
 

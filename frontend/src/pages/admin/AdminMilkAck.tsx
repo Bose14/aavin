@@ -30,6 +30,11 @@ const PERIODS: Array<{ key: Exclude<PeriodKey, 'custom'>; label: string }> = [
   { key: '21-end', label: '21 – end' },
 ];
 
+const MAX_VIEW_DAYS = 31;
+const MAX_DOWNLOAD_DAYS = 366;
+const spanDays = (from: string, to: string) =>
+  from && to ? Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1 : 0;
+
 const pad = (n: number) => String(n).padStart(2, '0');
 const lastDay = (month: string) => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
 const periodRange = (month: string, key: Exclude<PeriodKey, 'custom'>) => {
@@ -66,10 +71,19 @@ export default function AdminMilkAck() {
     () => (period === 'custom' ? { from: customFrom, to: customTo } : periodRange(month, period)),
     [period, month, customFrom, customTo],
   );
+  const span = spanDays(range.from, range.to);
   const invalid = !range.from || !range.to || range.from > range.to;
+  const tooLongToView = !invalid && span > MAX_VIEW_DAYS;
+  const tooLongToDownload = !invalid && span > MAX_DOWNLOAD_DAYS;
 
   const load = useCallback(async () => {
     if (invalid) return;
+    if (tooLongToView) {
+      setDays([]);
+      setError('');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -81,7 +95,7 @@ export default function AdminMilkAck() {
     } finally {
       setLoading(false);
     }
-  }, [range.from, range.to, invalid]);
+  }, [range.from, range.to, invalid, tooLongToView]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -130,16 +144,18 @@ export default function AdminMilkAck() {
             </button>
           );
         })}
-        <button type="button" className="rp-pdf" disabled={!!busy || invalid} onClick={() => void download('current', range.from, range.to)}>
+        <button type="button" className="rp-pdf" disabled={!!busy || invalid || tooLongToDownload} onClick={() => void download('current', range.from, range.to)}>
           {busy === 'current' ? 'Preparing…' : 'This view'}
         </button>
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Custom range up to 62 days.</span>
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Downloads can cover up to a year. The table below shows up to 31 days.</span>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={() => void load()} />}
       {invalid && <p style={{ color: 'var(--danger)', fontSize: '0.85rem' }}>The From date must be on or before the To date.</p>}
+      {tooLongToDownload && <p style={{ color: 'var(--danger)', fontSize: '0.85rem' }}>Choose at most a year (366 days) at a time.</p>}
+      {tooLongToView && !tooLongToDownload && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>This range is longer than 31 days, so the table is not shown. Use Download Excel above.</p>}
       {loading && <p style={{ color: 'var(--text-muted)' }}>Loading…</p>}
-      {!loading && !error && !invalid && days.length === 0 && <p style={{ color: 'var(--text-muted)' }}>No tanker dispatches for {ddmmyyyy(range.from)} – {ddmmyyyy(range.to)}.</p>}
+      {!loading && !error && !invalid && !tooLongToView && days.length === 0 && <p style={{ color: 'var(--text-muted)' }}>No tanker dispatches for {ddmmyyyy(range.from)} – {ddmmyyyy(range.to)}.</p>}
 
       {!loading && days.map((day) => (
         <section key={day.date} style={{ marginBottom: 24 }}>

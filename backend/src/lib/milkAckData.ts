@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import { supabase } from '../supabase';
 import { chunk, fetchAllPages } from './paging';
+import { ensureAcknowledgements } from './ack';
 import { buildAckDays } from './milkAck';
 import type { AckDay, AckInput, AckRow } from './milkAck';
 
@@ -9,6 +10,8 @@ const num = (v: unknown) => (v == null ? 0 : Number(v));
 
 /** Loads the statement rows for a date range: live loadings + acknowledgements, imported history for the other dates. */
 export async function loadAckDays(dairyUnitId: string, from: string, to: string): Promise<AckDay[]> {
+  // Received tankers get their acknowledgement filled in on first use, the same as the older export did.
+  await ensureAcknowledgements(dairyUnitId, from, to);
   const [history, loadings] = await Promise.all([
     fetchAllPages<any>((a, b) =>
       supabase

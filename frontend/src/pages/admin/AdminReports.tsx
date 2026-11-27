@@ -138,12 +138,12 @@ function MilkAckReport() {
     <ReportLayout
       icon="📊"
       title="Milk ACK Report"
-      description="Milk disposal and acknowledgement statement as an Excel file. Choose how it is grouped."
+      description="Milk disposal and acknowledgement statement as an Excel file. Date-wise is the MILK ACK sheet layout; the other views group the same entries."
       info={
         <>
           <h3>Report by</h3>
           <ul>
-            <li><b>Date-wise:</b> every entry by date, with a total after each tanker</li>
+            <li><b>Date-wise:</b> the MILK ACK sheet layout (same file as BMC &gt; Milk Ack Report), with a total after each tanker</li>
             <li><b>Team-wise:</b> grouped by team, with a total per team</li>
             <li><b>BMC-wise:</b> grouped by BMC, with a total per BMC</li>
             <li><b>Tanker-wise:</b> grouped by tanker, with a total per tanker</li>
@@ -167,6 +167,31 @@ function MilkAckReport() {
         ))}
       </div>
       <p className="rp-range" style={{ marginTop: 0, marginBottom: '1.1rem' }}>{ACK_GROUPS.find((g) => g.id === group)?.hint}</p>
+      {group === 'date' && !r.invalid && (
+        <div className="rp-actions" style={{ marginBottom: '0.75rem' }}>
+          <span className="rp-range">Sheet periods of {r.from.slice(0, 7)}:</span>
+          {([['1-10', 1, 10], ['11-20', 11, 20], ['21-end', 21, 0]] as const).map(([label, a, b]) => {
+            const month = r.from.slice(0, 7);
+            const end = b || new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+            const d = (n: number) => `${month}-${String(n).padStart(2, '0')}`;
+            return (
+              <button key={label} type="button" className="rp-pdf" disabled={busy} onClick={async () => {
+                setBusy(true);
+                setError('');
+                try {
+                  await triggerBlobDownload('/receipts/ack/xlsx', { from: d(a), to: d(end) }, `Milk_Ack_${d(a)}_to_${d(end)}.xlsx`);
+                } catch {
+                  setError('Could not download the report. Please try again.');
+                } finally {
+                  setBusy(false);
+                }
+              }}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="rp-actions">
         <button type="button" className="rp-pdf" onClick={download} disabled={r.invalid || busy}>
           {busy ? 'Preparing…' : 'Download Excel'}
