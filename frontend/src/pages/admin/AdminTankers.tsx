@@ -24,6 +24,9 @@ interface TankerRow {
   route_name: string | null;
   route_bmc_ids: string[];
   route: { id: string; name: string }[];
+  destination_id: string | null;
+  destination_code: string | null;
+  destination_name: string | null;
 }
 
 export default function AdminTankers() {
@@ -83,6 +86,7 @@ export default function AdminTankers() {
         driver_phone: editing.driver_phone ?? '',
         route_name: editing.route_name ?? '',
         route_bmc_ids: editing.route_bmc_ids,
+        destination_id: editing.destination_id,
       }
     : null;
 
@@ -116,6 +120,14 @@ export default function AdminTankers() {
             {r.route.length === 0 ? 'No BMCs set (open to all BMCs)' : r.route.map((b) => b.name).join(' → ')}
           </div>
         </>
+      ),
+    },
+    {
+      key: 'destination', header: 'Destination', sortValue: (r) => r.destination_code ?? '',
+      render: (r) => (
+        r.destination_code
+          ? <><strong>{r.destination_code}</strong><div style={{ fontSize: '0.76rem', color: '#64748b' }}>{r.destination_name}</div></>
+          : <span style={{ color: '#b45309' }}>Not set</span>
       ),
     },
     {

@@ -112,6 +112,10 @@ export interface TankerRecord {
   /** BMCs this tanker collects from; empty = any BMC of the dairy unit (older tankers) */
   route_bmc_ids: string[];
   route: { id: string; name: string }[];
+  /** Where this tanker takes the milk (a row of dairy_destinations); null on tankers registered before destinations existed */
+  destination_id: string | null;
+  destination_code: string | null;
+  destination_name: string | null;
   cells: TankerCell[];
   created_at: string;
 }
@@ -135,6 +139,7 @@ export function cellsFromRegistration(input: {
 }
 
 export function shapeTanker(row: Record<string, any>): TankerRecord {
+  const dest = Array.isArray(row.dairy_destinations) ? row.dairy_destinations[0] : row.dairy_destinations;
   const cells: TankerCell[] = Array.isArray(row.cells) ? row.cells : [];
   const cap = (k: string) => Number(cells.find((c) => c.cell_key === k)?.capacity_litres ?? 0);
   return {
@@ -156,6 +161,9 @@ export function shapeTanker(row: Record<string, any>): TankerRecord {
     route_name: row.route_name ?? null,
     route_bmc_ids: Array.isArray(row.route_bmc_ids) ? row.route_bmc_ids.map(String) : [],
     route: [],
+    destination_id: row.destination_id != null ? String(row.destination_id) : null,
+    destination_code: dest?.code ?? null,
+    destination_name: dest?.name ?? null,
     cells,
     created_at: String(row.created_at ?? ''),
   };
@@ -177,7 +185,7 @@ async function attachRouteNames(tankers: TankerRecord[]): Promise<TankerRecord[]
 export async function listTankers(dairyUnitId: string): Promise<TankerRecord[]> {
   const { data, error } = await supabase
     .from('tankers')
-    .select('*')
+    .select('*, dairy_destinations(code, name)')
     .eq('dairy_unit_id', dairyUnitId)
     .eq('is_active', true)
     .order('vehicle_number');
@@ -207,6 +215,23 @@ export interface TankerRegistrationInput {
   route_name?: string | null;
   /** BMC ids the tanker collects from; required when registering a new tanker */
   route_bmc_ids?: (string | number)[] | null;
+  /** Destination of the milk (dairy_destinations.id); required when the dairy unit has destinations */
+  destination_id?: string | number | null;
+}
+
+export interface DairyDestination { id: string; code: string; name: string }
+
+/** The destinations a dairy unit sends milk to, in display order. */
+export async function listDestinations(dairyUnitId: string): Promise<DairyDestination[]> {
+  const { data, error } = await supabase
+    .from('dairy_destinations')
+    .select('id, code, name')
+    .eq('dairy_unit_id', dairyUnitId)
+    .eq('is_active', true)
+    .order('sort_order')
+    .order('code');
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((d) => ({ id: String(d.id), code: String(d.code), name: String(d.name) }));
 }
 
 /** Keeps only valid BMC ids of this dairy unit; throws when one is unknown. */
@@ -245,19 +270,32 @@ export async function saveTanker(dairyUnitId: string, input: TankerRegistrationI
   if (!existing && (!route || route.length === 0)) throw new Error('Select at least one BMC for the tanker route');
   const withRoute: Record<string, unknown> = route ? { ...fields, route_bmc_ids: route } : { ...fields };
 
+  const destinations = await listDestinations(dairyUnitId);
+  const wanted = input.destination_id != null && String(input.destination_id) !== '' ? String(input.destination_id) : null;
+  if (wanted) {
+    if (!destinations.some((d) => d.id === wanted)) throw new Error('Select a destination of this dairy unit');
+    withRoute.destination_id = wanted;
+  } else if (!existing && destinations.length > 0) {
+    throw new Error('Select the destination of the tanker');
+  }
+
   if (existing) {
     // Cells can only change while the tanker has no trip in progress
     const open = await getOpenTripForTanker(existing.id);
     const patch = open ? { ...withRoute, cells: undefined, total_capacity_litres: undefined } : withRoute;
-    const { data, error } = await supabase.from('tankers').update(patch).eq('id', existing.id).eq('dairy_unit_id', dairyUnitId).select('*').single();
+    const { data, error } = await supabase.from('tankers').update(patch).eq('id', existing.id).eq('dairy_unit_id', dairyUnitId).select('*, dairy_destinations(code, name)').single();
     if (error) throw new Error(error.message);
+    // A trip already loading without a destination takes the tanker's
+    if (wanted) {
+      await supabase.from('tanker_trips').update({ destination_id: wanted }).eq('tanker_id', existing.id).is('exited_at', null).is('destination_id', null);
+    }
     return (await attachRouteNames([shapeTanker(data)]))[0];
   }
 
   const { data, error } = await supabase
     .from('tankers')
     .insert({ ...withRoute, dairy_unit_id: dairyUnitId })
-    .select('*')
+    .select('*, dairy_destinations(code, name)')
     .single();
   if (error) {
     if (error.code === '23505') throw new Error(`Tanker ${vehicle} is already registered`);

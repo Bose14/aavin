@@ -34,6 +34,7 @@ import {
   saveTanker,
   updateStageData,
   updateTrip,
+  listDestinations,
 } from '../lib/tripStore';
 import { getNextGatePassNo, peekNextGatePassNo } from '../lib/gatePassStore';
 import type { LegacyTripRow } from '../lib/tripStore';
@@ -279,6 +280,15 @@ router.get('/stock', async (req, res) => {
   }
 });
 
+// GET /tanker/destinations — where this dairy unit sends milk (the dropdown on tanker registration)
+router.get('/destinations', requireRole('admin'), async (req, res) => {
+  try {
+    res.json(await listDestinations(req.profile.dairy_unit_id));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 // GET /tanker/registered — tankers of this dairy unit with live capacity and availability
 router.get('/registered', async (req, res) => {
   try {
@@ -319,6 +329,7 @@ router.post('/registration', requireRole('admin'), async (req, res) => {
       driver_phone,
       route_name,
       route_bmc_ids,
+      destination_id,
     } = req.body;
 
     if (!vehicle_number || !contractor_name || !supplier_name) {
@@ -348,6 +359,7 @@ router.post('/registration', requireRole('admin'), async (req, res) => {
       driver_phone,
       route_name,
       route_bmc_ids: Array.isArray(route_bmc_ids) ? route_bmc_ids : undefined,
+      destination_id,
     });
 
     res.status(201).json(saved);

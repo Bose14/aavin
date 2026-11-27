@@ -27,7 +27,7 @@ export async function loadAckDays(dairyUnitId: string, from: string, to: string)
     fetchAllPages<any>((a, b) =>
       supabase
         .from('trip_loadings')
-        .select('id, trip_id, bmc_id, dc_number, shift, milk_type, quantity_litres, fat_pct, snf_pct, bmcs(name, team_name, kind, cc_code, route_name), tanker_trips!inner(trip_date, dairy_unit_id, status, tankers(vehicle_number, route_name))')
+        .select('id, trip_id, bmc_id, dc_number, shift, milk_type, quantity_litres, fat_pct, snf_pct, bmcs(name, team_name, kind, cc_code, route_name), tanker_trips!inner(trip_date, dairy_unit_id, status, dairy_destinations(code), tankers(vehicle_number, route_name, dairy_destinations(code)))')
         .eq('tanker_trips.dairy_unit_id', dairyUnitId)
         .neq('tanker_trips.status', 'cancelled')
         .gte('tanker_trips.trip_date', from)
@@ -66,7 +66,8 @@ export async function loadAckDays(dairyUnitId: string, from: string, to: string)
       team: String(bmc?.team_name ?? ''),
       code: bmc?.cc_code != null ? Number(bmc.cc_code) : null,
       name: String(bmc?.name ?? '').toUpperCase(),
-      dest: '',
+      // the destination chosen for the trip; older trips fall back to the tanker's
+      dest: String(one<any>(trip?.dairy_destinations)?.code ?? one<any>(tanker?.dairy_destinations)?.code ?? ''),
       tanker: String(tanker?.vehicle_number ?? ''),
       inv_no: String(l.dc_number ?? ''),
       qty: num(l.quantity_litres),

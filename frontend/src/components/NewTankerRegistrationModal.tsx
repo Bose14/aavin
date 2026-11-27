@@ -16,6 +16,13 @@ export interface RegisteredTankerData {
   driver_phone?: string;
   route_name?: string;
   route_bmc_ids?: string[];
+  destination_id?: string | null;
+}
+
+interface DestinationOption {
+  id: string;
+  code: string;
+  name: string;
 }
 
 interface BmcOption {
@@ -41,6 +48,8 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
   const [driverPhone, setDriverPhone] = useState(initial?.driver_phone ?? '');
   const [routeName, setRouteName] = useState(initial?.route_name ?? '');
   const [routeIds, setRouteIds] = useState<string[]>(initial?.route_bmc_ids ?? []);
+  const [destinationId, setDestinationId] = useState(initial?.destination_id ?? '');
+  const [destinations, setDestinations] = useState<DestinationOption[]>([]);
   const [bmcs, setBmcs] = useState<BmcOption[]>([]);
   const [bmcsLoading, setBmcsLoading] = useState(false);
   const [fromDate, setFromDate] = useState(() => {
@@ -73,6 +82,14 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
       })
       .finally(() => {
         if (!cancelled) setBmcsLoading(false);
+      });
+    api
+      .get<DestinationOption[]>('/tanker/destinations')
+      .then((r) => {
+        if (!cancelled) setDestinations(r.data || []);
+      })
+      .catch(() => {
+        if (!cancelled) setError('Could not load the destinations');
       });
     return () => {
       cancelled = true;
@@ -110,6 +127,10 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
       setError('Select at least one BMC for the tanker route');
       return;
     }
+    if (destinations.length > 0 && !destinationId) {
+      setError('Select the destination of the tanker');
+      return;
+    }
 
     setSubmitting(true);
     setError('');
@@ -130,6 +151,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
         driver_phone: driverPhone.trim() || undefined,
         route_name: routeName.trim(),
         route_bmc_ids: routeIds,
+        destination_id: destinationId || null,
       };
 
       const res = await api.post('/tanker/registration', payload);
@@ -144,6 +166,7 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
       setDriverPhone('');
       setRouteName('');
       setRouteIds([]);
+      setDestinationId('');
       if (!embedded && onClose) {
         setTimeout(() => onClose(), 1200);
       }
@@ -424,10 +447,27 @@ export default function NewTankerRegistrationModal({ isOpen = true, onClose, onS
             />
           </div>
 
-          {/* 11. Route BMCs */}
+          {/* 11. Destination (where the milk goes) */}
+          <div className="fl-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>
+              11. Destination {destinations.length > 0 && <span style={{ color: '#ef4444' }}>*</span>}
+            </label>
+            <select
+              value={destinationId}
+              onChange={(e) => setDestinationId(e.target.value)}
+              style={{ width: 250, height: 28, padding: '2px 8px', border: '1px solid #94a3b8', borderRadius: 3 }}
+            >
+              <option value="">{destinations.length === 0 ? 'No destinations set up' : 'Select destination…'}</option>
+              {destinations.map((d) => (
+                <option key={d.id} value={d.id}>{d.code} – {d.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* 12. Route BMCs */}
           <div className="fl-row" style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
             <label style={{ width: 200, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem', paddingTop: '4px' }}>
-              11. Route (BMCs) <span style={{ color: '#ef4444' }}>*</span>
+              12. Route (BMCs) <span style={{ color: '#ef4444' }}>*</span>
               <div style={{ fontWeight: 400, fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>
                 BMCs this tanker collects from, then goes to your dairy unit.
               </div>

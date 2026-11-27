@@ -51,6 +51,16 @@ test('shapeTanker returns the registration form shape', () => {
   assert.equal(t.back_cell_capacity, 5000);
 });
 
+test('shapeTanker carries the destination of the tanker', () => {
+  const none = store.shapeTanker(tankerRow);
+  assert.equal(none.destination_id, null);
+  assert.equal(none.destination_code, null);
+  const t = store.shapeTanker({ ...tankerRow, destination_id: 12, dairy_destinations: { code: 'SNR', name: 'Sholinganallur' } });
+  assert.equal(t.destination_id, '12');
+  assert.equal(t.destination_code, 'SNR');
+  assert.equal(t.destination_name, 'Sholinganallur');
+});
+
 test('helpers: milk type, shift, IST timestamp, vehicle normalisation', () => {
   assert.equal(store.milkTypeToCode('Raw Cow Milk'), 'RCM');
   assert.equal(store.milkTypeToLabel('RCM'), 'Raw Cow Milk');
