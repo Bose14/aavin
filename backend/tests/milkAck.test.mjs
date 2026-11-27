@@ -70,3 +70,14 @@ test('month periods are 1-10, 11-20 and 21-end', async () => {
   assert.equal(monthPeriods('2026-02')[2].to, '2026-02-28');
   assert.equal(monthPeriods('2028-02')[2].to, '2028-02-29');
 });
+
+test('an extra evening block on the same tanker and day has its own 30 kg allowance', async () => {
+  const { buildAckDays } = await import('../dist/lib/milkAck.js');
+  const mk = (shift, block, qty) => ({ ...base, date: '2026-10-10', shift, block, kind: 'BMC', code: 1, name: 'A', inv_no: shift, qty, fat: 4, snf: 8, ack: { qty, fat: 4, snf: 8 } });
+  const rows = buildAckDays([mk('EVE/MOR', 'EVE/MOR', 1000), mk('EVE', 'EVE', 500)])[0].rows.filter((r) => !r.is_total);
+  near(rows[0].kg30, 30, 0.001); // not 20: the evening block is not shared with the morning block
+  near(rows[1].kg30, 30, 0.001);
+  // Without a block (live data) the same tanker and day is one group
+  const live = buildAckDays([mk('EVE/MOR', undefined, 1000), mk('EVE', undefined, 500)])[0].rows.filter((r) => !r.is_total);
+  near(live[0].kg30 + live[1].kg30, 30, 0.001);
+});

@@ -83,6 +83,7 @@ export async function loadAckDays(dairyUnitId: string, from: string, to: string)
     .map((h) => ({
       date: String(h.ack_date),
       shift: String(h.shift),
+      block: String(h.shift),
       kind: String(h.kind),
       route: String(h.route),
       milk_type: String(h.milk_type),
