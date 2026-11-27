@@ -1,6 +1,7 @@
 import axios from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
 import { supabase } from '../supabase';
+import { queryClient } from './queryClient';
 
 interface RetryableRequestConfig extends InternalAxiosRequestConfig {
   _authRetried?: boolean;
@@ -65,7 +66,12 @@ api.interceptors.request.use(async (config) => {
 
 // On 401, attempt one session refresh + retry; if refresh fails, clear dead local session
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Any successful write may change what the cached lists show: start fresh.
+    const method = (response.config.method ?? 'get').toLowerCase();
+    if (method !== 'get') queryClient.clear();
+    return response;
+  },
   async (error: unknown) => {
     if (!axios.isAxiosError(error) || error.response?.status !== 401 || !error.config) {
       return Promise.reject(error);

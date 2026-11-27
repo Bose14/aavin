@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../../lib/api';
+import { cachedGet, STALE } from '../../lib/cachedGet';
 import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
 import { formatDateDDMMYYYY, getLocalTodayIso } from '../../lib/format';
 import { DataTable } from '../../components/DataTable';
@@ -65,7 +66,7 @@ export default function AdminBmcs() {
     setLoadingList(true);
     setError('');
     try {
-      const resUnits = await api.get<Unit[]>('/bmcs');
+      const resUnits = await cachedGet<Unit[]>('/bmcs', undefined, STALE.reference);
       setUnits(resUnits.data);
     } catch (err: unknown) {
       setError((err as Error)?.message || 'Failed to load units');

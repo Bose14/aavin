@@ -1,4 +1,8 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './lib/queryClient';
+import { supabase } from './supabase';
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -29,8 +33,21 @@ import QCLab from './pages/plant/QCLab';
 import UnloadingBay from './pages/plant/UnloadingBay';
 import PlantRecords from './pages/plant/PlantRecords';
 
+/** Never let one user's cached data survive into the next session. */
+function ClearCacheOnSignOut() {
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') queryClient.clear();
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+  return null;
+}
+
 export default function App() {
   return (
+    <QueryClientProvider client={queryClient}>
+    <ClearCacheOnSignOut />
     <LanguageProvider>
       <AuthProvider>
         <BrowserRouter>
@@ -83,5 +100,6 @@ export default function App() {
         </BrowserRouter>
       </AuthProvider>
     </LanguageProvider>
+    </QueryClientProvider>
   );
 }

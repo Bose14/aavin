@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../../lib/api';
+import { cachedGet } from '../../lib/cachedGet';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from '../../context/LanguageContext';
 import { formatDateDDMMYYYY, formatLitres, getLocalTodayIso } from '../../lib/format';
@@ -75,12 +75,12 @@ export default function UnitDashboard() {
         params.to = appliedCustom.to;
       }
       const [procRes, stockRes] = await Promise.all([
-        api.get<ProcessAnalyticsResponse>('/analytics/process', { params }),
-        api.get<StockSummary>('/tanker/stock').catch(() => ({ data: null })),
+        cachedGet<ProcessAnalyticsResponse>('/analytics/process', params),
+        cachedGet<StockSummary>('/tanker/stock').catch(() => ({ data: null })),
       ]);
       setData(procRes.data);
       setStock(stockRes.data);
-      const milk = await api.get<MilkRow[]>('/milk', { params: { from: procRes.data.date_range.from, to: procRes.data.date_range.to } });
+      const milk = await cachedGet<MilkRow[]>('/milk', { from: procRes.data.date_range.from, to: procRes.data.date_range.to });
       const byDay: Record<string, number> = {};
       for (const m of milk.data || []) {
         byDay[m.date] = (byDay[m.date] ?? 0) + Number(m.quantity_litres) - Number(m.rejection_qty ?? 0);

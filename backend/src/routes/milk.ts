@@ -1,3 +1,4 @@
+import { fetchAllPages } from '../lib/paging';
 import { Router } from 'express';
 import { readFirstSheetRows } from '../lib/spreadsheet';
 import { supabase } from '../supabase';
@@ -50,7 +51,8 @@ router.get('/', async (req, res) => {
       .select(columns)
       .eq('dairy_unit_id', dairyUnitId)
       .order('date', { ascending: false })
-      .order('shift', { ascending: true });
+      .order('shift', { ascending: true })
+      .order('id', { ascending: true });
 
     if (req.profile.role === 'bmc') query = query.eq('bmc_id', req.profile.bmc_id!);
     else if (bmc_id) query = query.eq('bmc_id', bmc_id);
@@ -59,10 +61,13 @@ router.get('/', async (req, res) => {
     if (to) query = query.lte('date', to);
     return query;
   };
+  // Page through every row: PostgREST silently truncates at 1,000.
+  const runAll = (columns: string) =>
+    fetchAllPages<Record<string, unknown>>((a, b) => runQuery(columns).range(a, b) as never);
 
-  let { data, error } = await runQuery(EXTENDED_SELECT);
+  let { data, error } = await runAll(EXTENDED_SELECT);
   if (error && isMissingSchemaError(error)) {
-    const fallback = await runQuery(BASE_SELECT);
+    const fallback = await runAll(BASE_SELECT);
     data = fallback.data;
     error = fallback.error;
   }
@@ -336,8 +341,8 @@ router.patch('/:id', requireRole('admin', 'bmc'), validateBody(milkEntrySchema),
   const dairyUnitId = req.profile.dairy_unit_id;
 
   let existingQuery = supabase.from('milk_entries').select('*').eq('id', entryId);
+  existingQuery = existingQuery.eq('dairy_unit_id', dairyUnitId);
   if (req.profile.role === 'bmc') existingQuery = existingQuery.eq('bmc_id', req.profile.bmc_id!);
-  else existingQuery = existingQuery.eq('dairy_unit_id', dairyUnitId);
 
   const { data: existing, error: fetchErr } = await existingQuery.maybeSingle();
   if (fetchErr) { console.error('[api]', req.method, req.originalUrl, fetchErr.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
@@ -413,7 +418,7 @@ router.patch('/:id', requireRole('admin', 'bmc'), validateBody(milkEntrySchema),
     updated_at: new Date().toISOString(),
   };
 
-  let { data, error } = await supabase.from('milk_entries').update(extendedPatch).eq('id', entryId).select().single();
+  let { data, error } = await supabase.from('milk_entries').update(extendedPatch).eq('id', entryId).eq('dairy_unit_id', dairyUnitId).select().single();
   if (error && isMissingSchemaError(error)) {
     const basePatch = {
       fat_pct: +fat.toFixed(2),
@@ -423,7 +428,7 @@ router.patch('/:id', requireRole('admin', 'bmc'), validateBody(milkEntrySchema),
       temperature: body.temperature !== undefined ? body.temperature : existing.temperature,
       rate_per_litre: nextRate,
     };
-    const fallback = await supabase.from('milk_entries').update(basePatch).eq('id', entryId).select().single();
+    const fallback = await supabase.from('milk_entries').update(basePatch).eq('id', entryId).eq('dairy_unit_id', dairyUnitId).select().single();
     data = fallback.data;
     error = fallback.error;
   }
@@ -690,7 +695,7 @@ router.delete('/:id', requireRole('admin', 'bmc'), async (req, res) => {
     }
   }
 
-  const { error } = await supabase.from('milk_entries').delete().eq('id', entryId);
+  const { error } = await supabase.from('milk_entries').delete().eq('id', entryId).eq('dairy_unit_id', req.profile.dairy_unit_id);
   if (error?.code === 'P0001') { res.status(400).json({ error: error.message }); return; }
   if (error) { console.error('[api]', req.method, req.originalUrl, error.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
 

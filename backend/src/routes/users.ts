@@ -290,6 +290,7 @@ router.patch('/:id', requireRole('admin'), validateBody(updateUserSchema), async
     .from('users')
     .update(patch)
     .eq('id', target.id)
+    .eq('dairy_unit_id', req.profile.dairy_unit_id)
     .select(USER_SELECT)
     .single();
 
@@ -350,7 +351,7 @@ router.post('/:id/reset-password', requireRole('admin'), async (req, res) => {
     return;
   }
 
-  await supabase.from('users').update({ must_change_password: true }).eq('id', target.id);
+  await supabase.from('users').update({ must_change_password: true }).eq('id', target.id).eq('dairy_unit_id', req.profile.dairy_unit_id);
 
   let resetLink: string | null = null;
   if (target.email) {

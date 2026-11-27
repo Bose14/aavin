@@ -60,12 +60,13 @@ function sendError(res: import('express').Response, err: unknown) {
  * fat/SNF. Runs whenever a weight or the QC quality changes; until both weights are known the dispatched
  * litres stay as the placeholder. The unloading stage's litres are kept in step so every screen agrees.
  */
-async function applyWeightBasedLitres(tripId: string): Promise<void> {
+async function applyWeightBasedLitres(tripId: string, dairyUnitId: string): Promise<void> {
   try {
     const { data: t } = await supabase
       .from('tanker_trips')
       .select('net_weight_kg, received_fat_pct, received_snf_pct')
       .eq('id', tripId)
+      .eq('dairy_unit_id', dairyUnitId)
       .maybeSingle();
     const net = t?.net_weight_kg != null ? Number(t.net_weight_kg) : 0;
     if (!t || !(net > 0)) return;
@@ -74,10 +75,10 @@ async function applyWeightBasedLitres(tripId: string): Promise<void> {
       t.received_fat_pct != null ? Number(t.received_fat_pct) : null,
       t.received_snf_pct != null ? Number(t.received_snf_pct) : null,
     );
-    await updateTrip(tripId, { received_litres: litres });
+    await updateTrip(tripId, { received_litres: litres }, dairyUnitId);
     const { data: st } = await supabase.from('trip_stages').select('data').eq('trip_id', tripId).eq('stage_key', 'unloaded').order('id', { ascending: false }).limit(1);
     const stageData = st?.[0]?.data as Record<string, unknown> | undefined;
-    if (stageData) await updateStageData(tripId, 'unloaded', { data: { ...stageData, unloaded_litres: litres } });
+    if (stageData) await updateStageData(tripId, 'unloaded', { data: { ...stageData, unloaded_litres: litres } }, dairyUnitId);
   } catch (e) {
     console.error('[ack] could not apply weight-based litres for trip', tripId, (e as Error).message);
   }
@@ -648,7 +649,7 @@ router.get('/:id/dispatch-ack', async (req, res) => {
       : { data: [], error: null };
     if (bErr) throw new Error(bErr.message);
     const bmcs = new Map((bmcRows ?? []).map((b) => [String(b.id), { name: String(b.name), code: b.bmc_code ?? null }]));
-    const { data: tripRow } = await supabase.from('tanker_trips').select('tanker_id').eq('id', tripId).maybeSingle();
+    const { data: tripRow } = await supabase.from('tanker_trips').select('tanker_id').eq('id', tripId).eq('dairy_unit_id', dairyUnitId).maybeSingle();
     const { data: tankerRow } = tripRow?.tanker_id
       ? await supabase.from('tankers').select('route_name, driver_name').eq('id', tripRow.tanker_id).maybeSingle()
       : { data: null };
@@ -850,7 +851,7 @@ router.post('/:id/gate-pass', async (req, res) => {
         const prevData = ((cipStage as any)?.stage_data || (cipStage as any)?.data || {}) as Record<string, unknown>;
         await updateStageData(String(trip.id), 'cip_completed', {
           data: { ...prevData, gate_pass: gatePassData },
-        });
+        }, req.profile.dairy_unit_id);
       } catch (attachErr) {
         console.warn('[gate-pass] attaching to cip_completed stage failed:', attachErr);
       }
@@ -861,7 +862,7 @@ router.post('/:id/gate-pass', async (req, res) => {
       await updateTrip(String(trip.id), {
         gate_pass: gatePassData,
         gate_pass_no: gatePassData.gate_pass_no,
-      });
+      }, req.profile.dairy_unit_id);
     } catch (updateErr) {
       console.warn('[gate-pass] updateTrip warning:', updateErr);
     }
@@ -1293,9 +1294,9 @@ async function recordStageHandler(req: import('express').Request, res: import('e
   for (const k of Object.keys(tripPatch)) {
     if (tripPatch[k] === undefined) delete tripPatch[k];
   }
-  await updateTrip(id, tripPatch);
+  await updateTrip(id, tripPatch, req.profile.dairy_unit_id);
   if (['gross_weight', 'tare_weight', 'qc_completed', 'unloaded'].includes(stageKey)) {
-    await applyWeightBasedLitres(id);
+    await applyWeightBasedLitres(id, req.profile.dairy_unit_id);
     await refreshAcknowledgements(id);
   }
 
@@ -1365,7 +1366,7 @@ router.post('/:id/correct', requireRole('admin'), async (req, res) => {
     const updatedStage = await updateStageData(tripId, stage_name, {
       data: mergedData,
       status: (changes?.status as any) || undefined,
-    });
+    }, req.profile.dairy_unit_id);
 
     // Keep the figures the reports read in step with the corrected stage
     const tripPatch: Record<string, unknown> = {};
@@ -1386,10 +1387,10 @@ router.post('/:id/correct', requireRole('admin'), async (req, res) => {
     if (stage_name === 'unloaded' && changes?.unloaded_litres != null) {
       tripPatch.received_litres = Number(changes.unloaded_litres);
     }
-    await updateTrip(tripId, tripPatch);
+    await updateTrip(tripId, tripPatch, req.profile.dairy_unit_id);
     if (['gross_weight', 'tare_weight', 'qc_completed', 'unloaded'].includes(stage_name)) {
       // A typed correction of the unloaded litres is respected; weights and QC quality re-derive the litres
-      if (!(stage_name === 'unloaded' && changes?.unloaded_litres != null)) await applyWeightBasedLitres(tripId);
+      if (!(stage_name === 'unloaded' && changes?.unloaded_litres != null)) await applyWeightBasedLitres(tripId, req.profile.dairy_unit_id);
       await refreshAcknowledgements(tripId);
     }
 
@@ -1584,7 +1585,7 @@ router.patch('/:id/receive', requireRole('admin'), async (req, res) => {
       received_fat_pct: received_fat_pct != null && String(received_fat_pct) !== '' ? +Number(received_fat_pct).toFixed(2) : null,
       received_snf_pct: received_snf_pct != null && String(received_snf_pct) !== '' ? +Number(received_snf_pct).toFixed(2) : null,
     };
-    await updateTrip(tripId, updateFields);
+    await updateTrip(tripId, updateFields, req.profile.dairy_unit_id);
     await refreshAcknowledgements(tripId);
 
     await writeAuditLog({

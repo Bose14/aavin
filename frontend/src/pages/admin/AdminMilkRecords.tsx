@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
+import { cachedGet, STALE } from '../../lib/cachedGet';
 import { useTranslation } from '../../context/LanguageContext';
 import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
 import {
@@ -108,8 +109,8 @@ export default function AdminMilkRecords() {
       if (shiftFilter !== 'ALL') params.shift = shiftFilter;
 
       const [rRes, uRes, cRes] = await Promise.all([
-        api.get<MilkRecord[]>('/milk', { params }),
-        api.get<Unit[]>('/bmcs'),
+        cachedGet<MilkRecord[]>('/milk', params),
+        cachedGet<Unit[]>('/bmcs', undefined, STALE.reference),
         api.get<CorrectionRequestItem[]>('/milk/correction-requests').catch(() => ({ data: [] as CorrectionRequestItem[] })),
       ]);
       setRecords(rRes.data);
