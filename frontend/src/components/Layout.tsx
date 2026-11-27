@@ -27,6 +27,7 @@ const adminNav: NavItem[] = [
       { to: '/admin/milk-ack', fallbackLabel: 'Milk Ack Report' },
       { to: '/admin/dmr-report', fallbackLabel: 'DMR Report' },
       { to: '/admin/bmc-dmr', fallbackLabel: 'BMC DMR Loss Report' },
+      { to: '/admin/norms', fallbackLabel: 'Norms' },
     ],
   },
   { to: '/admin/users', labelKey: 'navTeamsAndUsers', fallbackLabel: 'Teams & Users' },

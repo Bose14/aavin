@@ -7,6 +7,8 @@ import { requireRole } from '../middleware/requireRole';
 import { MAX_DOWNLOAD_DAYS, buildReceiptsWorkbook, loadReceiptDays, validateRange } from '../lib/bmcReceiptsData';
 import { buildAckWorkbook, loadAckDays } from '../lib/milkAckData';
 import { buildDmr, buildDmrWorkbook } from '../lib/bmcDmr';
+import { listNorms } from '../lib/normStore';
+import { validateNorm } from '../lib/norms';
 import { periodSheetName } from '../lib/sheetName';
 
 const router = Router();
@@ -139,6 +141,43 @@ router.get('/dmr-sheet/xlsx', async (req, res) => {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="DMR_${from}_to_${to}.xlsx"`);
     res.send(file);
+  } catch (err) {
+    fail(res, req, err);
+  }
+});
+
+// Allowed-loss norms (kg per tanker and % of litres sent), each valid from an effective date
+router.get('/norms', async (req, res) => {
+  try {
+    res.json({ norms: await listNorms(req.profile.dairy_unit_id) });
+  } catch (err) {
+    fail(res, req, err);
+  }
+});
+
+router.post('/norms', async (req, res) => {
+  const bad = validateNorm(req.body ?? {});
+  if (bad) { res.status(400).json({ error: bad }); return; }
+  try {
+    const { effective_from, kg_per_tanker, pct } = req.body;
+    const { error } = await supabase.from('ack_norms').upsert(
+      { dairy_unit_id: req.profile.dairy_unit_id, effective_from, kg_per_tanker: Number(kg_per_tanker), pct: Number(pct) },
+      { onConflict: 'dairy_unit_id,effective_from' },
+    );
+    if (error) throw new Error(error.message);
+    res.json({ norms: await listNorms(req.profile.dairy_unit_id) });
+  } catch (err) {
+    fail(res, req, err);
+  }
+});
+
+router.delete('/norms/:id', async (req, res) => {
+  try {
+    const all = await listNorms(req.profile.dairy_unit_id);
+    if (all.length <= 1) { res.status(400).json({ error: 'At least one norm must stay.' }); return; }
+    const { error } = await supabase.from('ack_norms').delete().eq('id', Number(req.params.id)).eq('dairy_unit_id', req.profile.dairy_unit_id);
+    if (error) throw new Error(error.message);
+    res.json({ norms: await listNorms(req.profile.dairy_unit_id) });
   } catch (err) {
     fail(res, req, err);
   }

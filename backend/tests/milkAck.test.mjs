@@ -81,3 +81,22 @@ test('an extra evening block on the same tanker and day has its own 30 kg allowa
   const live = buildAckDays([mk('EVE/MOR', undefined, 1000), mk('EVE', undefined, 500)])[0].rows.filter((r) => !r.is_total);
   near(live[0].kg30 + live[1].kg30, 30, 0.001);
 });
+
+test('norms can change by date: kg per tanker and percentage come from the norms in force', async () => {
+  const { buildAckDays } = await import('../dist/lib/milkAck.js');
+  const { normsLookup } = await import('../dist/lib/norms.js');
+  const inp = (date) => ({
+    date, shift: 'MOR', kind: 'BMC', route: 'R', milk_type: 'RCM', team: 'T', code: 1, name: 'A', dest: '', tanker: 'TN1',
+    inv_no: '1', qty: 1000, fat: 4, snf: 8, ack: { qty: 1000, fat: 4, snf: 8 },
+  });
+  const normsFor = normsLookup([
+    { id: 1, effective_from: '2000-01-01', kg_per_tanker: 30, pct: 0.032 },
+    { id: 2, effective_from: '2026-11-01', kg_per_tanker: 40, pct: 0.05 },
+  ]);
+  const rows = buildAckDays([inp('2026-10-31'), inp('2026-11-01')], normsFor).map((d) => d.rows[0]);
+  assert.equal(rows[0].kg30, 30);
+  assert.ok(Math.abs(rows[0].p032_fat - 0.32) < 1e-9);
+  assert.equal(rows[1].kg30, 40);
+  assert.ok(Math.abs(rows[1].p032_fat - 0.5) < 1e-9);
+  assert.equal(buildAckDays([inp('2026-10-31')])[0].rows[0].kg30, 30); // defaults
+});
