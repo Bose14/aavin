@@ -24,6 +24,7 @@ import AdminSettings from './pages/admin/AdminSettings';
 
 import AdminBmcReport from './pages/admin/AdminBmcReport';
 import AdminBmcReceipts from './pages/admin/AdminBmcReceipts';
+import AdminMilkAck from './pages/admin/AdminMilkAck';
 import UnitDashboard from './pages/unit/UnitDashboard';
 import MilkEntry from './pages/unit/MilkEntry';
 import TankerDispatch from './pages/unit/TankerDispatch';
@@ -70,6 +71,7 @@ export default function App() {
             <Route path="/admin/reports" element={<ProtectedRoute role="admin"><Layout><AdminReports /></Layout></ProtectedRoute>} />
             <Route path="/admin/tankers" element={<ProtectedRoute role="admin"><Layout><AdminTankers /></Layout></ProtectedRoute>} />
             <Route path="/admin/rates" element={<ProtectedRoute role="admin"><Layout><AdminRateChart /></Layout></ProtectedRoute>} />
+            <Route path="/admin/milk-ack" element={<ProtectedRoute role="admin"><Layout><AdminMilkAck /></Layout></ProtectedRoute>} />
             <Route path="/admin/bmc-receipts" element={<ProtectedRoute role="admin"><Layout><AdminBmcReceipts /></Layout></ProtectedRoute>} />
             <Route path="/admin/bmc-report" element={<ProtectedRoute role="admin"><Layout><AdminBmcReport /></Layout></ProtectedRoute>} />
             <Route path="/admin/bmcs" element={<ProtectedRoute role="admin"><Layout><AdminBmcs /></Layout></ProtectedRoute>} />

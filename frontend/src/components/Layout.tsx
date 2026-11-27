@@ -24,6 +24,7 @@ const adminNav: NavItem[] = [
       { to: '/admin/bmcs', labelKey: 'navUnits', fallbackLabel: 'BMCs' },
       { to: '/admin/bmc-report', fallbackLabel: 'Detailed BMC Report' },
       { to: '/admin/bmc-receipts', fallbackLabel: 'BMC Receipts' },
+      { to: '/admin/milk-ack', fallbackLabel: 'Milk Ack Report' },
     ],
   },
   { to: '/admin/users', labelKey: 'navTeamsAndUsers', fallbackLabel: 'Teams & Users' },
