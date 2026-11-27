@@ -6,6 +6,7 @@ import { fetchTrip, fetchTrips } from '../lib/tripStore';
 import { ensureAcknowledgements } from '../lib/ack';
 import { buildAckWorkbook, loadAckDays } from '../lib/milkAckData';
 import { MAX_DOWNLOAD_DAYS } from '../lib/bmcReceiptsData';
+import { periodSheetName } from '../lib/sheetName';
 import { buildMilkAckRows, buildGroupedAckRows, buildAckSummary, ackTitle, ACK_COLUMNS } from '../lib/milkAckReport';
 import type { AckViewRow, AckGroup } from '../lib/milkAckReport';
 import { requireRole } from '../middleware/requireRole';
@@ -336,7 +337,7 @@ router.get('/milk-ack', requireRole('admin'), async (req, res) => {
         supabase.from('dairy_units').select('name').eq('id', dairyUnitId).maybeSingle(),
       ]);
       const title = `${String(unit.data?.name ?? '').toUpperCase()} UNION - MILK DISPOSAL AND ACKNOWLEDGEMENT STATEMENT ${from} TO ${to}`;
-      const file = await buildAckWorkbook(ackDays, title, `${from.slice(8, 10)}-${to.slice(8, 10)}`);
+      const file = await buildAckWorkbook(ackDays, title, periodSheetName(from, to));
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename="Milk_ACK_${buildRangeTag(from, to)}.xlsx"`);
       res.send(file);

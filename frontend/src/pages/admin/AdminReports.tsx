@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import api from '../../lib/api';
 import { formatDateDDMMYYYY, triggerBlobDownload } from '../../lib/format';
 import { Page, PageHeader } from '../../components/PageLayout';
+import { PERIODS, periodRange } from '../../lib/reportPeriods';
 
 type Preset = 'today' | 'yesterday' | 'this_week' | 'last_week' | 'this_month' | 'last_month' | 'custom';
 const ymd = (d: Date) => d.toLocaleDateString('en-CA'); // local yyyy-mm-dd
@@ -169,24 +170,22 @@ function MilkAckReport() {
       <p className="rp-range" style={{ marginTop: 0, marginBottom: '1.1rem' }}>{ACK_GROUPS.find((g) => g.id === group)?.hint}</p>
       {group === 'date' && !r.invalid && (
         <div className="rp-actions" style={{ marginBottom: '0.75rem' }}>
-          <span className="rp-range">Sheet periods of {r.from.slice(0, 7)}:</span>
-          {([['1-10', 1, 10], ['11-20', 11, 20], ['21-end', 21, 0]] as const).map(([label, a, b]) => {
-            const month = r.from.slice(0, 7);
-            const end = b || new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
-            const d = (n: number) => `${month}-${String(n).padStart(2, '0')}`;
+          <span className="rp-range">Quick download for {r.from.slice(0, 7)} (full year uses {r.from.slice(0, 4)}); pick any other dates above:</span>
+          {PERIODS.map((p) => {
+            const { from, to } = periodRange(r.from.slice(0, 7), p.key);
             return (
-              <button key={label} type="button" className="rp-pdf" disabled={busy} onClick={async () => {
+              <button key={p.key} type="button" className="rp-pdf" disabled={busy} onClick={async () => {
                 setBusy(true);
                 setError('');
                 try {
-                  await triggerBlobDownload('/receipts/ack/xlsx', { from: d(a), to: d(end) }, `Milk_Ack_${d(a)}_to_${d(end)}.xlsx`);
+                  await triggerBlobDownload('/receipts/ack/xlsx', { from, to }, `Milk_Ack_${from}_to_${to}.xlsx`);
                 } catch {
                   setError('Could not download the report. Please try again.');
                 } finally {
                   setBusy(false);
                 }
               }}>
-                {label}
+                {p.label}
               </button>
             );
           })}

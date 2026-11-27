@@ -7,6 +7,7 @@
  */
 import ExcelJS from 'exceljs';
 import type { AckDay } from './milkAck';
+import { periodSheetName } from './sheetName';
 
 export interface DmrRow {
   name: string;
@@ -108,7 +109,7 @@ const COLS: Array<{ key: (typeof NUM_KEYS)[number]; head: string; fmt: string }>
 /** Excel file in the layout of the BMC DMR loss sheet. */
 export async function buildDmrWorkbook(report: DmrReport, unitName: string, from: string, to: string): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet(`${from.slice(8, 10)}-${to.slice(8, 10)}`);
+  const ws = wb.addWorksheet(periodSheetName(from, to));
   const lastCol = 2 + COLS.length;
 
   ws.addRow([`${unitName.toUpperCase()} UNION`]).font = { bold: true, size: 13 };
