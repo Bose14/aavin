@@ -40,8 +40,16 @@ export const bmcSchema = z.object({
   code_no: numLike,
   cc_code: numLike,
   capacity_litres: numLike,
+  opening_balance: numLike,
+  opening_balance_date: isoDate.nullish(),
   milk_type: optText(10),
   is_active: z.boolean().optional(),
+  first_user: z.object({
+    full_name: optText(120),
+    email: optText(254),
+    phone: optText(30),
+    shift: optText(20),
+  }).nullish(),
 }).passthrough();
 
 export const milkEntrySchema = z.object({

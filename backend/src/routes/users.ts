@@ -9,18 +9,13 @@ import { requireRole } from '../middleware/requireRole';
 import { normalizeIndianPhone } from '../lib/calculations';
 import { writeAuditLog } from '../lib/settingsStore';
 import { idLookup } from '../lib/ids';
+import {
+  SHIFTS, TEAM_CODES, USER_SELECT, resolveTeam, resolveBmcInDairyUnit, isValidEmail, generateTempPassword, createUserAccount,
+} from '../lib/userAccounts';
+import type { TeamCode } from '../lib/userAccounts';
 
 const router = Router();
 router.use(authMiddleware);
-
-const SHIFTS = ['Morning', 'Evening', 'General'] as const;
-const TEAM_CODES = ['ADMIN', 'GATE', 'QC', 'UNLOADING', 'BMC'] as const;
-type TeamCode = (typeof TEAM_CODES)[number];
-
-const USER_SELECT =
-  'id, id_token, auth_user_id, dairy_unit_id, team_id, bmc_id, full_name, email, phone, shift, sub_role, ' +
-  'is_active, must_change_password, created_at, updated_at, ' +
-  'teams(id, id_token, code, name), bmcs(id, id_token, name, bmc_code)';
 
 interface UserRow {
   id: string;
@@ -61,15 +56,6 @@ function respondAdminAuthError(res: Response, action: string, err: { message: st
   res.status(formatted.status).json({ error: formatted.error });
 }
 
-function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
-}
-
-function generateTempPassword(): string {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#';
-  return Array.from({ length: 12 }, () => chars[crypto.randomInt(chars.length)]).join('');
-}
-
 function actorName(req: { profile: { full_name: string | null }; user: { email?: string } }): string {
   return req.profile.full_name ?? req.user.email ?? 'Admin';
 }
@@ -85,37 +71,6 @@ async function findUserInDairyUnit(idOrToken: string, dairyUnitId: string): Prom
     .eq('dairy_unit_id', dairyUnitId)
     .maybeSingle();
   return (data as unknown as UserRow | null) ?? null;
-}
-
-/** Resolves a team from a code (GATE) or an id / id_token. */
-async function resolveTeam(input: { team?: string; team_id?: string }) {
-  let query = supabase.from('teams').select('id, id_token, code, name, active');
-  if (input.team) {
-    const code = input.team.trim().toUpperCase();
-    if (!(TEAM_CODES as readonly string[]).includes(code)) return null;
-    query = query.eq('code', code);
-  } else if (input.team_id) {
-    const lookup = idLookup(input.team_id);
-    if (!lookup) return null;
-    query = query.eq(lookup.column, lookup.value);
-  } else {
-    return null;
-  }
-  const { data } = await query.maybeSingle();
-  return (data as { id: string; id_token: string; code: TeamCode; name: string; active: boolean } | null) ?? null;
-}
-
-/** Resolves a BMC (by id or id_token) that belongs to the given dairy unit. */
-async function resolveBmcInDairyUnit(idOrToken: string, dairyUnitId: string) {
-  const lookup = idLookup(idOrToken);
-  if (!lookup) return null;
-  const { data } = await supabase
-    .from('bmcs')
-    .select('id, id_token, name, is_active')
-    .eq(lookup.column, lookup.value)
-    .eq('dairy_unit_id', dairyUnitId)
-    .maybeSingle();
-  return (data as { id: string; id_token: string; name: string; is_active: boolean } | null) ?? null;
 }
 
 /** True when the dairy unit would still have an active admin after `excludeUserId` stops being one. */
@@ -218,125 +173,16 @@ router.get('/', requireRole('admin'), async (req, res) => {
 
 // POST /users — the ONE way to create a user (any team; BMC users also need a BMC)
 router.post('/', requireRole('admin'), validateBody(createUserSchema), async (req, res) => {
-  const body = req.body as {
-    full_name?: string;
-    email?: string;
-    phone?: string;
-    team?: string;
-    team_id?: string;
-    bmc_id?: string;
-    shift?: string;
-    sub_role?: string;
-    password?: string;
-    force_password_change?: boolean;
-  };
-
-  const dairyUnitId = req.profile.dairy_unit_id;
-  const fullName = (body.full_name ?? '').trim();
-  const email = (body.email ?? '').trim().toLowerCase();
-  const shift = SHIFTS.includes(body.shift as (typeof SHIFTS)[number]) ? (body.shift as string) : 'General';
-  const subRole = body.sub_role === 'supervisor' ? 'supervisor' : 'operator';
-  const forcePasswordChange = body.force_password_change !== false;
-
-  if (!fullName || !email) {
-    res.status(400).json({ error: 'Full name and email are required' });
-    return;
-  }
-  if (!isValidEmail(email)) {
-    res.status(400).json({ error: 'Enter a valid email address' });
-    return;
-  }
-
-  const team = await resolveTeam({ team: body.team, team_id: body.team_id });
-  if (!team) {
-    res.status(400).json({ error: 'A valid team is required (ADMIN, GATE, QC, UNLOADING or BMC)' });
-    return;
-  }
-
-  let bmcId: string | null = null;
-  if (team.code === 'BMC') {
-    if (!body.bmc_id) {
-      res.status(400).json({ error: 'Select a BMC for BMC users' });
-      return;
-    }
-    const bmc = await resolveBmcInDairyUnit(body.bmc_id, dairyUnitId);
-    if (!bmc) {
-      res.status(400).json({ error: 'BMC not found in your dairy unit' });
-      return;
-    }
-    bmcId = bmc.id;
-  }
-
-  let phone: string | null = null;
-  if (body.phone && body.phone.trim()) {
-    phone = normalizeIndianPhone(body.phone);
-    if (!phone) {
-      res.status(400).json({ error: 'Phone must be a valid 10-digit Indian mobile number (+91)' });
-      return;
-    }
-  }
-
-  const tempPassword = body.password && body.password.trim().length >= 8 ? body.password.trim() : generateTempPassword();
-
-  const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-    email,
-    password: tempPassword,
-    email_confirm: true,
-    user_metadata: {
-      full_name: fullName,
-      is_active: true,
-      must_change_password: forcePasswordChange,
-    },
+  const result = await createUserAccount({
+    dairyUnitId: req.profile.dairy_unit_id,
+    input: req.body,
+    actor: { id: req.user.id, name: actorName(req) },
   });
-
-  if (authError) {
-    if (authError.message.toLowerCase().includes('already') || authError.code === 'email_exists') {
-      res.status(409).json({ error: `An account with email "${email}" already exists` });
-      return;
-    }
-    respondAdminAuthError(res, 'create', authError);
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
     return;
   }
-
-  const { data: inserted, error: insertError } = await supabase
-    .from('users')
-    .insert({
-      auth_user_id: authData.user.id,
-      dairy_unit_id: dairyUnitId,
-      team_id: team.id,
-      bmc_id: bmcId,
-      full_name: fullName,
-      email,
-      phone,
-      shift,
-      sub_role: subRole,
-      is_active: true,
-      must_change_password: forcePasswordChange,
-    })
-    .select(USER_SELECT)
-    .single();
-
-  if (insertError || !inserted) {
-    // Do not leave an orphan login behind
-    await supabase.auth.admin.deleteUser(authData.user.id);
-    const friendly = insertError ? uniqueViolationMessage(insertError) : null;
-    res.status(friendly ? 409 : 500).json({ error: friendly ?? insertError?.message ?? 'Failed to create user' });
-    return;
-  }
-
-  const created = inserted as unknown as UserRow;
-  await writeAuditLog({
-    dairy_unit_id: dairyUnitId,
-    bmc_id: bmcId,
-    entity_type: 'user',
-    entity_id: created.id,
-    action: 'create',
-    changes: { email, full_name: fullName, team: team.code, bmc_id: bmcId, shift, sub_role: subRole },
-    actor_id: req.user.id,
-    actor_name: actorName(req),
-  });
-
-  res.status(201).json({ ...shapeUser(created), temp_password: tempPassword });
+  res.status(201).json({ ...shapeUser(result.user as unknown as UserRow), temp_password: result.tempPassword });
 });
 
 // PATCH /users/:id — edit details, change team / BMC, activate or deactivate. :id is an id or id_token
