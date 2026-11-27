@@ -5,6 +5,7 @@ import { requireRole } from '../middleware/requireRole';
 import { MAX_DOWNLOAD_DAYS, buildReceiptsWorkbook, loadReceiptDays, validateRange } from '../lib/bmcReceiptsData';
 import { buildAckWorkbook, loadAckDays } from '../lib/milkAckData';
 import { buildDmr, buildDmrWorkbook } from '../lib/bmcDmr';
+import { periodSheetName } from '../lib/sheetName';
 
 const router = Router();
 router.use(authMiddleware);
@@ -72,7 +73,7 @@ router.get('/ack/xlsx', async (req, res) => {
       supabase.from('dairy_units').select('name').eq('id', dairyUnitId).maybeSingle(),
     ]);
     const title = `${String(unit.data?.name ?? '').toUpperCase()} UNION - MILK DISPOSAL AND ACKNOWLEDGEMENT STATEMENT ${from} TO ${to}`;
-    const sheet = `${from!.slice(8, 10)}-${to!.slice(8, 10)}`;
+    const sheet = periodSheetName(from!, to!);
     const file = await buildAckWorkbook(days, title, sheet);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="Milk_Ack_${from}_to_${to}.xlsx"`);

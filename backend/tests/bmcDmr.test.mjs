@@ -42,3 +42,10 @@ test('DMR workbook is built with a title and one line per BMC', async () => {
   assert.match(String(ws.getCell(1, 1).value), /NAMAKKAL/);
   assert.equal(ws.getCell(5, 2).value, 'Grand Total');
 });
+
+test('sheet name is dd-dd within a month and the full dates across months', async () => {
+  const { periodSheetName } = await import('../dist/lib/sheetName.js');
+  assert.equal(periodSheetName('2026-10-01', '2026-10-10'), '01-10');
+  assert.equal(periodSheetName('2026-10-01', '2026-10-31'), '01-31');
+  assert.equal(periodSheetName('2026-01-01', '2026-12-31'), '2026-01-01 to 2026-12-31');
+});

@@ -4,6 +4,8 @@ import { getApiErrorMessage } from '../../lib/api';
 import { getLocalTodayIso, triggerBlobDownload } from '../../lib/format';
 import { ErrorBanner } from '../../components/UiPrimitives';
 import { Page, PageHeader } from '../../components/PageLayout';
+import { MAX_DOWNLOAD_DAYS, MAX_VIEW_DAYS, PERIODS, periodRange, previousMonth, spanDays } from '../../lib/reportPeriods';
+import type { PeriodKey } from '../../lib/reportPeriods';
 
 interface DmrRow {
   name: string; pending_qty: number;
@@ -15,32 +17,6 @@ interface DmrRow {
   excess_fat: number; excess_snf: number;
 }
 interface DmrReport { rows: DmrRow[]; total: DmrRow }
-
-type PeriodKey = '1-10' | '11-20' | '21-end' | 'custom';
-
-const PERIODS: Array<{ key: Exclude<PeriodKey, 'custom'>; label: string }> = [
-  { key: '1-10', label: '1 – 10' },
-  { key: '11-20', label: '11 – 20' },
-  { key: '21-end', label: '21 – end' },
-];
-
-const MAX_VIEW_DAYS = 31;
-const MAX_DOWNLOAD_DAYS = 366;
-const spanDays = (from: string, to: string) =>
-  from && to ? Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1 : 0;
-
-const pad = (n: number) => String(n).padStart(2, '0');
-const lastDay = (month: string) => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
-const periodRange = (month: string, key: Exclude<PeriodKey, 'custom'>) => {
-  if (key === '1-10') return { from: `${month}-01`, to: `${month}-10` };
-  if (key === '11-20') return { from: `${month}-11`, to: `${month}-20` };
-  return { from: `${month}-21`, to: `${month}-${pad(lastDay(month))}` };
-};
-const previousMonth = (today: string) => {
-  const y = Number(today.slice(0, 4));
-  const m = Number(today.slice(5, 7));
-  return m === 1 ? `${y - 1}-12` : `${y}-${pad(m - 1)}`;
-};
 
 const ddmmyyyy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 const fmt = (v: number | null, dp = 0) => (v == null ? '' : v.toLocaleString('en-IN', { minimumFractionDigits: dp, maximumFractionDigits: dp }));
@@ -148,7 +124,7 @@ export default function AdminBmcDmr() {
         <button type="button" className="rp-pdf" disabled={!!busy || invalid || tooLongToDownload} onClick={() => void download('current', range.from, range.to)}>
           {busy === 'current' ? 'Preparing…' : 'This view'}
         </button>
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Downloads can cover up to a year. The table below shows up to 31 days.</span>
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Downloads can cover up to a year. The table below shows up to 31 days (not shown for Full year).</span>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={() => void load()} />}
