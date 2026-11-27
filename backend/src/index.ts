@@ -10,6 +10,7 @@ import exportRouter from './routes/export';
 import usersRouter from './routes/users';
 import settingsRouter from './routes/settings';
 import ratesRouter from './routes/rates';
+import receiptsRouter from './routes/receipts';
 import teamsRouter from './routes/teams';
 import { clearAuthCache } from './middleware/auth';
 import helmet from 'helmet';
@@ -155,6 +156,7 @@ app.use('/users', usersRouter);
 app.use('/teams', teamsRouter);
 app.use('/settings', settingsRouter);
 app.use('/rates', ratesRouter);
+app.use('/receipts', receiptsRouter);
 
 // Unknown routes
 app.use((_req, res) => { res.status(404).json({ error: 'Not found' }); });
