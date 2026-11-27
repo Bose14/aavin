@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../../lib/api';
+import { cachedGet } from '../../lib/cachedGet';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from '../../context/LanguageContext';
 import { useDairyUnitSettings } from '../../hooks/useDairyUnitSettings';
@@ -81,10 +81,10 @@ export default function AdminDashboard() {
         params.from = appliedCustom.from;
         params.to = appliedCustom.to;
       }
-      const res = await api.get<ProcessAnalyticsResponse>('/analytics/process', { params });
+      const res = await cachedGet<ProcessAnalyticsResponse>('/analytics/process', params);
       setData(res.data);
       // Milk collected at the BMCs over the same dates (net of rejections)
-      const milk = await api.get<MilkRow[]>('/milk', { params: { from: res.data.date_range.from, to: res.data.date_range.to } });
+      const milk = await cachedGet<MilkRow[]>('/milk', { from: res.data.date_range.from, to: res.data.date_range.to });
       const byBmc: Record<string, number> = {};
       const info: Record<string, { name: string; bmc_code: string }> = {};
       for (const m of milk.data || []) {

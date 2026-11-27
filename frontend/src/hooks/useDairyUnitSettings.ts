@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import api from '../lib/api';
+import { cachedGet, STALE } from '../lib/cachedGet';
 import {
   DEFAULT_DAIRY_UNIT_SETTINGS,
   getEffectiveSellingRate,
@@ -40,7 +40,7 @@ export function useDairyUnitSettings() {
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get<{ settings: DairyUnitSettings; selling_rates: SellingRateRule[] }>('/settings');
+      const res = await cachedGet<{ settings: DairyUnitSettings; selling_rates: SellingRateRule[] }>('/settings', undefined, STALE.reference);
       if (res.data?.settings) {
         const merged = { ...DEFAULT_DAIRY_UNIT_SETTINGS, ...res.data.settings };
         const rates = Array.isArray(res.data.selling_rates) ? res.data.selling_rates : [];

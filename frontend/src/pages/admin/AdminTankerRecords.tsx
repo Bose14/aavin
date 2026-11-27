@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import TankerDetailsModal from '../../components/TankerDetailsModal';
 import api from '../../lib/api';
+import { cachedGet, STALE } from '../../lib/cachedGet';
 import {
   formatDateDDMMYYYY,
   formatFatSnf,
@@ -194,7 +195,7 @@ export default function AdminTankerRecords() {
     if (unitsLoadedRef.current) return;
     unitsLoadedRef.current = true;
     try {
-      const res = await api.get<Unit[]>('/bmcs');
+      const res = await cachedGet<Unit[]>('/bmcs', undefined, STALE.reference);
       setUnits(res.data || []);
     } catch {
       unitsLoadedRef.current = false;

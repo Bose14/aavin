@@ -1,3 +1,4 @@
+import { fetchAllPages, fetchAllByIds } from '../lib/paging';
 import { Router } from 'express';
 import * as XLSX from '../lib/spreadsheet';
 import { supabase } from '../supabase';
@@ -105,17 +106,19 @@ router.get('/milk/pdf', async (req, res) => {
       .select(sel)
       .eq('dairy_unit_id', dairyUnitId)
       .order('date', { ascending: true })
-      .order('shift', { ascending: true });
+      .order('shift', { ascending: true })
+      .order('id', { ascending: true });
     if (effectiveUnitId) q = q.eq('bmc_id', effectiveUnitId);
     if (from) q = q.gte('date', from);
     if (to) q = q.lte('date', to);
     if (shift && (shift === 'AM' || shift === 'PM')) q = q.eq('shift', shift);
     return q;
   };
+  const runAllQ = (sel: string) => fetchAllPages<Record<string, unknown>>((a, b) => runQ(sel).range(a, b) as never);
 
-  let resQ = await runQ('date, shift, fat_pct, snf_pct, quantity_litres, rejection_qty, rate_per_litre, selling_rate_applied, status, bmcs(name, bmc_code)');
+  let resQ = await runAllQ('date, shift, fat_pct, snf_pct, quantity_litres, rejection_qty, rate_per_litre, selling_rate_applied, status, bmcs(name, bmc_code)');
   if (resQ.error && isMissingSchemaError(resQ.error)) {
-    resQ = await runQ('date, shift, fat_pct, snf_pct, quantity_litres, rejection_qty, rate_per_litre, bmcs(name, bmc_code)');
+    resQ = await runAllQ('date, shift, fat_pct, snf_pct, quantity_litres, rejection_qty, rate_per_litre, bmcs(name, bmc_code)');
   }
   if (resQ.error) { console.error('[api]', req.method, req.originalUrl, resQ.error.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); return; }
 
@@ -203,22 +206,24 @@ router.get('/milk', async (req, res) => {
       .select(sel)
       .eq('dairy_unit_id', dairyUnitId)
       .order('date', { ascending: true })
-      .order('shift', { ascending: true });
+      .order('shift', { ascending: true })
+      .order('id', { ascending: true });
     if (effectiveUnitId) q = q.eq('bmc_id', effectiveUnitId);
     if (from) q = q.gte('date', from);
     if (to) q = q.lte('date', to);
     if (shift && (shift === 'AM' || shift === 'PM')) q = q.eq('shift', shift);
     return q;
   };
+  const runAllQ = (sel: string) => fetchAllPages<Record<string, unknown>>((a, b) => runQ(sel).range(a, b) as never);
 
-  let resQ = await runQ(`
+  let resQ = await runAllQ(`
     date, shift, fat_pct, snf_pct, quantity_litres,
     rejection_qty, rejection_reason, temperature, rate_per_litre,
     selling_rate_applied, status, created_by,
     bmcs(name, bmc_code)
   `);
   if (resQ.error && isMissingSchemaError(resQ.error)) {
-    resQ = await runQ(`
+    resQ = await runAllQ(`
       date, shift, fat_pct, snf_pct, quantity_litres,
       rejection_qty, temperature, rate_per_litre, created_by,
       bmcs(name, bmc_code)
@@ -437,32 +442,33 @@ router.get('/recon-report', requireRole('admin'), async (req, res) => {
   const dairyUnitId = req.profile.dairy_unit_id;
   try {
     await ensureAcknowledgements(dairyUnitId, from, to);
-    const { data: trips, error: tErr } = await supabase
-      .from('tanker_trips')
-      .select('id, trip_date, tanker_id')
-      .eq('dairy_unit_id', dairyUnitId)
-      .neq('status', 'cancelled')
-      .gte('trip_date', from!)
-      .lte('trip_date', to!)
-      .order('trip_date')
-      .order('id')
-      .limit(2000);
+    const { data: trips, error: tErr } = await fetchAllPages<{ id: string; trip_date: string; tanker_id: string }>((a, b) =>
+      supabase
+        .from('tanker_trips')
+        .select('id, trip_date, tanker_id')
+        .eq('dairy_unit_id', dairyUnitId)
+        .neq('status', 'cancelled')
+        .gte('trip_date', from!)
+        .lte('trip_date', to!)
+        .order('trip_date')
+        .order('id')
+        .range(a, b) as never,
+    );
     if (tErr) throw new Error(tErr.message);
     const ids = (trips ?? []).map((t) => String(t.id));
     const tankerIds = [...new Set((trips ?? []).map((t) => String(t.tanker_id)))];
 
-    const empty = { data: [] as any[], error: null };
     const [loadRes, ackRes, stageRes, tankerRes, unitRes] = await Promise.all([
-      ids.length ? supabase.from('trip_loadings').select('id, trip_id, bmc_id, dc_number, cell_key, quantity_litres, fat_pct, snf_pct, dispatch_at').in('trip_id', ids) : empty,
-      ids.length ? supabase.from('trip_acknowledgements').select('trip_id, bmc_id, dc_number, ack_litres, ack_fat_pct, ack_snf_pct').in('trip_id', ids) : empty,
-      ids.length ? supabase.from('trip_stages').select('trip_id, data').eq('stage_key', 'qc_completed').eq('status', 'done').in('trip_id', ids) : empty,
-      tankerIds.length ? supabase.from('tankers').select('id, vehicle_number').in('id', tankerIds) : empty,
+      fetchAllByIds<any>(ids, (c, a, b) => supabase.from('trip_loadings').select('id, trip_id, bmc_id, dc_number, cell_key, quantity_litres, fat_pct, snf_pct, dispatch_at').in('trip_id', c).order('id').range(a, b) as never),
+      fetchAllByIds<any>(ids, (c, a, b) => supabase.from('trip_acknowledgements').select('trip_id, bmc_id, dc_number, ack_litres, ack_fat_pct, ack_snf_pct').in('trip_id', c).order('trip_id').order('bmc_id').order('dc_number').range(a, b) as never),
+      fetchAllByIds<any>(ids, (c, a, b) => supabase.from('trip_stages').select('trip_id, data').eq('stage_key', 'qc_completed').eq('status', 'done').in('trip_id', c).order('trip_id').range(a, b) as never),
+      fetchAllByIds<any>(tankerIds, (c, a, b) => supabase.from('tankers').select('id, vehicle_number').in('id', c).order('id').range(a, b) as never),
       supabase.from('dairy_units').select('name, report_title, report_address').eq('id', dairyUnitId).maybeSingle(),
     ]);
     for (const r of [loadRes, ackRes, stageRes, tankerRes]) if (r.error) throw new Error(r.error.message);
 
     const bmcIds = [...new Set((loadRes.data ?? []).map((l: any) => String(l.bmc_id)))];
-    const { data: bmcRows, error: bErr } = bmcIds.length ? await supabase.from('bmcs').select('id, name').in('id', bmcIds) : { data: [] as any[], error: null };
+    const { data: bmcRows, error: bErr } = await fetchAllByIds<any>(bmcIds, (c, a, b) => supabase.from('bmcs').select('id, name').in('id', c).order('id').range(a, b) as never);
     if (bErr) throw new Error(bErr.message);
     const bmcNames = new Map((bmcRows ?? []).map((b: any) => [String(b.id), String(b.name).toUpperCase()]));
     const vehicles = new Map((tankerRes.data ?? []).map((k: any) => [String(k.id), String(k.vehicle_number)]));

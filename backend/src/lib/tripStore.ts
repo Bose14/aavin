@@ -8,6 +8,7 @@
  * screens have always received, so the forms and `enrichTankerRow` keep working
  * unchanged. Only the storage underneath is new.
  */
+import { fetchAllPages, fetchAllByIds } from './paging';
 import { supabase } from '../supabase';
 import { idLookup } from './ids';
 import type { PlantTeam, StageRecordItem, TankerStageKey } from './tankerJourney';
@@ -248,7 +249,7 @@ export async function saveTanker(dairyUnitId: string, input: TankerRegistrationI
     // Cells can only change while the tanker has no trip in progress
     const open = await getOpenTripForTanker(existing.id);
     const patch = open ? { ...withRoute, cells: undefined, total_capacity_litres: undefined } : withRoute;
-    const { data, error } = await supabase.from('tankers').update(patch).eq('id', existing.id).select('*').single();
+    const { data, error } = await supabase.from('tankers').update(patch).eq('id', existing.id).eq('dairy_unit_id', dairyUnitId).select('*').single();
     if (error) throw new Error(error.message);
     return (await attachRouteNames([shapeTanker(data)]))[0];
   }
@@ -529,14 +530,20 @@ export async function fetchTrips(q: TripQuery): Promise<TripsResult> {
   let tripIds: string[] | null = null;
 
   if (q.bmcId) {
-    const { data, error } = await supabase.from('trip_loadings').select('trip_id').eq('bmc_id', q.bmcId);
+    const { data, error } = await fetchAllPages<{ trip_id: string }>((a, b) =>
+      supabase.from('trip_loadings').select('trip_id').eq('bmc_id', q.bmcId!).order('id').range(a, b) as never,
+    );
     if (error) throw new Error(error.message);
     tripIds = [...new Set((data ?? []).map((r) => String(r.trip_id)))];
     if (tripIds.length === 0) return { rows: [], stages: {} };
   }
 
+  const tripKey = q.tripKey ? idLookup(q.tripKey) : null;
+  if (q.tripKey && !tripKey) return { rows: [], stages: {} };
+
+  const buildTripQuery = (idChunk: string[] | null) => {
   let query = supabase.from('tanker_trips').select(TRIP_SELECT).eq('dairy_unit_id', q.dairyUnitId).neq('status', 'cancelled');
-  if (tripIds) query = query.in('id', tripIds);
+  if (idChunk) query = query.in('id', idChunk);
   if (q.from && q.to) {
     const fromIso = new Date(`${q.from}T00:00:00+05:30`).toISOString();
     const toIso = new Date(`${q.to}T23:59:59.999+05:30`).toISOString();
@@ -553,19 +560,25 @@ export async function fetchTrips(q: TripQuery): Promise<TripsResult> {
     query = query.or(`trip_date.lte.${q.to},entered_at.lte.${toIso},exited_at.lte.${toIso},created_at.lte.${toIso}`);
   }
   if (q.openOnly) query = query.is('exited_at', null);
-  if (q.tripKey) {
-    const key = idLookup(q.tripKey);
-    if (!key) return { rows: [], stages: {} };
-    query = query.eq(key.column, key.value);
-  }
-  const { data: trips, error } = await query.order('trip_date', { ascending: false }).order('id', { ascending: false });
+  if (tripKey) query = query.eq(tripKey.column, tripKey.value);
+  return query.order('trip_date', { ascending: false }).order('id', { ascending: false });
+  };
+
+  // A BMC filter can match thousands of trip ids: chunk them so the URL stays short, page each chunk,
+  // then restore the overall newest-first order.
+  const { data: trips, error } = tripIds
+    ? await fetchAllByIds<any>(tripIds, (c, a, b) => buildTripQuery(c).range(a, b) as never)
+    : await fetchAllPages<any>((a, b) => buildTripQuery(null).range(a, b) as never);
   if (error) throw new Error(error.message);
   if (!trips || trips.length === 0) return { rows: [], stages: {} };
+  if (tripIds && tripIds.length > 150) {
+    trips.sort((x: any, y: any) => String(y.trip_date).localeCompare(String(x.trip_date)) || String(y.id).localeCompare(String(x.id)));
+  }
 
-  const ids = trips.map((t) => String(t.id));
+  const ids = trips.map((t: any) => String(t.id));
   const [loadRes, stageRes] = await Promise.all([
-    supabase.from('trip_loadings').select('*, bmcs(name, bmc_code)').in('trip_id', ids),
-    supabase.from('trip_stages').select('*').in('trip_id', ids).order('done_at'),
+    fetchAllByIds<any>(ids, (c, a, b) => supabase.from('trip_loadings').select('*, bmcs(name, bmc_code)').in('trip_id', c).order('id').range(a, b) as never),
+    fetchAllByIds<any>(ids, (c, a, b) => supabase.from('trip_stages').select('*').in('trip_id', c).order('done_at').order('id').range(a, b) as never),
   ]);
   if (loadRes.error) throw new Error(loadRes.error.message);
   if (stageRes.error) throw new Error(stageRes.error.message);
@@ -705,7 +718,9 @@ export async function updateStageData(
   tripId: string,
   stageKey: TankerStageKey,
   patch: { data: Record<string, unknown>; status?: 'done' | 'rejected' | 'skipped' },
+  dairyUnitId: string,
 ): Promise<StageRow | null> {
+  if (!(await tripInUnit(tripId, dairyUnitId))) return null;
   const { data: rows, error } = await supabase
     .from('trip_stages')
     .select('*')
@@ -727,26 +742,38 @@ export async function updateStageData(
   return data as StageRow;
 }
 
+/** True when the trip exists and belongs to this dairy unit — every write below re-checks it. */
+export async function tripInUnit(tripId: string, dairyUnitId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('tanker_trips')
+    .select('id')
+    .eq('id', tripId)
+    .eq('dairy_unit_id', dairyUnitId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return !!data;
+}
+
 const TRIP_COLUMNS = new Set([
   'status', 'driver_name', 'driver_phone', 'gross_weight_kg', 'tare_weight_kg', 'net_weight_kg',
   'received_litres', 'received_fat_pct', 'received_snf_pct', 'qc_status', 'cip_status',
   'entered_at', 'exited_at', 'gate_pass', 'gate_pass_no',
 ]);
 
-export async function updateTrip(tripId: string, fields: Record<string, unknown>): Promise<void> {
+export async function updateTrip(tripId: string, fields: Record<string, unknown>, dairyUnitId: string): Promise<void> {
   const patch: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(fields)) {
     if (TRIP_COLUMNS.has(k)) patch[k] = v;
   }
   if (Object.keys(patch).length === 0) return;
-  const { error } = await supabase.from('tanker_trips').update(patch).eq('id', tripId);
+  const { error } = await supabase.from('tanker_trips').update(patch).eq('id', tripId).eq('dairy_unit_id', dairyUnitId);
   if (error) {
     if (error.code === '42703' || error.message.includes('column') || error.message.includes('does not exist')) {
       const safePatch = { ...patch };
       delete safePatch.gate_pass;
       delete safePatch.gate_pass_no;
       if (Object.keys(safePatch).length > 0) {
-        await supabase.from('tanker_trips').update(safePatch).eq('id', tripId);
+        await supabase.from('tanker_trips').update(safePatch).eq('id', tripId).eq('dairy_unit_id', dairyUnitId);
       }
       return;
     }
@@ -771,7 +798,7 @@ export async function deleteTrip(
   if (!trip) return 'not_found';
 
   if (!bmcId) {
-    const { error } = await supabase.from('tanker_trips').delete().eq('id', trip.id);
+    const { error } = await supabase.from('tanker_trips').delete().eq('id', trip.id).eq('dairy_unit_id', dairyUnitId);
     if (error) throw new Error(error.message);
     return 'deleted';
   }
@@ -787,10 +814,10 @@ export async function deleteTrip(
 
   const { data: left } = await supabase.from('trip_loadings').select('quantity_litres').eq('trip_id', trip.id);
   if (!left || left.length === 0) {
-    await supabase.from('tanker_trips').delete().eq('id', trip.id);
+    await supabase.from('tanker_trips').delete().eq('id', trip.id).eq('dairy_unit_id', dairyUnitId);
   } else {
     const total = round2(left.reduce((s, r) => s + Number(r.quantity_litres), 0));
-    await supabase.from('tanker_trips').update({ loaded_litres: total }).eq('id', trip.id);
+    await supabase.from('tanker_trips').update({ loaded_litres: total }).eq('id', trip.id).eq('dairy_unit_id', dairyUnitId);
   }
   return 'deleted';
 }

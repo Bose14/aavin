@@ -1,3 +1,4 @@
+import { fetchAllPages } from '../lib/paging';
 import { Router } from 'express';
 import { supabase } from '../supabase';
 import { authMiddleware } from '../middleware/auth';
@@ -110,15 +111,17 @@ async function fetchMilkRows(
       .eq('dairy_unit_id', dairyUnitId)
       .gte('date', from)
       .lte('date', to)
-      .order('date', { ascending: true });
+      .order('date', { ascending: true })
+      .order('id', { ascending: true });
     if (role === 'bmc') q = q.eq('bmc_id', profileUnitId!);
     else if (filterUnitId) q = q.eq('bmc_id', filterUnitId);
     return q;
   };
+  const runAll = (sel: string) => fetchAllPages<Record<string, unknown>>((a, b) => run(sel).range(a, b) as never);
 
-  let res = await run('bmc_id, date, shift, quantity_litres, rejection_qty, fat_pct, snf_pct, rate_per_litre, selling_rate_applied, bmcs(name, bmc_code)');
+  let res = await runAll('bmc_id, date, shift, quantity_litres, rejection_qty, fat_pct, snf_pct, rate_per_litre, selling_rate_applied, bmcs(name, bmc_code)');
   if (res.error && isMissingSchemaError(res.error)) {
-    res = await run('bmc_id, date, shift, quantity_litres, rejection_qty, fat_pct, snf_pct, rate_per_litre, bmcs(name, bmc_code)');
+    res = await runAll('bmc_id, date, shift, quantity_litres, rejection_qty, fat_pct, snf_pct, rate_per_litre, bmcs(name, bmc_code)');
   }
   if (res.error) return { data: [], error: res.error.message };
   return { data: (res.data ?? []) as unknown as AnalyticsMilkRow[], error: null };
