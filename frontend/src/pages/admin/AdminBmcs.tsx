@@ -36,6 +36,7 @@ export default function AdminBmcs() {
 
   const [name, setName] = useState('');
   const [unitCode, setUnitCode] = useState('');
+  const [capacity, setCapacity] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -44,7 +45,6 @@ export default function AdminBmcs() {
   const [editCode, setEditCode] = useState('');
   const [editLocation, setEditLocation] = useState('');
   const [editMilkType, setEditMilkType] = useState<'COW' | 'BUFFALO'>('COW');
-  const [editCcCode, setEditCcCode] = useState('');
   const [editCapacity, setEditCapacity] = useState('');
   const [editOpening, setEditOpening] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
@@ -80,9 +80,11 @@ export default function AdminBmcs() {
       await api.post('/bmcs', {
         name: name.trim(),
         bmc_code: unitCode.trim().toUpperCase(),
+        capacity_litres: capacity.trim() === '' ? null : capacity.trim(),
       });
       setName('');
       setUnitCode('');
+      setCapacity('');
       setShowAddModal(false);
       await fetchUnits();
     } catch (err: unknown) {
@@ -98,7 +100,6 @@ export default function AdminBmcs() {
     setEditCode(u.bmc_code);
     setEditLocation(u.location ?? settings.locations[0] ?? '');
     setEditMilkType(u.milk_type === 'BUFFALO' ? 'BUFFALO' : 'COW');
-    setEditCcCode(u.cc_code != null ? String(u.cc_code) : '');
     setEditCapacity(u.capacity_litres != null ? String(u.capacity_litres) : '');
     setEditOpening(u.opening_balance != null ? String(u.opening_balance) : '');
   };
@@ -113,7 +114,6 @@ export default function AdminBmcs() {
         bmc_code: editCode.trim().toUpperCase(),
         location: editLocation.trim() || null,
         milk_type: editMilkType,
-        cc_code: editCcCode.trim() === '' ? null : editCcCode.trim(),
         capacity_litres: editCapacity.trim() === '' ? null : editCapacity.trim(),
         opening_balance: editOpening.trim() === '' ? null : editOpening.trim(),
         opening_balance_date: editTarget.opening_balance_date ?? undefined,
@@ -372,9 +372,9 @@ export default function AdminBmcs() {
               </div>
 
               {/* BMC Code Field */}
-              <div style={{ marginBottom: '24px' }}>
+              <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1e293b', marginBottom: '6px' }}>
-                  BMC Code <span style={{ color: '#ef4444' }}>*</span>
+                  BMC Code (CC Code) <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                   <span style={{ position: 'absolute', left: '12px', display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
@@ -389,7 +389,8 @@ export default function AdminBmcs() {
                     type="text"
                     value={unitCode}
                     onChange={(e) => setUnitCode(e.target.value)}
-                    placeholder="Enter BMC code (e.g. RNK-001)"
+                    inputMode="numeric"
+                    placeholder="CC code, e.g. 12"
                     required
                     style={{
                       width: '100%',
@@ -405,6 +406,33 @@ export default function AdminBmcs() {
                     }}
                   />
                 </div>
+              </div>
+
+              {/* Capacity Field */}
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1e293b', marginBottom: '6px' }}>
+                  Capacity (litres)
+                </label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="1"
+                  value={capacity}
+                  onChange={(e) => setCapacity(e.target.value)}
+                  placeholder="e.g. 5000"
+                  style={{
+                    width: '100%',
+                    height: '42px',
+                    padding: '0 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '14px',
+                    color: '#0f172a',
+                    outline: 'none',
+                    backgroundColor: '#ffffff',
+                  }}
+                />
               </div>
 
               {/* Modal Actions Footer (Image 3 Style: Cancel on Left, Create on Right) */}
@@ -557,7 +585,7 @@ export default function AdminBmcs() {
                 <input value={editName} onChange={e => setEditName(e.target.value)} required />
               </div>
               <div className="form-group">
-                <label>BMC Code</label>
+                <label>BMC Code (CC Code)</label>
                 <input value={editCode} onChange={e => setEditCode(e.target.value)} required />
               </div>
               <div className="form-group">
@@ -586,10 +614,6 @@ export default function AdminBmcs() {
                   <option value="COW">Cow</option>
                   <option value="BUFFALO">Buffalo</option>
                 </select>
-              </div>
-              <div className="form-group">
-                <label>CC Code (used in stock reports)</label>
-                <input type="number" inputMode="numeric" min="0" step="1" value={editCcCode} onChange={e => setEditCcCode(e.target.value)} placeholder="e.g. 12" />
               </div>
               <div className="form-group">
                 <label>Capacity (litres)</label>

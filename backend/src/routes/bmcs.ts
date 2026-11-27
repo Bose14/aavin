@@ -88,9 +88,13 @@ router.post('/', requireRole('admin'), validateBody(bmcSchema), async (req, res)
     name?: string; location?: string; bmc_code?: string;
     route_name?: string; team_name?: string; kind?: string; code_no?: number | string; milk_type?: string;
     cc_code?: number | string | null; capacity_litres?: number | string | null;
+    opening_balance?: number | string | null; opening_balance_date?: string | null;
   };
   const name = typeof rawBody.name === 'string' ? rawBody.name.trim() : '';
-  const unitCode = typeof rawBody.bmc_code === 'string' ? rawBody.bmc_code.trim() : '';
+  const ccFromBody = optInt(rawBody.cc_code);
+  const unitCode = typeof rawBody.bmc_code === 'string' && rawBody.bmc_code.trim()
+    ? rawBody.bmc_code.trim()
+    : (ccFromBody !== null ? String(ccFromBody) : '');
   const location = typeof rawBody.location === 'string' && rawBody.location.trim() ? rawBody.location.trim() : null;
 
   if (!name || !unitCode) {
@@ -105,7 +109,7 @@ router.post('/', requireRole('admin'), validateBody(bmcSchema), async (req, res)
       team_name: optText(rawBody.team_name),
       kind: rawBody.kind === 'CC' ? 'CC' : 'BMC',
       code_no: optInt(rawBody.code_no),
-      cc_code: optInt(rawBody.cc_code),
+      cc_code: numericCode(unitCode) ?? ccFromBody,
       capacity_litres: optNum(rawBody.capacity_litres),
       milk_type: String(rawBody.milk_type ?? '').toUpperCase() === 'BUFFALO' ? 'BUFFALO' : 'COW',
     })
@@ -120,19 +124,31 @@ router.post('/', requireRole('admin'), validateBody(bmcSchema), async (req, res)
     return;
   }
 
+  const createOpening = optNum(rawBody.opening_balance);
+  if (createOpening !== null && createOpening >= 0) {
+    const day = typeof rawBody.opening_balance_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawBody.opening_balance_date)
+      ? rawBody.opening_balance_date : getTodayIso();
+    await supabase.from('bmc_opening_balances').upsert({ bmc_id: data.id, balance_date: day, quantity_litres: createOpening }, { onConflict: 'bmc_id' });
+  }
+
   await writeAuditLog({
     dairy_unit_id: req.profile.dairy_unit_id,
     bmc_id: data.id,
     entity_type: 'bmc',
     entity_id: data.id,
     action: 'create',
-    changes: { name, bmc_code: unitCode, location },
+    changes: { name, bmc_code: unitCode, location, capacity_litres: optNum(rawBody.capacity_litres) },
     actor_id: req.user.id,
     actor_name: req.profile.full_name ?? req.user.email ?? 'Admin',
   });
 
   res.status(201).json(data);
 });
+
+/** The BMC code and the CC code are one number: a numeric code also fills cc_code (used in stock reports). */
+function numericCode(code: string): number | null {
+  return /^\d{1,9}$/.test(code) ? Number(code) : null;
+}
 
 function optText(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null;
@@ -168,6 +184,7 @@ router.patch('/:id', requireRole('admin'), validateBody(bmcSchema), async (req, 
     const trimmedCode = String(rawBody.bmc_code).trim();
     if (!trimmedCode) { res.status(400).json({ error: 'BMC code cannot be empty' }); return; }
     patch.bmc_code = trimmedCode;
+    patch.cc_code = numericCode(trimmedCode);
   }
   if (rawBody.location !== undefined) {
     patch.location = typeof rawBody.location === 'string' && rawBody.location.trim() ? rawBody.location.trim() : null;
@@ -176,7 +193,12 @@ router.patch('/:id', requireRole('admin'), validateBody(bmcSchema), async (req, 
   if (rawBody.team_name !== undefined) patch.team_name = optText(rawBody.team_name);
   if (rawBody.kind !== undefined) patch.kind = rawBody.kind === 'CC' ? 'CC' : 'BMC';
   if (rawBody.code_no !== undefined) patch.code_no = optInt(rawBody.code_no);
-  if (rawBody.cc_code !== undefined) patch.cc_code = optInt(rawBody.cc_code);
+  if (rawBody.cc_code !== undefined && rawBody.bmc_code === undefined) {
+    // Only the CC code was sent: keep the BMC code identical to it
+    const cc = optInt(rawBody.cc_code);
+    patch.cc_code = cc;
+    if (cc !== null) patch.bmc_code = String(cc);
+  }
   if (rawBody.capacity_litres !== undefined) {
     const cap = optNum(rawBody.capacity_litres);
     if (cap !== null && cap < 0) { res.status(400).json({ error: 'Capacity cannot be negative' }); return; }
