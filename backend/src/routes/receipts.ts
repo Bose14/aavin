@@ -1,3 +1,5 @@
+import { loadDmrSheet } from '../lib/dmrSheetData';
+import { buildDmrSheetWorkbook } from '../lib/dmrSheet';
 import { Router } from 'express';
 import { supabase } from '../supabase';
 import { authMiddleware } from '../middleware/auth';
@@ -109,6 +111,33 @@ router.get('/dmr/xlsx', async (req, res) => {
     const file = await buildDmrWorkbook(buildDmr(days), String(unit.data?.name ?? ''), from!, to!);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="BMC_DMR_Loss_${from}_to_${to}.xlsx"`);
+    res.send(file);
+  } catch (err) {
+    fail(res, req, err);
+  }
+});
+
+// GET /receipts/dmr-sheet?from=&to= — monthly DMR statement (DMR vs invoice / spot acknowledgement per BMC)
+router.get('/dmr-sheet', async (req, res) => {
+  const { from, to } = req.query as Record<string, string | undefined>;
+  const bad = validateRange(from, to);
+  if (bad) { res.status(400).json({ error: bad }); return; }
+  try {
+    res.json(await loadDmrSheet(req.profile.dairy_unit_id, from!, to!));
+  } catch (err) {
+    fail(res, req, err);
+  }
+});
+
+// GET /receipts/dmr-sheet/xlsx?from=&to= — the same statement as an Excel file
+router.get('/dmr-sheet/xlsx', async (req, res) => {
+  const { from, to } = req.query as Record<string, string | undefined>;
+  const bad = validateRange(from, to, MAX_DOWNLOAD_DAYS);
+  if (bad) { res.status(400).json({ error: bad }); return; }
+  try {
+    const file = await buildDmrSheetWorkbook(await loadDmrSheet(req.profile.dairy_unit_id, from!, to!), from!, to!);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="DMR_${from}_to_${to}.xlsx"`);
     res.send(file);
   } catch (err) {
     fail(res, req, err);
